@@ -1,5 +1,7 @@
 # PX4 Autonomous Waypoint Mission — MAVSDK Python
 
+![PX4 Autonomous Mission Overview](PX4-ProjectImage.png)
+
 Autonomous multi-waypoint UAV mission using PX4 SITL, Gazebo Classic, and MAVSDK-Python.
 The script uploads a 3-waypoint mission to a simulated Iris quadrotor, executes the flight,
 returns to launch, and logs telemetry to a CSV file.
