@@ -4,7 +4,16 @@ import time
 from mavsdk import System
 from mavsdk.mission import MissionItem, MissionPlan
 
-LOG_FILE = f"/home/azrael/Desktop/mavsdk_scripts/flight_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+# --- Lawnmower Pattern Generator ---
+def generate_lawnmower(start_lat, start_lon, rows, cols, step_lat, step_lon):
+    waypoints = []
+    for row in range(rows):
+        direction = range(cols) if row % 2 == 0 else range(cols - 1, -1, -1)
+        for col in direction:
+            lat = start_lat + row * step_lat
+            lon = start_lon + col * step_lon
+            waypoints.append((lat, lon))
+    return waypoints
 
 def make_waypoint(lat, lon, alt, fly_through=True, loiter=0):
     return MissionItem(
@@ -25,7 +34,8 @@ def make_waypoint(lat, lon, alt, fly_through=True, loiter=0):
     )
 
 async def log_telemetry(drone, stop_event):
-    with open(LOG_FILE, "w", newline="") as f:
+    log_file = f"/home/azrael/Desktop/px4-autonomous-mission/flight_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    with open(log_file, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["time", "latitude", "longitude", "alt_abs_m", "alt_rel_m"])
         async for position in drone.telemetry.position():
@@ -42,7 +52,7 @@ async def log_telemetry(drone, stop_event):
             f.flush()
             print(f"  LOG | {row[0]} | lat={row[1]} lon={row[2]} | alt={row[4]}m")
             await asyncio.sleep(1)
-    print(f"Flight log saved to: {LOG_FILE}")
+    print(f"Flight log saved to: {log_file}")
 
 async def main():
     drone = System(mavsdk_server_address="localhost", port=50051)
@@ -64,11 +74,32 @@ async def main():
     await drone.mission.clear_mission()
     await asyncio.sleep(1)
 
+    # --- Generate lawnmower pattern ---
+    # 3 rows x 3 cols = 9 waypoints
+    # step_lat/lon ~ 0.0002 degrees ≈ 20 meters per step
+    start_lat = 47.398000
+    start_lon = 8.545500
+    pattern = generate_lawnmower(
+        start_lat=start_lat,
+        start_lon=start_lon,
+        rows=3,
+        cols=3,
+        step_lat=0.0002,
+        step_lon=0.0003
+    )
+
+    print(f"Generated {len(pattern)} waypoints:")
+    for i, (lat, lon) in enumerate(pattern):
+        print(f"  WP{i+1}: lat={round(lat,7)} lon={round(lon,7)}")
+
     mission_items = [
-        make_waypoint(47.398039859999997, 8.5455725400000002, 10),
-        make_waypoint(47.398036222362471, 8.5450146439425085, 15),
-        make_waypoint(47.397825620791885, 8.5450092830163271, 10, fly_through=False, loiter=2),
+        make_waypoint(lat, lon, alt=15, fly_through=True)
+        for lat, lon in pattern
     ]
+    # Loiter 2 seconds at final waypoint
+    mission_items[-1] = make_waypoint(
+        pattern[-1][0], pattern[-1][1], alt=15, fly_through=False, loiter=2
+    )
 
     print("Uploading mission...")
     await drone.mission.upload_mission(MissionPlan(mission_items))
@@ -79,22 +110,21 @@ async def main():
     print("Arming...")
     await drone.action.arm()
 
-    print("Starting mission...")
+    print("Starting lawnmower scan...")
     await drone.mission.start_mission()
 
     async for progress in drone.mission.mission_progress():
         print(f"Mission progress: {progress.current}/{progress.total}")
         if progress.current == progress.total:
-            print("Mission complete!")
+            print("Scan complete!")
             break
 
     print("Returning to launch...")
     await drone.action.return_to_launch()
 
-    # Wait for disarm instead of landed state — more reliable in SITL
     async for is_armed in drone.telemetry.armed():
         if not is_armed:
-            print("Disarmed — flight complete.")
+            print("Disarmed — mission complete.")
             break
 
     stop_event.set()
