@@ -1,6 +1,6 @@
 # PX4 Autonomous Waypoint Mission — MAVSDK Python
 
-![PX4 Autonomous Mission Overview](PX4-ProjectImage.png)
+![PX4 Autonomous Mission Overview](PX4ProjectImage2.png)
 
 Autonomous multi-waypoint UAV mission using PX4 SITL, Gazebo Classic, and MAVSDK-Python.
 The script generates a **lawnmower pattern** (3×3 grid = 9 waypoints), uploads it to a simulated Iris quadrotor,
