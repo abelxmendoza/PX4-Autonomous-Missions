@@ -1,13 +1,13 @@
 """
 offboard_avoidance.py — PX4 OFFBOARD reactive obstacle avoidance via MAVSDK
 
-Upgraded features:
+Features:
 - Local NED control (no GPS drift)
 - Smooth motion (no teleport stepping)
 - Yaw alignment (faces direction of travel)
 - Boundary clamp (prevents flying off sim)
 - Watchdog (prevents offboard dropout)
-- Reactive obstacle avoidance (extendable to LiDAR / ROS2)
+- Sim-aware obstacle detection (matches worlds/obstacle_world.sdf)
 
 Loop = sense → decide → smooth → act → repeat
 
@@ -32,26 +32,60 @@ import math
 from mavsdk import System
 from mavsdk.offboard import OffboardError, PositionNedYaw
 
-# ── Config ───────────────────────────────────────────────────────────────────
-TAKEOFF_ALT = 5.0     # meters AGL
-STEP_SIZE   = 1.0     # forward advance per loop tick (meters)
-AVOID_DIST  = 2.0     # lateral offset when obstacle detected (meters)
-LOOP_DT     = 0.1     # control loop period — 10 Hz
+# ── Config ────────────────────────────────────────────────────────────────────
+TAKEOFF_ALT = 5.0
+STEP_SIZE   = 1.0
+AVOID_DIST  = 2.0
+LOOP_DT     = 0.1
 
-SMOOTHING   = 0.2     # exponential smoothing factor (0 = no motion, 1 = instant)
-MAX_RANGE   = 20.0    # NED boundary clamp (meters)
+SMOOTHING   = 0.2
+MAX_RANGE   = 20.0
+
+DETECTION_RADIUS = 4.0   # meters — obstacle triggers within this radius
+FRONT_ANGLE      = 30    # degrees — cone in front classified as "front"
+SIDE_ANGLE       = 60    # degrees — flanks classified as "left"/"right"
+
+VEL_EPS = 0.1            # m — minimum displacement before updating yaw
 
 
-# ── Sensor stub ───────────────────────────────────────────────────────────────
-def detect_obstacle() -> str | None:
+# ── Obstacle map (matches worlds/obstacle_world.sdf) ─────────────────────────
+# (east_m, north_m) — ENU from spawn origin
+OBSTACLES = [
+    (12, 10),   # OB1 — red building
+    (28, 10),   # OB2 — orange tower
+    (10, 24),   # OB3 — green block
+    (24, 24),   # OB4 — blue pillar
+    (18, 38),   # OB5 — purple wall
+]
+
+
+# ── Sim-aware sensor ──────────────────────────────────────────────────────────
+def detect_obstacle(north: float, east: float, yaw_deg: float) -> str | None:
     """
-    Replace with real sensor input:
-      - LiDAR sectors
-      - Depth camera
-      - ROS 2 subscriber
+    Geometry-based obstacle detection against the known SDF obstacle map.
+    Replace OBSTACLES lookup with real LiDAR sectors or a ROS 2 subscriber
+    when running on hardware or a sensor-equipped sim.
 
     Returns: "front", "left", "right", or None
     """
+    for obs_e, obs_n in OBSTACLES:
+        dn = obs_n - north
+        de = obs_e - east
+        distance = math.hypot(dn, de)
+
+        if distance > DETECTION_RADIUS:
+            continue
+
+        angle = math.degrees(math.atan2(de, dn))
+        rel_angle = (angle - yaw_deg + 180) % 360 - 180  # normalize to [-180, 180]
+
+        if abs(rel_angle) < FRONT_ANGLE:
+            return "front"
+        elif 0 < rel_angle < SIDE_ANGLE:
+            return "left"
+        elif -SIDE_ANGLE < rel_angle < 0:
+            return "right"
+
     return None
 
 
@@ -108,13 +142,14 @@ async def main():
     target_north = 0.0
     target_east  = 0.0
 
+    yaw = 0.0
     last_setpoint_time = asyncio.get_event_loop().time()
 
     # ── Control loop ──────────────────────────────────────────────────────────
     print("Control loop running. Ctrl-C to stop.")
     try:
         while True:
-            obstacle = detect_obstacle()
+            obstacle = detect_obstacle(north, east, yaw)
 
             # Decide
             if obstacle == "front":
@@ -135,13 +170,17 @@ async def main():
             north += (target_north - north) * SMOOTHING
             east  += (target_east  - east)  * SMOOTHING
 
-            # Yaw alignment — face direction of travel
-            yaw = math.degrees(math.atan2(east, north)) if north != 0 else 0.0
+            # Yaw — only update when moving to avoid spin-in-place
+            if math.hypot(north, east) > VEL_EPS:
+                yaw = math.degrees(math.atan2(east, north))
 
-            # Watchdog
+            # Watchdog — re-hold position if loop fell behind
             now = asyncio.get_event_loop().time()
             if now - last_setpoint_time > 0.2:
-                print("[WARN] Setpoint delay — stabilizing")
+                print("[WARN] Setpoint delay — re-hold position")
+                await drone.offboard.set_position_ned(
+                    PositionNedYaw(north, east, -TAKEOFF_ALT, yaw)
+                )
             last_setpoint_time = now
 
             # Act
