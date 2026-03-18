@@ -56,13 +56,18 @@ async def log_telemetry(drone, stop_event):
 
 async def main():
     drone = System(mavsdk_server_address="localhost", port=50051)
-    await drone.connect(system_address="udpin://0.0.0.0:14540")
+    await drone.connect()
 
-    print("Waiting for drone to connect...")
-    async for state in drone.core.connection_state():
-        if state.is_connected:
-            print("Drone connected!")
-            break
+    print("Connecting to MAVSDK server (localhost:50051)...")
+    try:
+        async with asyncio.timeout(10):
+            async for state in drone.core.connection_state():
+                if state.is_connected:
+                    print("Drone connected via MAVSDK server!")
+                    break
+    except asyncio.TimeoutError:
+        print("ERROR: Could not reach MAVSDK server. Is 'mavsdk_server udpout://127.0.0.1:14580' running?")
+        return
 
     print("Waiting for global position...")
     async for health in drone.telemetry.health():
