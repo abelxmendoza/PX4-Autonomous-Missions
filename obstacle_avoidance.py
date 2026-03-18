@@ -123,12 +123,14 @@ async def main():
     await drone.connect()
 
     print("Connecting to MAVSDK server (localhost:50051)...")
+    async def _wait_for_connection():
+        async for state in drone.core.connection_state():
+            if state.is_connected:
+                return
+
     try:
-        async with asyncio.timeout(10):
-            async for state in drone.core.connection_state():
-                if state.is_connected:
-                    print("Drone connected via MAVSDK server!")
-                    break
+        await asyncio.wait_for(_wait_for_connection(), timeout=10)
+        print("Drone connected via MAVSDK server!")
     except asyncio.TimeoutError:
         print("ERROR: Could not reach MAVSDK server. Is 'mavsdk_server udpout://127.0.0.1:14580' running?")
         return
