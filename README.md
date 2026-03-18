@@ -87,4 +87,4 @@ time,latitude,longitude,alt_abs_m,alt_rel_m
 
 ## Author
 Abel — UAV autonomy stack development
-GitHub: github.com/yourusername
+GitHub: github.com/abelxmendoza
