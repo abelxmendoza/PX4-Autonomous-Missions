@@ -1,4 +1,5 @@
 flight_log_*.csv
+flight_log_offboard_*.csv
 __pycache__/
 *.pyc
 *.egg-info/
