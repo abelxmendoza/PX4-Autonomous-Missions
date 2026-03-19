@@ -19,6 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "offboard_control = px4_offboard.offboard_control:main",
+            "offboard_mission = px4_offboard.offboard_mission:main",
         ],
     },
 )
