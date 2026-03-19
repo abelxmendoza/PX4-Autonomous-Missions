@@ -1,30 +1,35 @@
 """
-offboard_mission.py — PX4 OFFBOARD mission node (ROS 2 + px4_msgs + XRCE-DDS)
+offboard_mission.py — PX4 state-driven autonomous flight controller
+                       (ROS 2 + px4_msgs + Micro XRCE-DDS)
 
 State machine:
-  PREFLIGHT → ARMING → TAKEOFF → MISSION → LANDING
+  PREFLIGHT → ARMING → TAKEOFF → HOVER → MOVE → LANDING
 
-Trajectory modes (set TRAJECTORY_MODE at top of file):
-  TrajectoryMode.WAYPOINTS — fly through a list of NED positions
-  TrajectoryMode.CIRCLE    — continuous circular orbit
+Transitions:
+  PREFLIGHT → ARMING  : after PREFLIGHT_CYCLES setpoint stream (2 s)
+  ARMING    → TAKEOFF : vehicle_status confirms nav_state=14, arming_state=2
+  TAKEOFF   → HOVER   : |current_z - target_z| < 0.2 m
+  HOVER     → MOVE    : time_in_state > 3 s
+  MOVE      → LANDING : all waypoints reached
 
-Pipeline:
-  ROS 2 node → XRCE-DDS → PX4 uORB
-
-Topics published:
-  /fmu/in/offboard_control_mode
-  /fmu/in/trajectory_setpoint
-  /fmu/in/vehicle_command
-
-Topics subscribed:
-  /fmu/out/vehicle_local_position   — current NED position (waypoint acceptance)
-  /fmu/out/vehicle_status           — arming / nav state confirmation
+Architecture:
+  ├── Publishers
+  │   ├── /fmu/in/offboard_control_mode
+  │   ├── /fmu/in/trajectory_setpoint
+  │   └── /fmu/in/vehicle_command
+  ├── Subscribers
+  │   ├── /fmu/out/vehicle_local_position   ← position feedback
+  │   └── /fmu/out/vehicle_status           ← arming / nav state
+  └── Core logic
+      ├── State machine
+      ├── Feedback controller
+      └── Trajectory generator  (WAYPOINTS | CIRCLE)
 
 Run:
   ros2 run px4_offboard offboard_mission
 
-Change trajectory:
-  Edit TRAJECTORY_MODE and WAYPOINTS / CIRCLE_* constants below.
+Switch trajectory:
+  Set TRAJECTORY_MODE to TrajectoryMode.WAYPOINTS or TrajectoryMode.CIRCLE
 """
 
 import math
@@ -51,35 +56,36 @@ class TrajectoryMode(Enum):
 TRAJECTORY_MODE = TrajectoryMode.WAYPOINTS
 
 
-# ── Mission config ────────────────────────────────────────────────────────────
+# ── Mission parameters ────────────────────────────────────────────────────────
 
-HOVER_ALT_M      = 5.0    # meters AGL (NED z = -5.0)
-ACCEPT_RADIUS_M  = 0.4    # waypoint acceptance radius (meters)
-PREFLIGHT_CYCLES = 20     # setpoint cycles before arming (20 × 100ms = 2s)
+HOVER_ALT_M       = 3.0    # meters AGL  (NED z = -3.0)
+PREFLIGHT_CYCLES  = 20     # 20 × 100 ms = 2 s pre-stream before arm
+HOVER_HOLD_S      = 3.0    # seconds to hold HOVER before advancing to MOVE
+TAKEOFF_Z_TOL_M   = 0.2    # TAKEOFF → HOVER acceptance: |z_err| < this
+WP_ACCEPT_M       = 0.3    # MOVE waypoint acceptance radius (3-D)
 
-# Waypoints in NED frame: [north_m, east_m, down_m]
-# down_m is negative (z = -altitude)
+# Waypoints  [north_m, east_m, down_m]   NED frame, z negative = up
 WAYPOINTS = [
-    [ 0.0,   0.0, -HOVER_ALT_M],   # WP0 — home / takeoff hover
-    [10.0,   0.0, -HOVER_ALT_M],   # WP1 — north  10m
-    [10.0,  10.0, -HOVER_ALT_M],   # WP2 — NE corner
-    [ 0.0,  10.0, -HOVER_ALT_M],   # WP3 — east   10m
-    [ 0.0,   0.0, -HOVER_ALT_M],   # WP4 — return home
+    [0.0, 0.0, -HOVER_ALT_M],   # WP0 — home / initial hover
+    [2.0, 0.0, -HOVER_ALT_M],   # WP1 — north 2 m
+    [2.0, 2.0, -HOVER_ALT_M],   # WP2 — NE corner
+    [0.0, 2.0, -HOVER_ALT_M],   # WP3 — east 2 m
 ]
 
 # Circular orbit
-CIRCLE_RADIUS_M  = 8.0    # meters
-CIRCLE_PERIOD_S  = 20.0   # seconds per full orbit (2π rad)
+CIRCLE_RADIUS_M = 8.0     # metres
+CIRCLE_PERIOD_S = 20.0    # seconds per full 2π orbit
 
 
-# ── State machine ─────────────────────────────────────────────────────────────
+# ── States ────────────────────────────────────────────────────────────────────
 
 class State(Enum):
-    PREFLIGHT = auto()   # streaming setpoints, not yet armed
-    ARMING    = auto()   # mode + arm commands sent, waiting for confirmation
-    TAKEOFF   = auto()   # climbing to HOVER_ALT, waiting for altitude lock
-    MISSION   = auto()   # executing trajectory
-    LANDING   = auto()   # descending and disarming
+    PREFLIGHT = auto()   # stream setpoints before arming
+    ARMING    = auto()   # mode switch + arm commands sent
+    TAKEOFF   = auto()   # climb to HOVER_ALT; wait for z convergence
+    HOVER     = auto()   # stabilise; advance after HOVER_HOLD_S
+    MOVE      = auto()   # navigate through waypoints / orbit
+    LANDING   = auto()   # descend and disarm
 
 
 # ── Node ──────────────────────────────────────────────────────────────────────
@@ -89,14 +95,12 @@ class OffboardMission(Node):
     def __init__(self):
         super().__init__("offboard_mission")
 
-        # QoS for PX4 inbound topics (publish to FMU)
         qos_pub = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
-        # QoS for PX4 outbound topics (subscribe from FMU)
         qos_sub = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
@@ -104,7 +108,7 @@ class OffboardMission(Node):
             depth=1,
         )
 
-        # Publishers
+        # ── Publishers ────────────────────────────────────────────────────
         self._pub_ocm = self.create_publisher(
             OffboardControlMode, "/fmu/in/offboard_control_mode", qos_pub
         )
@@ -115,122 +119,154 @@ class OffboardMission(Node):
             VehicleCommand, "/fmu/in/vehicle_command", qos_pub
         )
 
-        # Subscribers
+        # ── Subscribers ───────────────────────────────────────────────────
         self.create_subscription(
             VehicleLocalPosition,
             "/fmu/out/vehicle_local_position",
-            self._cb_local_pos,
+            self._position_callback,
             qos_sub,
         )
         self.create_subscription(
             VehicleStatus,
             "/fmu/out/vehicle_status",
-            self._cb_vehicle_status,
+            self._status_callback,
             qos_sub,
         )
 
-        # State
-        self._state         = State.PREFLIGHT
-        self._counter       = 0
-        self._wp_index      = 0
-        self._mission_t     = 0.0        # seconds into MISSION phase
-        self._pos           = [0.0, 0.0, 0.0]  # current NED (x, y, z)
-        self._nav_state     = -1
-        self._arming_state  = -1
+        # ── Feedback state ────────────────────────────────────────────────
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.current_z = 0.0
 
-        self.create_timer(0.1, self._timer_cb)   # 10 Hz
+        self._nav_state    = -1
+        self._arming_state = -1
+
+        # ── Mission state ─────────────────────────────────────────────────
+        self._state        = State.PREFLIGHT
+        self._counter      = 0
+        self._hover_timer  = 0.0    # seconds spent in HOVER
+        self._mission_t    = 0.0    # seconds spent in MOVE (for circle)
+        self._wp_index     = 0
+
+        self.create_timer(0.1, self._control_loop)  # 10 Hz
         self.get_logger().info(
-            f"OffboardMission started — mode={TRAJECTORY_MODE.name}"
+            f"OffboardMission ready — mode={TRAJECTORY_MODE.name}"
         )
 
-    # ── Subscriptions ─────────────────────────────────────────────────────────
+    # ── Subscribers ───────────────────────────────────────────────────────────
 
-    def _cb_local_pos(self, msg: VehicleLocalPosition):
-        self._pos = [msg.x, msg.y, msg.z]
+    def _position_callback(self, msg: VehicleLocalPosition):
+        self.current_x = msg.x
+        self.current_y = msg.y
+        self.current_z = msg.z
 
-    def _cb_vehicle_status(self, msg: VehicleStatus):
+    def _status_callback(self, msg: VehicleStatus):
         self._nav_state    = msg.nav_state
         self._arming_state = msg.arming_state
 
-    # ── 10 Hz timer ───────────────────────────────────────────────────────────
+    # ── 10 Hz control loop ────────────────────────────────────────────────────
 
-    def _timer_cb(self):
+    def _control_loop(self):
+        # Heartbeat — must NEVER stop while in OFFBOARD mode
         self._publish_offboard_control_mode()
 
         # ── PREFLIGHT ──────────────────────────────────────────────────────
         if self._state == State.PREFLIGHT:
             self._publish_setpoint([0.0, 0.0, -HOVER_ALT_M])
+
             if self._counter == PREFLIGHT_CYCLES:
                 self._send_offboard_mode()
             if self._counter == PREFLIGHT_CYCLES + 5:
                 self._send_arm()
-                self._state = State.ARMING
-                self.get_logger().info("→ ARMING")
+                self._transition(State.ARMING)
 
         # ── ARMING ────────────────────────────────────────────────────────
         elif self._state == State.ARMING:
             self._publish_setpoint([0.0, 0.0, -HOVER_ALT_M])
-            # nav_state 14 = OFFBOARD, arming_state 2 = ARMED
+            # Wait for PX4 confirmation before commanding motion
             if self._nav_state == 14 and self._arming_state == 2:
-                self._state = State.TAKEOFF
-                self.get_logger().info("→ TAKEOFF")
+                self._transition(State.TAKEOFF)
 
         # ── TAKEOFF ───────────────────────────────────────────────────────
         elif self._state == State.TAKEOFF:
-            self._publish_setpoint([0.0, 0.0, -HOVER_ALT_M])
-            if abs(self._pos[2] - (-HOVER_ALT_M)) < ACCEPT_RADIUS_M:
-                self._state     = State.MISSION
-                self._wp_index  = 0
-                self._mission_t = 0.0
-                self.get_logger().info("→ MISSION")
+            target = [0.0, 0.0, -HOVER_ALT_M]
+            self._publish_setpoint(target)
+            if abs(self.current_z - (-HOVER_ALT_M)) < TAKEOFF_Z_TOL_M:
+                self._transition(State.HOVER)
 
-        # ── MISSION ───────────────────────────────────────────────────────
-        elif self._state == State.MISSION:
-            sp = self._next_setpoint()
-            self._publish_setpoint(sp)
+        # ── HOVER ─────────────────────────────────────────────────────────
+        elif self._state == State.HOVER:
+            self._publish_setpoint([0.0, 0.0, -HOVER_ALT_M])
+            self._hover_timer += 0.1
+            if self._hover_timer >= HOVER_HOLD_S:
+                self._transition(State.MOVE)
+
+        # ── MOVE ──────────────────────────────────────────────────────────
+        elif self._state == State.MOVE:
+            target = self._next_target()
+            target = self._apply_avoidance(target)
+            self._publish_setpoint(target)
             self._mission_t += 0.1
 
         # ── LANDING ───────────────────────────────────────────────────────
         elif self._state == State.LANDING:
-            self._publish_setpoint([0.0, 0.0, 0.0])   # descend to ground
+            self._publish_setpoint([0.0, 0.0, 0.0])
             self._send_land()
 
         self._counter += 1
 
-    # ── Trajectory generators ─────────────────────────────────────────────────
+    # ── Trajectory generator ──────────────────────────────────────────────────
 
-    def _next_setpoint(self) -> list:
-        if TRAJECTORY_MODE == TrajectoryMode.WAYPOINTS:
-            return self._waypoint_setpoint()
-        return self._circle_setpoint()
+    def _next_target(self) -> list:
+        if TRAJECTORY_MODE == TrajectoryMode.CIRCLE:
+            return self._circle_target()
+        return self._waypoint_target()
 
-    def _waypoint_setpoint(self) -> list:
+    def _waypoint_target(self) -> list:
         if self._wp_index >= len(WAYPOINTS):
-            self._state = State.LANDING
-            self.get_logger().info("→ LANDING (waypoints complete)")
+            self._transition(State.LANDING)
             return WAYPOINTS[-1]
 
         target = WAYPOINTS[self._wp_index]
-        dist = math.sqrt(
-            (self._pos[0] - target[0]) ** 2
-            + (self._pos[1] - target[1]) ** 2
-            + (self._pos[2] - target[2]) ** 2
-        )
-
-        if dist < ACCEPT_RADIUS_M:
+        if self._distance_to_wp(target) < WP_ACCEPT_M:
             self.get_logger().info(
-                f"Waypoint {self._wp_index} reached — {target}"
+                f"WP {self._wp_index} reached  {target}"
             )
             self._wp_index += 1
 
         return target
 
-    def _circle_setpoint(self) -> list:
+    def _circle_target(self) -> list:
         angle = (2 * math.pi / CIRCLE_PERIOD_S) * self._mission_t
-        x = CIRCLE_RADIUS_M * math.cos(angle)
-        y = CIRCLE_RADIUS_M * math.sin(angle)
-        z = -HOVER_ALT_M
-        return [x, y, z]
+        return [
+            CIRCLE_RADIUS_M * math.cos(angle),
+            CIRCLE_RADIUS_M * math.sin(angle),
+            -HOVER_ALT_M,
+        ]
+
+    # ── Feedback helpers ──────────────────────────────────────────────────────
+
+    def _distance_to_wp(self, target: list) -> float:
+        dx = self.current_x - target[0]
+        dy = self.current_y - target[1]
+        dz = self.current_z - target[2]
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    # ── Obstacle avoidance hook ───────────────────────────────────────────────
+
+    def _apply_avoidance(self, target: list) -> list:
+        """
+        Hook for reactive obstacle avoidance.
+
+        Replace obstacle_detected() with real sensor input:
+          - ROS 2 subscriber (LiDAR, depth camera)
+          - offboard_avoidance.detect_obstacle()
+
+        Example — sidestep east if obstacle ahead:
+            if obstacle_detected == "front":
+                target[1] += 1.0
+        """
+        return target   # pass-through until sensor is connected
 
     # ── Publishers ────────────────────────────────────────────────────────────
 
@@ -251,32 +287,27 @@ class OffboardMission(Node):
         msg.velocity     = [float("nan")] * 3
         msg.acceleration = [float("nan")] * 3
         msg.jerk         = [float("nan")] * 3
-        msg.yaw          = self._yaw_to_target(ned)
+        msg.yaw          = self._yaw_toward(ned)
         msg.yawspeed     = float("nan")
         self._pub_sp.publish(msg)
 
-    # ── VehicleCommand helpers ────────────────────────────────────────────────
+    # ── VehicleCommand ────────────────────────────────────────────────────────
 
     def _send_offboard_mode(self):
-        self._vehicle_command(
-            VehicleCommand.VEHICLE_CMD_DO_SET_MODE,
-            param1=1.0,   # MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
-            param2=6.0,   # PX4_CUSTOM_MAIN_MODE_OFFBOARD
-        )
+        self._cmd(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
         self.get_logger().info("Sent: DO_SET_MODE → OFFBOARD")
 
     def _send_arm(self):
-        self._vehicle_command(
+        self._cmd(
             VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM,
             param1=float(VehicleCommand.ARMING_ACTION_ARM),
         )
         self.get_logger().info("Sent: ARM")
 
     def _send_land(self):
-        self._vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
-        self.get_logger().info("Sent: LAND")
+        self._cmd(VehicleCommand.VEHICLE_CMD_NAV_LAND)
 
-    def _vehicle_command(self, command: int, param1=0.0, param2=0.0):
+    def _cmd(self, command: int, param1=0.0, param2=0.0):
         msg = VehicleCommand()
         msg.timestamp        = self._ts()
         msg.command          = command
@@ -291,17 +322,23 @@ class OffboardMission(Node):
 
     # ── Utilities ─────────────────────────────────────────────────────────────
 
+    def _transition(self, new_state: State):
+        self.get_logger().info(f"  {self._state.name} → {new_state.name}")
+        self._state = new_state
+
     def _ts(self) -> int:
         return self.get_clock().now().nanoseconds // 1000
 
-    def _yaw_to_target(self, target: list) -> float:
-        """Face the direction of travel (yaw toward next waypoint)."""
-        dx = target[0] - self._pos[0]
-        dy = target[1] - self._pos[1]
+    def _yaw_toward(self, target: list) -> float:
+        """Face direction of travel; hold current yaw when near target."""
+        dx = target[0] - self.current_x
+        dy = target[1] - self.current_y
         if abs(dx) < 0.1 and abs(dy) < 0.1:
-            return float("nan")   # hold current yaw when nearly at target
+            return float("nan")
         return math.atan2(dy, dx)
 
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main(args=None):
     rclpy.init(args=args)
