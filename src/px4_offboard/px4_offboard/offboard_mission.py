@@ -23,7 +23,8 @@ Architecture:
   └── Core logic
       ├── State machine
       ├── Feedback controller
-      └── Trajectory generator  (WAYPOINTS | CIRCLE)
+      ├── Trajectory generator  (WAYPOINTS | CIRCLE)
+      └── Obstacle detection + avoidance (geometry, SDF-matched)
 
 Run:
   ros2 run px4_offboard offboard_mission
@@ -75,6 +76,20 @@ WAYPOINTS = [
 # Circular orbit
 CIRCLE_RADIUS_M = 8.0     # metres
 CIRCLE_PERIOD_S = 20.0    # seconds per full 2π orbit
+
+# ── Obstacle map (matches worlds/obstacle_world.sdf) ─────────────────────────
+# (east_m, north_m) — ENU from spawn origin
+OBSTACLES = [
+    (12, 10),   # OB1 — red building
+    (28, 10),   # OB2 — orange tower
+    (10, 24),   # OB3 — green block
+    (24, 24),   # OB4 — blue pillar
+    (18, 38),   # OB5 — purple wall
+]
+DETECTION_RADIUS = 4.0   # metres — trigger distance
+FRONT_ANGLE      = 30    # degrees — cone ahead classified as "front"
+SIDE_ANGLE       = 60    # degrees — flanks classified as "left" / "right"
+AVOID_SMOOTH     = 0.2   # exponential smoothing on adjusted target
 
 
 # ── States ────────────────────────────────────────────────────────────────────
@@ -252,21 +267,71 @@ class OffboardMission(Node):
         dz = self.current_z - target[2]
         return math.sqrt(dx * dx + dy * dy + dz * dz)
 
-    # ── Obstacle avoidance hook ───────────────────────────────────────────────
+    # ── Obstacle detection ───────────────────────────────────────────────────
+
+    def _detect_obstacle(self, target: list) -> str | None:
+        """
+        Geometry-based obstacle detection against the SDF obstacle map.
+
+        Bearing is computed relative to the direction of travel (current→target),
+        so "front" always means "in the way of where we're going".
+
+        Replace OBSTACLES lookup with a real sensor subscriber
+        (LiDAR sectors, depth camera, ROS 2 topic) for hardware use.
+
+        Returns: "front", "left", "right", or None
+        """
+        # Direction of travel in degrees
+        dx = target[0] - self.current_x
+        dy = target[1] - self.current_y
+        travel_yaw = math.degrees(math.atan2(dy, dx))
+
+        for obs_e, obs_n in OBSTACLES:
+            dn = obs_n - self.current_x
+            de = obs_e - self.current_y
+            dist = math.hypot(dn, de)
+
+            if dist > DETECTION_RADIUS:
+                continue
+
+            angle = math.degrees(math.atan2(de, dn))
+            rel = (angle - travel_yaw + 180) % 360 - 180  # normalize [-180, 180]
+
+            if abs(rel) < FRONT_ANGLE:
+                return "front"
+            elif 0 < rel < SIDE_ANGLE:
+                return "left"
+            elif -SIDE_ANGLE < rel < 0:
+                return "right"
+
+        return None
+
+    # ── Obstacle avoidance ───────────────────────────────────────────────────
 
     def _apply_avoidance(self, target: list) -> list:
         """
-        Hook for reactive obstacle avoidance.
+        Adjust target based on detected obstacle direction, then smooth.
 
-        Replace obstacle_detected() with real sensor input:
-          - ROS 2 subscriber (LiDAR, depth camera)
-          - offboard_avoidance.detect_obstacle()
-
-        Example — sidestep east if obstacle ahead:
-            if obstacle_detected == "front":
-                target[1] += 1.0
+        To connect real sensors: replace _detect_obstacle() rather than
+        modifying this function.
         """
-        return target   # pass-through until sensor is connected
+        obs = self._detect_obstacle(target)
+
+        if obs == "front":
+            self.get_logger().warn("AVOID front — sidestep east")
+            target[1] += 1.0
+        elif obs == "left":
+            self.get_logger().warn("AVOID left  — sidestep east")
+            target[1] += 1.0
+        elif obs == "right":
+            self.get_logger().warn("AVOID right — sidestep west")
+            target[1] -= 1.0
+
+        # Smooth adjusted target toward current position to prevent step jumps
+        target[0] = self.current_x + AVOID_SMOOTH * (target[0] - self.current_x)
+        target[1] = self.current_y + AVOID_SMOOTH * (target[1] - self.current_y)
+
+        return target
 
     # ── Publishers ────────────────────────────────────────────────────────────
 
