@@ -1,0 +1,61 @@
+# MAVROS2 parameter file for PX4 SITL + Gazebo Harmonic
+#
+# Applied by launch/simulation.launch.py alongside inline parameters.
+# Adjust fcu_url for real hardware:
+#   Serial:  "serial:///dev/ttyTHS1:921600"
+#   USB:     "serial:///dev/ttyUSB0:57600"
+#   UDP:     "udp://:14540@"   (SITL default)
+
+mavros:
+  ros__parameters:
+
+    # ── Connection ──────────────────────────────────────────
+    fcu_url: "udp://:14540@"
+    gcs_url: "udp://@localhost:14550"   # QGroundControl on same host
+    fcu_protocol: "v2.0"                # MAVLink v2
+    target_system_id: 1
+    target_component_id: 1
+    system_id: 255
+    component_id: 240
+
+    # ── Plugin allowlist (keep minimal for SITL) ────────────
+    plugin_allowlist:
+      - "command"
+      - "global_position"
+      - "home_position"
+      - "imu"
+      - "local_position"
+      - "mission"
+      - "param"
+      - "rc_io"
+      - "safety_area"
+      - "setpoint_position"
+      - "setpoint_raw"
+      - "setpoint_velocity"
+      - "state"
+      - "sys_status"
+      - "waypoint"
+
+    # ── Setpoint stream rates (Hz) ───────────────────────────
+    conn:
+      heartbeat_rate: 1.0
+      timeout: 30.0
+      timesync_rate: 10.0
+      system_time_rate: 1.0
+
+    # ── Local frame ──────────────────────────────────────────
+    local_position:
+      frame_id: "map"
+      tf:
+        send: true
+        frame_id: "map"
+        child_frame_id: "base_link"
+        listen_tf: false
+
+    global_position:
+      frame_id: "map"
+      child_frame_id: "base_link"
+      rot_covariance: 99999.0
+      gps_uere: 1.0
+      tf:
+        send: false

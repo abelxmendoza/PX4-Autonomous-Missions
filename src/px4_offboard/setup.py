@@ -1,14 +1,19 @@
 from setuptools import find_packages, setup
+import os
+from glob import glob
 
 package_name = "px4_offboard"
 
 setup(
     name=package_name,
-    version="0.1.0",
+    version="0.2.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
+        (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
+        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share", package_name, "rviz"), glob("rviz/*.rviz")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -20,6 +25,7 @@ setup(
         "console_scripts": [
             "offboard_control = px4_offboard.offboard_control:main",
             "offboard_mission = px4_offboard.offboard_mission:main",
+            "flight_trail = px4_offboard.flight_trail:main",
         ],
     },
 )

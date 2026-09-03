@@ -5,20 +5,20 @@ Navigates around 5 static obstacles defined in worlds/obstacle_world.sdf
 using pre-planned GPS waypoints with a 6 m lateral clearance buffer.
 
 Obstacle positions (ENU, meters from spawn at 47.397742°N 8.545594°E):
-  OB1 — (east=12, north=10) — 3×3×4 m  — red building
-  OB2 — (east=28, north=10) — 3×3×6 m  — orange tower
-  OB3 — (east=10, north=24) — 4×3×4 m  — green block
-  OB4 — (east=24, north=24) — 2×2×5 m  — blue pillar
-  OB5 — (east=18, north=38) — 5×3×4 m  — purple wall
+  OB1 — (east=-6, north=10) — 3×3×4 m  — red building
+  OB2 — (east=10, north=10) — 3×3×6 m  — orange tower
+  OB3 — (east=-8, north=24) — 4×3×4 m  — green block
+  OB4 — (east=6, north=24) — 2×2×5 m  — blue pillar
+  OB5 — (east=0, north=38) — 5×3×4 m  — purple wall
 
 Avoidance strategy (pre-planned waypoints, 20 m altitude):
-  WP1 → approach north, east of spawn          (e= 5, n= 5)
-  WP2 → pass OB1 on the WEST side              (e= 5, n=15)  OB1 west edge @ e=10.5 → 5.5 m buffer ✓
-  WP3 → fly east above OB1/OB2 latitude        (e=18, n=15)  clears both tops at 20 m ✓
-  WP4 → thread between OB3 (west) & OB4 (east) (e=18, n=24)  OB3 east edge @12, OB4 west edge @23 → 6 m each ✓
-  WP5 → continue north past OB3/OB4            (e=18, n=32)
-  WP6 → dodge east of OB5 wall                 (e=26, n=36)  OB5 east edge @20.5 → 5.5 m buffer ✓
-  WP7 → north of all obstacles                 (e=26, n=46)
+  WP1 → approach northwest of spawn             (e=-13, n= 5)
+  WP2 → pass OB1 on the WEST side              (e=-13, n=15)
+  WP3 → fly east above OB1/OB2 latitude        (e=  0, n=15)
+  WP4 → thread between OB3 (west) & OB4 (east) (e=  0, n=24)
+  WP5 → continue north past OB3/OB4            (e=  0, n=32)
+  WP6 → dodge east of OB5 wall                 (e=  8, n=36)
+  WP7 → north of all obstacles                 (e=  8, n=46)
   WP8 → final destination                      (e= 0, n=50)
   RTL  → return to launch
 
@@ -86,13 +86,13 @@ def make_waypoint(lat, lon, alt=ALTITUDE_M, fly_through=True, loiter=0):
 #  Clearance annotations are in the module docstring above.
 #
 AVOIDANCE_PATH = [
-    ( 5,  5,  "WP1 — initial heading NE"),
-    ( 5, 15,  "WP2 — west of OB1 (OB1 @ e=12)"),
-    (18, 15,  "WP3 — east above OB1/OB2 row"),
-    (18, 24,  "WP4 — between OB3 (e=10) and OB4 (e=24)"),
-    (18, 32,  "WP5 — clear of OB3/OB4"),
-    (26, 36,  "WP6 — east of OB5 (OB5 @ e=18, east edge 20.5)"),
-    (26, 46,  "WP7 — north of all obstacles"),
+    (-13,  5,  "WP1 — initial heading NW"),
+    (-13, 15,  "WP2 — west of OB1 (OB1 @ e=-6)"),
+    (  0, 15,  "WP3 — above OB1/OB2 row"),
+    (  0, 24,  "WP4 — between OB3 (e=-8) and OB4 (e=6)"),
+    (  0, 32,  "WP5 — clear of OB3/OB4"),
+    (  8, 36,  "WP6 — east of OB5 (OB5 @ e=0)"),
+    (  8, 46,  "WP7 — north of all obstacles"),
     ( 0, 50,  "WP8 — final destination"),
 ]
 

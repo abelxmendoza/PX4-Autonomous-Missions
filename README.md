@@ -2,7 +2,7 @@
 
 ![PX4 Autonomous Mission Overview](PX4ProjectImage2.png)
 
-Autonomous UAV control stack using **PX4 v1.15+**, **Gazebo Harmonic**, **ROS 2 Humble**, **px4_msgs + Micro XRCE-DDS**, and **MAVSDK-Python**. Includes a custom obstacle world, pre-planned and reactive obstacle avoidance, a full state machine flight controller, and QGroundControl integration.
+Autonomous UAV control stack using **PX4 v1.15+**, **Gazebo Harmonic**, **ROS 2 Humble**, **px4_msgs + Micro XRCE-DDS**, and **MAVSDK-Python**. Includes a custom obstacle world, reactive AABB obstacle avoidance with climb/sidestep, failsafes, CSV telemetry, a one-shot full-stack launch, and QGroundControl integration.
 
 ---
 
@@ -24,23 +24,18 @@ Autonomous UAV control stack using **PX4 v1.15+**, **Gazebo Harmonic**, **ROS 2 
 ## Architecture
 
 ```
-offboard_mission.py (ROS 2)        MAVSDK scripts
-  px4_offboard package               mission.py
-  px4_msgs + XRCE-DDS                obstacle_avoidance.py
-        │                            offboard_avoidance.py
-        │ UDP 8888                          │
-        ↓                                   │ gRPC :50051
-  MicroXRCEAgent                     MAVSDK Server
-        │                                   │
-        └─────────── UDP :14540 ────────────┘
-                           │
-                      PX4 SITL
-                    + Gazebo Harmonic
-                    + obstacle_world.sdf
-                           │
-                    UDP :14550
-                           │
-                   QGroundControl
+full_stack.launch.py
+  ├── PX4 SITL + Gazebo (obstacle_world)
+  ├── MicroXRCEAgent :8888
+  └── offboard_mission (ROS 2)
+        px4_msgs + XRCE-DDS
+              │
+              └──── UDP :14540 ──── PX4 SITL
+                                       │
+                                  UDP :14550 → QGroundControl
+
+MAVSDK scripts (mission.py / offboard_avoidance.py)
+  Python → gRPC :50051 → mavsdk_server → MAVLink → PX4
 ```
 
 ---
@@ -49,28 +44,31 @@ offboard_mission.py (ROS 2)        MAVSDK scripts
 
 ### ROS 2 Package — `src/px4_offboard/`
 
-| Node | Run command | Description |
-|------|-------------|-------------|
-| `offboard_mission` | `ros2 run px4_offboard offboard_mission` | Full autonomy engine: state machine + trajectory + obstacle avoidance |
-| `offboard_control` | `ros2 run px4_offboard offboard_control` | Minimal hover node — baseline / sanity check |
+| Node / Launch | Command | Description |
+|---------------|---------|-------------|
+| `full_stack` | `ros2 launch px4_offboard full_stack.launch.py` | One-shot: PX4 + XRCE + mission |
+| `offboard_mission` | `ros2 run px4_offboard offboard_mission` | State machine + AABB avoidance + failsafes + CSV log |
+| `offboard_control` | `ros2 run px4_offboard offboard_control` | Minimal hover — baseline sanity check |
 
 ### MAVSDK Scripts
 
 | File | Description |
 |------|-------------|
 | `mission.py` | Lawnmower grid scan — 3×3 GPS waypoint mission, CSV telemetry |
-| `obstacle_avoidance.py` | Pre-planned 8-waypoint path around all 5 obstacles at 20 m |
-| `offboard_avoidance.py` | Reactive OFFBOARD loop — geometry-based detection, NED control, smoothing |
+| `obstacle_avoidance.py` | Pre-planned 8-waypoint path around all 5 obstacles |
+| `offboard_avoidance.py` | Reactive OFFBOARD loop — geometry detection, NED control |
 | `fly.py` | Minimal takeoff / 10 s hover / land test |
-| `plot_flight.py` | Post-flight telemetry visualization (4-panel PNG) |
+| `plot_flight.py` | Post-flight plot (GPS or mission NED logs) |
 
 ### Simulation & Config
 
 | File | Description |
 |------|-------------|
 | `worlds/obstacle_world.sdf` | Gazebo Harmonic world — 5 color-coded static obstacles |
-| `launch/simulation.launch.py` | ROS 2 launch: PX4 SITL + Gazebo Harmonic + MAVROS2 |
-| `config/mavros_params.yaml` | MAVROS2 FCU URL, plugin allowlist, TF config |
+| `launch/simulation.launch.py` | PX4 SITL + Gazebo (+ optional MAVROS2) |
+| `config/offboard_mission.yaml` | Mission / avoidance / failsafe parameters |
+| `config/mavros_params.yaml` | MAVROS2 FCU URL, plugin allowlist, TF |
+| `scripts/run_full_stack.sh` | Build-if-needed + launch helper |
 
 ---
 
@@ -78,30 +76,36 @@ offboard_mission.py (ROS 2)        MAVSDK scripts
 
 Five static obstacles in `worlds/obstacle_world.sdf` (GPS origin `47.397742°N, 8.545594°E`):
 
+The training area includes a 30×60 m high-contrast course surface, 5 m reference
+grid, marked launch pad, illuminated perimeter beacons, obstacle roof markers,
+and visual landmarks outside the flight corridor. Decorative scenery is
+visual-only and does not introduce collision geometry that is missing from the
+avoidance map.
+
 ```
 N (north)
 ^
 50 |                          ★ WP8 destination
 46 |              ● WP7
-38 |         [OB5 purple wall  18m east]
+38 |                  [OB5 purple wall  0m east]
 36 |                   ● WP6 (east of OB5)
 32 |              ● WP5
-24 |    [OB3 green]   ● WP4   [OB4 blue]
+24 | [OB3 green]      ● WP4      [OB4 blue]
 15 |    ● WP2    ● WP3
-10 |    [OB1 red  12m east]   [OB2 orange  28m east]
+10 |   [OB1 red -6m east]       [OB2 orange 10m east]
  5 |    ● WP1
  0 |  ★ SPAWN
    +---------------------------------------------> E (east)
-        0    10   18   28        meters
+       -10        0        10          meters
 ```
 
 | Name | Position (E, N) | Size | Height |
 |------|-----------------|------|--------|
-| OB1 | (12m, 10m) | 3×3m | 4m |
-| OB2 | (28m, 10m) | 3×3m | 6m |
-| OB3 | (10m, 24m) | 4×3m | 4m |
-| OB4 | (24m, 24m) | 2×2m | 5m |
-| OB5 | (18m, 38m) | 5×3m | 4m |
+| OB1 | (-6m, 10m) | 3×3m | 4m |
+| OB2 | (10m, 10m) | 3×3m | 6m |
+| OB3 | (-8m, 24m) | 4×3m | 4m |
+| OB4 | (6m, 24m) | 2×2m | 5m |
+| OB5 | (0m, 38m) | 5×3m | 4m |
 
 ---
 
@@ -109,45 +113,95 @@ N (north)
 
 ```
 PREFLIGHT → ARMING → TAKEOFF → HOVER → MOVE → LANDING
+                                 ↘ FAILSAFE (land) ↗
 ```
 
 | Transition | Condition |
 |-----------|-----------|
 | PREFLIGHT → ARMING | 2 s setpoint pre-stream complete |
-| ARMING → TAKEOFF | `nav_state=14` AND `arming_state=2` (vehicle_status) |
-| TAKEOFF → HOVER | `\|z_err\|` < 0.2 m |
-| HOVER → MOVE | 3 s stabilization hold |
-| MOVE → LANDING | All waypoints reached |
+| ARMING → TAKEOFF | `nav_state=14` AND `arming_state=2` |
+| TAKEOFF → HOVER | `\|z_err\|` < takeoff tolerance |
+| HOVER → MOVE | hover hold complete |
+| MOVE → LANDING | All waypoints reached (or circle orbits done) |
+| * → FAILSAFE | Position timeout, mission timeout, or stuck in avoidance |
 
-In the **MOVE** state, every setpoint passes through the full avoidance pipeline:
+In **MOVE**, every setpoint passes through:
 
 ```
 trajectory_generator()
-    → _detect_obstacle()    # geometry check vs. SDF obstacle map
-    → _apply_avoidance()    # sidestep + exponential smooth (α=0.2)
+    → _detect_obstacle()   # sensor topic override OR AABB vs SDF map
+    → _apply_avoidance()   # climb-over if possible, else sidestep + smooth
     → publish_setpoint()
 ```
 
 ### Trajectory modes
 
-Set `TRAJECTORY_MODE` at the top of `offboard_mission.py`:
+```bash
+# Reactive path through the obstacle field (default) — avoidance engages
+ros2 launch px4_offboard full_stack.launch.py trajectory_mode:=waypoints
 
-```python
-TRAJECTORY_MODE = TrajectoryMode.WAYPOINTS   # 4-point square at 3m AGL
-TRAJECTORY_MODE = TrajectoryMode.CIRCLE      # 8m radius orbit, 20s period
+# Pre-planned clearance path (matches MAVSDK obstacle_avoidance.py)
+ros2 launch px4_offboard full_stack.launch.py trajectory_mode:=course hover_alt_m:=8.0
+
+# Orbit then land after max_orbits
+ros2 launch px4_offboard full_stack.launch.py trajectory_mode:=circle
 ```
 
-### Obstacle detection
+Or edit `config/offboard_mission.yaml` / pass `--params-file`.
 
-Bearing computed relative to **direction of travel** — "front" means in the way of the current waypoint, not world north.
+### Sensor hook
 
-```python
-DETECTION_RADIUS = 4.0   # metres
-FRONT_ANGLE      = 30    # degrees — cone ahead
-SIDE_ANGLE       = 60    # degrees — flanks
+Publish obstacle sectors to override geometry (for LiDAR / depth / sim sensors):
+
+```bash
+ros2 topic pub /px4_offboard/obstacle_dir std_msgs/msg/String "{data: front}"
+# data: front | left | right | none
 ```
 
-To connect real sensors (LiDAR, depth camera, ROS 2 topic), replace `_detect_obstacle()` only — everything downstream is unchanged.
+Replace `_detect_obstacle()` geometry path when wiring real sensors — avoidance + failsafes stay unchanged.
+
+### Geo-cage & geofence
+
+| Feature | Behavior |
+|---------|----------|
+| **Geo-cage** (soft) | Clamps setpoints inside a NED box (inset by `geocage_margin_m`) |
+| **Geofence** (hard) | If position leaves the box → FAILSAFE (`land` / `hold` / `rtl`) |
+
+Defaults cover the obstacle world: N∈[-5, 55], E∈[-23, 17], alt ≤ 12 m. Both start **enabled**.
+
+```bash
+# Runtime toggles
+ros2 topic pub --once /px4_offboard/geocage_enable std_msgs/msg/Bool "{data: false}"
+ros2 topic pub --once /px4_offboard/geofence_enable std_msgs/msg/Bool "{data: true}"
+
+# Live status
+ros2 topic echo /px4_offboard/fence_status
+```
+
+Optional: set `px4_fence_cmd: true` to also send PX4 `VEHICLE_CMD_DO_FENCE_ENABLE` (requires an onboard fence uploaded in QGC/params).
+
+### Flight trail (Gazebo path visualization)
+
+`flight_trail` drops cyan spheres along the path in Gazebo (orange while avoiding). Also publishes ROS Path/Marker for RViz.
+
+```bash
+ros2 run px4_offboard flight_trail
+# clear trail
+ros2 topic pub --once /px4_offboard/trail_clear std_msgs/msg/Bool "{data: true}"
+# optional RViz
+rviz2 -d $(ros2 pkg prefix px4_offboard)/share/px4_offboard/rviz/flight_trail.rviz
+```
+
+Included automatically in `full_stack.launch.py`.
+
+### Failsafes
+
+| Guard | Default | Action |
+|-------|---------|--------|
+| Position timeout | 1.5 s | FAILSAFE → land |
+| Mission timeout | 180 s | FAILSAFE → land |
+| Stuck in avoidance | 12 s without WP progress | FAILSAFE → land |
+| Geofence breach | when enabled | FAILSAFE → `geofence_action` |
 
 ---
 
@@ -160,7 +214,7 @@ git clone https://github.com/PX4/PX4-Autopilot.git --recursive ~/PX4-Autopilot
 cd ~/PX4-Autopilot
 bash Tools/setup/ubuntu.sh
 
-# Copy custom obstacle world
+# Optional: copy world into PX4 tree (launch also sets GZ_SIM_RESOURCE_PATH)
 cp worlds/obstacle_world.sdf ~/PX4-Autopilot/Tools/simulation/gz/worlds/
 ```
 
@@ -184,7 +238,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-### 4 — MAVROS2 (optional — for GCS relay / MAVROS topics)
+### 4 — MAVROS2 (optional)
 
 ```bash
 sudo apt install ros-humble-mavros ros-humble-mavros-extras
@@ -196,17 +250,34 @@ sudo bash install_geographiclib_datasets.sh
 
 ```bash
 pip install -r requirements.txt
+# Install mavsdk_server from: https://github.com/mavlink/MAVSDK/releases
 ```
 
 ### 6 — QGroundControl
 
-Download from [qgroundcontrol.com](https://qgroundcontrol.com/). Auto-connects via UDP 14550 — no config needed.
+Download from [qgroundcontrol.com](https://qgroundcontrol.com/). Auto-connects via UDP 14550.
 
 ---
 
 ## Running
 
-### Full autonomy — state machine + obstacle avoidance (ROS 2)
+### One-shot full autonomy (recommended)
+
+```bash
+./scripts/run_full_stack.sh              # waypoints (reactive)
+./scripts/run_full_stack.sh course       # pre-planned clearance
+./scripts/run_full_stack.sh waypoints headless
+```
+
+Or:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch px4_offboard full_stack.launch.py
+```
+
+### Manual three-terminal flow
 
 ```bash
 # Terminal 1 — PX4 SITL + Gazebo Harmonic
@@ -220,27 +291,27 @@ MicroXRCEAgent udp4 -p 8888
 # Terminal 3 — autonomy node
 source /opt/ros/humble/setup.bash
 source ~/Desktop/px4-autonomous-mission/install/setup.bash
-ros2 run px4_offboard offboard_mission
+ros2 run px4_offboard offboard_mission --ros-args \
+  --params-file ~/Desktop/px4-autonomous-mission/config/offboard_mission.yaml
 ```
 
 ### MAVSDK missions
 
 ```bash
-# Start MAVSDK server first
-mavsdk_server udpout://127.0.0.1:14580
+# Start MAVSDK server (install from MAVSDK releases — not bundled)
+mavsdk_server udpin://0.0.0.0:14540
 
-# Then run any script
-python3 mission.py              # lawnmower scan
-python3 obstacle_avoidance.py   # pre-planned avoidance
-python3 offboard_avoidance.py   # reactive OFFBOARD loop
-python3 fly.py                  # basic test
+python3 mission.py
+python3 obstacle_avoidance.py
+python3 offboard_avoidance.py
+python3 fly.py
 ```
 
-### Simulation via ROS 2 launch (PX4 + Gazebo + MAVROS2)
+### Simulation only (PX4 + Gazebo + MAVROS2)
 
 ```bash
-source /opt/ros/humble/setup.bash
 ros2 launch launch/simulation.launch.py
+ros2 launch launch/simulation.launch.py headless:=true
 ```
 
 ---
@@ -248,19 +319,9 @@ ros2 launch launch/simulation.launch.py
 ## Monitor
 
 ```bash
-# PX4 shell — confirm OFFBOARD + ARMED
 listener vehicle_status
-listener vehicle_local_position
-
-# ROS 2 — live position
 ros2 topic echo /fmu/out/vehicle_local_position
-
-# ROS 2 — odometry
-ros2 topic echo /fmu/out/vehicle_odometry
-
-# MAVROS2 topics (if running)
-ros2 topic echo /mavros/state
-ros2 topic echo /mavros/local_position/pose
+ros2 topic echo /px4_offboard/obstacle_dir
 ```
 
 ---
@@ -271,30 +332,31 @@ ros2 topic echo /mavros/local_position/pose
 |------|----------|---------|
 | 8888 | UDP | Micro XRCE-DDS agent |
 | 14540 | UDP | MAVLink offboard (MAVSDK / MAVROS) |
-| 14550 | UDP | GCS — QGroundControl auto-connects |
+| 14550 | UDP | GCS — QGroundControl |
 | 50051 | TCP | MAVSDK gRPC server |
 
 ---
 
 ## Telemetry & Visualization
 
-MAVSDK scripts log timestamped CSV on every run:
-```
-time,latitude,longitude,alt_abs_m,alt_rel_m
-15:14:01,47.3977508,8.5456073,488.13,15.01
+MAVSDK scripts and `offboard_mission` write timestamped CSV logs (`flight_log_*.csv` / `flight_log_mission_*.csv`).
+
+```bash
+python3 plot_flight.py   # → flight_plot.png (auto-detects GPS vs NED schema)
 ```
 
-Plot the last flight:
-```bash
-python3 plot_flight.py   # → flight_plot.png
-```
+Mission logs include state, NED position, setpoint, obstacle flag, and waypoint index.
 
 ---
 
 ## Real Hardware
 
-Swap `fcu_url` in `config/mavros_params.yaml` and `offboard_mission.py`:
+1. Point PX4 XRCE agent at the vehicle Ethernet/Serial bridge (or use MAVROS `fcu_url`).
+2. Publish real sectors on `/px4_offboard/obstacle_dir` (or replace `_detect_obstacle()`).
+3. Tune `config/offboard_mission.yaml` altitudes and timeouts for the airframe.
+
 ```yaml
+# config/mavros_params.yaml (if using MAVROS)
 fcu_url: "serial:///dev/ttyTHS1:921600"   # UART (Jetson / RPi)
 fcu_url: "serial:///dev/ttyUSB0:57600"    # USB serial
 ```
@@ -303,10 +365,10 @@ fcu_url: "serial:///dev/ttyUSB0:57600"    # USB serial
 
 ## Notes
 
-- Run `rm -f ~/PX4-Autopilot/build/px4_sitl_default/dataman` before each SITL restart
+- Run `rm -f ~/PX4-Autopilot/build/px4_sitl_default/dataman` before each SITL restart (full_stack launch does this)
 - Simulated battery drains — full sim restart required between flights
-- World SDF contains no plugin declarations — all sensor plugins come from PX4's `server.config` via `GZ_SIM_SERVER_CONFIG_PATH`
-- Sensor names in `x500_base/model.sdf` (`air_pressure_sensor`, `magnetometer_sensor`) match `GZBridge.cpp` hardcoded topic paths — do not rename
+- World SDF contains no plugin declarations — sensor plugins come from PX4's `server.config`
+- Do not rename sensor names in `x500_base/model.sdf` — they match `GZBridge.cpp` topic paths
 
 ---
 

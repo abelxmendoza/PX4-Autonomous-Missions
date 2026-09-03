@@ -1,8 +1,11 @@
 flight_log_*.csv
 flight_log_offboard_*.csv
+flight_log_mission_*.csv
 __pycache__/
 *.pyc
 *.egg-info/
 build/
 install/
 log/
+mavsdk_server
+.vscode/

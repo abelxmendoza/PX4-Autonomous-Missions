@@ -1,0 +1,47 @@
+/**:
+  ros__parameters:
+    # waypoints | course | circle
+    trajectory_mode: "waypoints"
+    hover_alt_m: 5.0
+    preflight_cycles: 20
+    hover_hold_s: 3.0
+    takeoff_z_tol_m: 0.25
+    wp_accept_m: 0.6
+
+    # AABB avoidance
+    detection_margin_m: 2.5
+    front_angle_deg: 35.0
+    side_angle_deg: 70.0
+    avoid_smooth: 0.25
+    sidestep_m: 2.0
+    climb_clearance_m: 1.5
+    max_alt_m: 12.0
+
+    # Circle mode
+    circle_radius_m: 8.0
+    circle_period_s: 20.0
+    max_orbits: 2.0
+
+    # Failsafes
+    position_timeout_s: 1.5
+    mission_timeout_s: 180.0
+    avoid_stuck_s: 12.0
+    sensor_timeout_s: 0.5
+
+    # Geo-cage (soft: clamps setpoints) / geofence (hard: breach → action)
+    # Toggle at runtime:
+    #   ros2 topic pub --once /px4_offboard/geocage_enable std_msgs/msg/Bool "{data: true}"
+    #   ros2 topic pub --once /px4_offboard/geofence_enable std_msgs/msg/Bool "{data: false}"
+    geocage_enable: true
+    geofence_enable: true
+    fence_north_min_m: -5.0
+    fence_north_max_m: 55.0
+    fence_east_min_m: -23.0
+    fence_east_max_m: 17.0
+    fence_alt_max_m: 12.0
+    geocage_margin_m: 1.0
+    geofence_action: "land"   # land | hold | rtl
+    px4_fence_cmd: false      # also send VEHICLE_CMD_DO_FENCE_ENABLE to PX4
+
+    # CSV flight log directory (relative to cwd unless absolute)
+    log_dir: "."

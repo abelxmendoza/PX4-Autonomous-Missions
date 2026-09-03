@@ -48,45 +48,53 @@ SIDE_ANGLE       = 60    # degrees — flanks classified as "left"/"right"
 VEL_EPS = 0.1            # m — minimum displacement before updating yaw
 
 
-# ── Obstacle map (matches worlds/obstacle_world.sdf) ─────────────────────────
-# (east_m, north_m) — ENU from spawn origin
-OBSTACLES = [
-    (12, 10),   # OB1 — red building
-    (28, 10),   # OB2 — orange tower
-    (10, 24),   # OB3 — green block
-    (24, 24),   # OB4 — blue pillar
-    (18, 38),   # OB5 — purple wall
+# ── Obstacle AABBs (matches worlds/obstacle_world.sdf) ───────────────────────
+# (east_m, north_m, size_e, size_n, height_m)
+OBSTACLE_BOXES = [
+    (-6.0, 10.0, 3.0, 3.0, 4.0),
+    (10.0, 10.0, 3.0, 3.0, 6.0),
+    (-8.0, 24.0, 4.0, 3.0, 4.0),
+    (6.0, 24.0, 2.0, 2.0, 5.0),
+    (0.0, 38.0, 5.0, 3.0, 4.0),
 ]
 
 
 # ── Sim-aware sensor ──────────────────────────────────────────────────────────
-def detect_obstacle(north: float, east: float, yaw_deg: float) -> str | None:
+def detect_obstacle(north: float, east: float, yaw_deg: float, alt_agl: float = TAKEOFF_ALT) -> str | None:
     """
-    Geometry-based obstacle detection against the known SDF obstacle map.
-    Replace OBSTACLES lookup with real LiDAR sectors or a ROS 2 subscriber
-    when running on hardware or a sensor-equipped sim.
+    AABB obstacle detection against the SDF map.
+    Replace with real LiDAR sectors / ROS 2 subscriber for hardware.
 
     Returns: "front", "left", "right", or None
     """
-    for obs_e, obs_n in OBSTACLES:
-        dn = obs_n - north
-        de = obs_e - east
-        distance = math.hypot(dn, de)
-
-        if distance > DETECTION_RADIUS:
+    best = None
+    for obs_e, obs_n, size_e, size_n, height in OBSTACLE_BOXES:
+        if alt_agl > height + 0.5:
+            continue
+        half_e, half_n = size_e / 2.0, size_n / 2.0
+        nearest_n = min(max(north, obs_n - half_n), obs_n + half_n)
+        nearest_e = min(max(east, obs_e - half_e), obs_e + half_e)
+        dist = math.hypot(nearest_n - north, nearest_e - east)
+        trigger = max(half_n, half_e) + (DETECTION_RADIUS - 1.5)
+        if dist > trigger:
             continue
 
-        angle = math.degrees(math.atan2(de, dn))
-        rel_angle = (angle - yaw_deg + 180) % 360 - 180  # normalize to [-180, 180]
+        angle = math.degrees(math.atan2(obs_e - east, obs_n - north))
+        rel_angle = (angle - yaw_deg + 180) % 360 - 180
 
         if abs(rel_angle) < FRONT_ANGLE:
-            return "front"
+            label = "front"
         elif 0 < rel_angle < SIDE_ANGLE:
-            return "left"
+            label = "left"
         elif -SIDE_ANGLE < rel_angle < 0:
-            return "right"
+            label = "right"
+        else:
+            continue
 
-    return None
+        if best is None or dist < best[0]:
+            best = (dist, label)
+
+    return best[1] if best else None
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -149,7 +157,7 @@ async def main():
     print("Control loop running. Ctrl-C to stop.")
     try:
         while True:
-            obstacle = detect_obstacle(north, east, yaw)
+            obstacle = detect_obstacle(north, east, yaw, TAKEOFF_ALT)
 
             # Decide
             if obstacle == "front":
