@@ -19,90 +19,100 @@
 <meta name="twitter:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <style>
   :root{
-    --bg:#0a0e14; --panel:#11161f; --panel-b:rgba(255,255,255,0.08);
-    --text:#e6edf3; --muted:#7d8a9c; --accent:#4da3ff;
-    --ok:#3ddc84; --warn:#ffb020; --danger:#ff5555;
+    --ink:#050a0b; --ink-2:#091112; --panel:rgba(8,20,21,.86);
+    --panel-solid:#0b1718; --panel-b:rgba(134,255,222,.15); --line:rgba(134,255,222,.09);
+    --text:#eef7f3; --muted:#829995; --mint:#69f7cd; --mint-2:#20c99a;
+    --amber:#ffb547; --acid:#d7ff62; --danger:#ff625f;
+    --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
-    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;}
+  html,body{margin:0;height:100%;background:var(--ink);color:var(--text);font-family:var(--display);overflow:hidden;}
+  body::before{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.18;
+    background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(157,255,226,.025) 4px);}
+  body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(circle at 42% 42%,transparent 0,transparent 35%,rgba(1,7,8,.62) 100%);}
   #scene{position:fixed;inset:0;}
   #scene canvas{display:block;}
 
-  .overlay{position:fixed;pointer-events:none;}
+  .overlay{position:fixed;inset:0;z-index:3;pointer-events:none;}
   .overlay > *{pointer-events:auto;}
+  .eyebrow{font:700 9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);}
 
-  header{top:0;left:0;right:0;padding:14px 18px;display:flex;align-items:baseline;
-    justify-content:space-between;gap:12px;background:linear-gradient(180deg,rgba(10,14,20,.85),rgba(10,14,20,0));}
-  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.02em;}
-  header h1 .dim{color:var(--muted);font-weight:400;}
-  header a{color:var(--accent);text-decoration:none;font-size:12px;}
-  header a:hover{text-decoration:underline;}
+  header{position:fixed;top:0;left:0;right:0;padding:18px 22px;display:flex;align-items:center;
+    justify-content:space-between;gap:18px;background:linear-gradient(180deg,rgba(5,10,11,.94),rgba(5,10,11,.55) 62%,transparent);}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{position:relative;width:34px;height:34px;border:1px solid var(--mint);display:grid;place-items:center;
+    color:var(--ink);background:var(--mint);font:900 12px var(--mono);box-shadow:0 0 26px rgba(105,247,205,.17);}
+  .brand-mark::after{content:"";position:absolute;inset:4px;border:1px solid rgba(5,10,11,.34);}
+  header h1{font-size:15px;line-height:1;margin:4px 0 0;font-weight:720;letter-spacing:-.02em;}
+  header h1 .dim{color:var(--muted);font-weight:450;}
+  .header-tools{display:flex;align-items:center;gap:10px;}
+  .live-pill{display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--panel-b);background:rgba(6,16,17,.72);
+    font:700 9px var(--mono);letter-spacing:.12em;color:var(--muted);text-transform:uppercase;}
+  .live-pill i{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);animation:pulse 1.8s ease-out infinite;}
+  header a{color:var(--text);text-decoration:none;font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    border-bottom:1px solid var(--amber);padding:8px 0 5px;transition:.2s ease;}
+  header a:hover{color:var(--amber);}
 
-  .hud{top:56px;right:16px;width:230px;max-height:calc(100vh - 150px);overflow-y:auto;
-    display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;}
-  .card{background:var(--panel);border:1px solid var(--panel-b);border-radius:10px;
-    padding:10px 12px;font-size:12px;backdrop-filter:blur(6px);}
-  .card h2{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
-    margin:0 0 6px 0;font-weight:600;}
-  .row{display:flex;justify-content:space-between;padding:2px 0;}
-  .row .k{color:var(--muted);}
-  .row .v{font-weight:600;}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;
-    letter-spacing:.03em;}
-  .badge.state-PREFLIGHT,.badge.state-ARMING{background:#2a3a52;color:#8fc4ff;}
-  .badge.state-TAKEOFF,.badge.state-HOVER{background:#3a3520;color:var(--warn);}
-  .badge.state-MOVE{background:#173a2a;color:var(--ok);}
-  .badge.state-LANDING{background:#3a1f1f;color:#ff9a7a;}
-  .badge.state-FAILSAFE{background:#3a1414;color:var(--danger);}
-  .badge.avoid-none{background:#182230;color:var(--muted);}
-  .badge.avoid-front{background:#3a2a12;color:var(--warn);}
-  .badge.avoid-left,.badge.avoid-right{background:#332018;color:#ff9a5a;}
-  .badge.avoid-bypass{background:#173a1c;color:#7CFC00;}
-  .badge.avoid-obstacle{background:#3a1414;color:var(--danger);}
-  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;}
-  .dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok);}
-  .dot.off{background:#444;}
+  .hud{position:fixed;top:76px;right:18px;width:260px;max-height:calc(100vh - 170px);overflow-y:auto;
+    display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--mint-2) transparent;}
+  .card{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--panel-b);border-radius:2px;
+    padding:13px 14px;font:11px/1.45 var(--mono);backdrop-filter:blur(14px);box-shadow:0 14px 40px rgba(0,0,0,.18);
+    animation:card-in .55s both cubic-bezier(.2,.8,.2,1);}
+  .card:nth-child(2){animation-delay:.05s}.card:nth-child(3){animation-delay:.1s}.card:nth-child(4){animation-delay:.15s}
+  .card:nth-child(5){animation-delay:.2s}.card:nth-child(6){animation-delay:.25s}
+  .card::after{content:"";position:absolute;right:-22px;top:-22px;width:54px;height:54px;border:1px solid var(--line);transform:rotate(45deg);}
+  .card:first-child{border-top:2px solid var(--amber);background:linear-gradient(135deg,rgba(255,181,71,.09),transparent 55%),var(--panel);}
+  .card h2{font:750 9px/1 var(--mono);text-transform:uppercase;letter-spacing:.16em;color:var(--mint);
+    margin:0 0 9px;}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0;}
+  .row+.row{border-top:1px solid rgba(255,255,255,.025);}
+  .row .k{color:var(--muted);}.row .v{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+  .badge{display:inline-block;padding:3px 8px;border:1px solid currentColor;border-radius:1px;font:800 9px var(--mono);
+    letter-spacing:.06em;text-transform:uppercase;}
+  .badge.state-PREFLIGHT,.badge.state-ARMING{color:#78cfff;background:rgba(120,207,255,.08);}
+  .badge.state-TAKEOFF,.badge.state-HOVER{color:var(--amber);background:rgba(255,181,71,.08);}
+  .badge.state-MOVE{color:var(--mint);background:rgba(105,247,205,.08);box-shadow:0 0 18px rgba(105,247,205,.1);}
+  .badge.state-LANDING{color:#ff986f;background:rgba(255,152,111,.08);}
+  .badge.state-FAILSAFE{color:var(--danger);background:rgba(255,98,95,.09);}
+  .badge.avoid-none{color:var(--muted);background:rgba(130,153,149,.07);}
+  .badge.avoid-front{color:var(--amber);background:rgba(255,181,71,.09);}
+  .badge.avoid-left,.badge.avoid-right{color:#ff9662;background:rgba(255,150,98,.09);}
+  .badge.avoid-bypass{color:var(--acid);background:rgba(215,255,98,.08);}
+  .badge.avoid-obstacle{color:var(--danger);background:rgba(255,98,95,.1);}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;}.dot.on{background:var(--mint);box-shadow:0 0 8px var(--mint);}.dot.off{background:#38504b;}
+  .legend .item{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--muted);}.legend .sw{width:12px;height:3px;flex:none;}
+  .toggle-row{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;user-select:none;}
+  .toggle-row input{accent-color:var(--mint);width:13px;height:13px;flex:none;cursor:pointer;}.toggle-row .sw{width:11px;height:4px;flex:none;}
+  .toggle-row span.label{flex:1;color:var(--text);}.toggle-row span.hint{color:var(--muted);font-size:9px;}
 
-  .legend .item{display:flex;align-items:center;gap:6px;padding:2px 0;color:var(--muted);}
-  .legend .sw{width:10px;height:10px;border-radius:2px;flex:none;}
+  .transport{position:fixed;left:18px;right:18px;bottom:16px;max-width:940px;margin:0 auto;}
+  .scrubwrap{position:relative;background:rgba(8,20,21,.9);border:1px solid var(--panel-b);border-radius:2px;
+    padding:11px 13px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(16px);box-shadow:0 18px 60px rgba(0,0,0,.4);}
+  .scrubwrap::before{content:"PLAYBACK / FLIGHT LOG";position:absolute;bottom:calc(100% + 7px);left:0;color:var(--muted);font:700 8px var(--mono);letter-spacing:.16em;}
+  button,select{background:#0d1c1d;border:1px solid var(--panel-b);color:var(--text);border-radius:1px;padding:8px 11px;
+    font:700 10px var(--mono);letter-spacing:.02em;cursor:pointer;transition:border-color .18s,background .18s,transform .18s;}
+  button:hover,select:hover{background:#122728;border-color:rgba(105,247,205,.5);transform:translateY(-1px);}
+  button.primary{background:var(--mint);color:var(--ink);border-color:var(--mint);box-shadow:0 0 22px rgba(105,247,205,.14);}
+  button.primary:hover{background:#91ffdf;}
+  input[type=range]{flex:1;min-width:80px;accent-color:var(--mint);}
+  .time{font:10px var(--mono);color:var(--muted);min-width:116px;text-align:right;font-variant-numeric:tabular-nums;}
+  .hint{position:fixed;bottom:83px;left:50%;transform:translateX(-50%);color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase;opacity:.72;}
+  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;}
 
-  .toggle-row{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;user-select:none;}
-  .toggle-row input{accent-color:var(--accent);width:13px;height:13px;flex:none;cursor:pointer;}
-  .toggle-row .sw{width:10px;height:10px;border-radius:2px;flex:none;}
-  .toggle-row span.label{flex:1;}
-  .toggle-row span.hint{color:var(--muted);font-size:10.5px;}
-
-  .transport{left:16px;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;
-    max-width:900px;margin:0 auto;}
-  .scrubwrap{background:var(--panel);border:1px solid var(--panel-b);border-radius:10px;
-    padding:10px 14px;display:flex;align-items:center;gap:12px;backdrop-filter:blur(6px);}
-  button{background:#1a2130;border:1px solid var(--panel-b);color:var(--text);
-    border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;}
-  button:hover{background:#232c40;}
-  button.primary{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:700;}
-  button.primary:hover{filter:brightness(1.08);}
-  input[type=range]{flex:1;accent-color:var(--accent);}
-  select{background:#1a2130;color:var(--text);border:1px solid var(--panel-b);border-radius:8px;
-    padding:6px 8px;font:inherit;font-size:12px;}
-  .time{font-size:12px;color:var(--muted);min-width:118px;text-align:right;}
-
-  .hint{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);
-    color:var(--muted);font-size:11px;opacity:.7;}
-
-  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    color:var(--muted);font-size:13px;}
-
-  .intro-backdrop{position:fixed;inset:0;background:rgba(6,9,14,0.72);
-    display:flex;align-items:center;justify-content:center;z-index:50;
-    backdrop-filter:blur(3px);}
-  .intro-backdrop[hidden]{display:none;}
-  .intro-card{width:min(420px, 90vw);background:var(--panel);border:1px solid var(--panel-b);
-    border-radius:14px;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);}
-  .intro-card h3{margin:0 0 10px 0;font-size:15px;color:var(--text);}
-  .intro-card p{margin:0 0 8px 0;font-size:12.5px;line-height:1.55;color:var(--muted);}
-  .intro-card p b{color:var(--text);font-weight:600;}
-  .intro-card .actions{margin-top:16px;display:flex;justify-content:flex-end;}
+  .intro-backdrop{position:fixed;inset:0;background:rgba(2,7,8,.78);display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(10px);}
+  .intro-backdrop[hidden]{display:none;}.intro-card{position:relative;width:min(520px,90vw);background:linear-gradient(145deg,rgba(17,39,39,.96),rgba(6,16,17,.98));
+    border:1px solid rgba(105,247,205,.3);border-top:3px solid var(--mint);border-radius:2px;padding:30px 32px;box-shadow:0 35px 100px rgba(0,0,0,.7);animation:modal-in .45s both;}
+  .intro-card::before{content:"MISSION REPLAY / 01";display:block;margin-bottom:18px;color:var(--amber);font:800 9px var(--mono);letter-spacing:.2em;}
+  .intro-card h3{margin:0 0 14px;font-size:28px;line-height:1.05;letter-spacing:-.045em;}.intro-card h3 span{color:var(--mint);}
+  .intro-card p{margin:0 0 9px;font:12px/1.65 var(--mono);color:var(--muted);}.intro-card p b{color:var(--text);font-weight:700;}
+  .intro-card .actions{margin-top:22px;display:flex;justify-content:flex-end;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(105,247,205,.65)}70%{box-shadow:0 0 0 7px rgba(105,247,205,0)}100%{box-shadow:0 0 0 0 rgba(105,247,205,0)}}
+  @keyframes card-in{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+  @keyframes modal-in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+  @media(max-width:760px){header{padding:12px}.live-pill,header a,.hint{display:none}.header-tools{max-width:50%}.header-tools select{width:100%}.hud{top:66px;right:10px;width:215px;max-height:calc(100vh - 150px)}.card{padding:10px}.transport{left:8px;right:8px;bottom:8px}.scrubwrap{gap:6px;overflow-x:auto}.scrubwrap button{white-space:nowrap}.time{display:none}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -112,7 +122,7 @@
 
 <div id="introBackdrop" class="intro-backdrop" hidden>
   <div class="intro-card">
-    <h3>What you're looking at</h3>
+    <h3>Autonomy, <span>made visible.</span></h3>
     <p>This is a <b>real recorded flight</b> from PX4 SITL + Gazebo Harmonic —
       not a live physics simulation. The drone, obstacle course, and avoidance
       decisions are all pulled from an actual telemetry log.</p>
@@ -127,8 +137,12 @@
 
 <div class="overlay">
   <header>
-    <h1>PX4 Autonomous Mission <span class="dim">— Flight Replay</span></h1>
-    <div style="display:flex;align-items:center;gap:14px;">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">PX</div>
+      <div><div class="eyebrow">Autonomy Lab / 001</div><h1>PX4 Mission <span class="dim">Flight Replay</span></h1></div>
+    </div>
+    <div class="header-tools">
+      <div class="live-pill"><i></i> recorded telemetry</div>
       <select id="missionSelect"></select>
       <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">
         source ↗
@@ -138,7 +152,8 @@
 
   <div class="hud">
     <div class="card">
-      <h2 id="missionLabel">Mission</h2>
+      <h2>Active recording</h2>
+      <div id="missionLabel" style="font:750 12px/1.35 var(--display);margin-bottom:8px;letter-spacing:-.01em">Mission</div>
       <div class="row"><span class="k">Avoidance events</span><span id="hudEvents" class="v">–</span></div>
       <div class="row"><span class="k">Duration</span><span id="hudDuration" class="v">–</span></div>
     </div>
@@ -175,7 +190,7 @@
       </label>
       <label class="toggle-row">
         <input type="checkbox" id="toggleCage"/>
-        <span class="sw" style="background:transparent;border:1.5px solid #4da3ff;"></span>
+        <span class="sw" style="background:transparent;border:1.5px solid #69f7cd;"></span>
         <span class="label">Geo-cage</span>
         <span class="hint">soft</span>
       </label>
@@ -233,7 +248,7 @@ const OBSTACLES = [
 ];
 
 const AVOID_COLOR = {
-  '':        0x4da3ff,
+  '':        0x69f7cd,
   'front':   0xffa500,
   'left':    0xffd400,
   'right':   0xff5da2,
@@ -251,8 +266,8 @@ function toWorld(n, e, d){ return new THREE.Vector3(e, -d, -n); }
 // ---------------------------------------------------------------------------
 const container = document.getElementById('scene');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0e14);
-scene.fog = new THREE.Fog(0x0a0e14, 60, 220);
+scene.background = new THREE.Color(0x050a0b);
+scene.fog = new THREE.Fog(0x050a0b, 55, 190);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
@@ -263,6 +278,9 @@ orthoCamera.up.set(0, 0, -1);
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 container.appendChild(renderer.domElement);
 
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -283,31 +301,47 @@ let topDown = false;
 function activeCamera()  { return topDown ? orthoCamera  : camera;  }
 function activeControls(){ return topDown ? orthoControls : controls; }
 
-scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x0a0e14, 0.9));
-const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+scene.add(new THREE.HemisphereLight(0xcaffef, 0x050a0b, 0.72));
+const sun = new THREE.DirectionalLight(0xffe1ae, 1.05);
 sun.position.set(-15, 40, 20);
 scene.add(sun);
 
 // Ground
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(120, 120),
-  new THREE.MeshStandardMaterial({ color:0x152018, roughness:1 })
+  new THREE.MeshStandardMaterial({ color:0x091412, roughness:0.96, metalness:0.04 })
 );
 ground.rotation.x = -Math.PI/2;
 ground.position.set(0, 0, -20);
 scene.add(ground);
 
-const grid = new THREE.GridHelper(120, 24, 0x2a3546, 0x1a2230);
+const grid = new THREE.GridHelper(120, 24, 0x2dd9ae, 0x18332e);
 grid.position.set(0, 0.01, -20);
 scene.add(grid);
 
 // Launch pad
 const pad = new THREE.Mesh(
   new THREE.CylinderGeometry(2.5, 2.5, 0.05, 32),
-  new THREE.MeshStandardMaterial({ color:0x11161f })
+  new THREE.MeshStandardMaterial({ color:0x10201f, metalness:0.6, roughness:0.38 })
 );
 pad.position.set(0, 0.03, 0);
 scene.add(pad);
+
+const padRing = new THREE.Mesh(
+  new THREE.RingGeometry(2.7, 2.82, 64),
+  new THREE.MeshBasicMaterial({ color:0x69f7cd, transparent:true, opacity:0.82, side:THREE.DoubleSide })
+);
+padRing.rotation.x = -Math.PI / 2;
+padRing.position.set(0, 0.065, 0);
+scene.add(padRing);
+
+const courseLine = new THREE.Mesh(
+  new THREE.PlaneGeometry(12, 50),
+  new THREE.MeshBasicMaterial({ color:0x102420, transparent:true, opacity:0.38, side:THREE.DoubleSide })
+);
+courseLine.rotation.x = -Math.PI / 2;
+courseLine.position.set(0, 0.025, -25);
+scene.add(courseLine);
 
 // Obstacles
 for (const ob of OBSTACLES) {
@@ -318,7 +352,7 @@ for (const ob of OBSTACLES) {
   scene.add(mesh);
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(geo),
-    new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:0.35 })
+    new THREE.LineBasicMaterial({ color:0xffd38a, transparent:true, opacity:0.62 })
   );
   edges.position.copy(mesh.position);
   scene.add(edges);
@@ -352,7 +386,7 @@ function makeFenceBox(b, color) {
   return edges;
 }
 const fenceBox = makeFenceBox(FENCE, 0xff5555);
-const geocageBox = makeFenceBox(GEOCAGE, 0x4da3ff);
+const geocageBox = makeFenceBox(GEOCAGE, 0x69f7cd);
 
 document.getElementById('toggleFence').addEventListener('change', e => {
   fenceBox.visible = e.target.checked;
@@ -400,7 +434,7 @@ function wedgeGeometry(r0, r1, startDeg, endDeg, segments) {
   return geo;
 }
 
-const LIDAR_INACTIVE = 0x2a3a52;
+const LIDAR_INACTIVE = 0x25443f;
 const lidarGroup = new THREE.Group();
 lidarGroup.visible = false;
 lidarGroup.position.y = 0.05; // just above drone origin — avoids z-fighting with ground
@@ -437,8 +471,6 @@ const deadRing = new THREE.Mesh(
 deadRing.rotation.x = -Math.PI / 2;
 lidarGroup.add(deadRing);
 
-drone.add(lidarGroup);
-
 document.getElementById('toggleLidar').addEventListener('change', e => {
   lidarGroup.visible = e.target.checked;
 });
@@ -447,9 +479,9 @@ function makeLabelSprite(text, bg) {
   const c = document.createElement('canvas');
   c.width = 128; c.height = 64;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = bg || 'rgba(20,26,38,0.85)';
+  ctx.fillStyle = bg || 'rgba(7,22,22,0.92)';
   roundRect(ctx, 2, 2, 124, 60, 12); ctx.fill();
-  ctx.fillStyle = '#e6edf3';
+  ctx.fillStyle = '#69f7cd';
   ctx.font = 'bold 30px monospace';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(text, 64, 34);
@@ -470,11 +502,11 @@ const drone = new THREE.Group();
 {
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(0.28, 0.1, 0.28),
-    new THREE.MeshStandardMaterial({ color:0x1a2130 })
+    new THREE.MeshStandardMaterial({ color:0x10201f, metalness:0.78, roughness:0.24 })
   );
   drone.add(body);
-  const armMat = new THREE.MeshStandardMaterial({ color:0x2a3446 });
-  const rotorMat = new THREE.MeshStandardMaterial({ color:0x4da3ff, emissive:0x1a4a80 });
+  const armMat = new THREE.MeshStandardMaterial({ color:0x31514c, metalness:0.5 });
+  const rotorMat = new THREE.MeshStandardMaterial({ color:0x69f7cd, emissive:0x14644f });
   for (const [dx,dz] of [[0.32,0.32],[-0.32,0.32],[0.32,-0.32],[-0.32,-0.32]]) {
     const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.45,6), armMat);
     arm.rotation.z = Math.PI/2;
@@ -488,9 +520,10 @@ const drone = new THREE.Group();
     drone.add(rotor);
   }
 }
+drone.add(lidarGroup);
 scene.add(drone);
 
-const droneLight = new THREE.PointLight(0x4da3ff, 1.2, 4);
+const droneLight = new THREE.PointLight(0x69f7cd, 1.5, 5);
 drone.add(droneLight);
 
 // ---------------------------------------------------------------------------
