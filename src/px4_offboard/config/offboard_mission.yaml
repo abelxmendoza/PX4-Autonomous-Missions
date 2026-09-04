@@ -46,3 +46,21 @@
 
     # CSV flight log directory (relative to cwd unless absolute)
     log_dir: "."
+
+    # Mission executive / resource manager
+    # Modes: NOMINAL → DEGRADED (skip science WPs) → SAFE (hold) → ABORT (land)
+    # Inspect: ros2 topic echo /px4_offboard/executive_status
+    executive_enable: true
+    science_waypoints: [2, 4, 6]   # optional waypoints skipped when DEGRADED
+    initial_battery: 1.0
+    initial_propellant_s: 180.0
+    battery_degraded: 0.45
+    battery_safe: 0.25
+    battery_abort: 0.12
+    link_degraded: 0.55
+    link_safe: 0.30
+    link_abort: 0.10
+    link_loss_abort_s: 8.0
+    propellant_degraded_s: 90.0
+    propellant_safe_s: 45.0
+    propellant_abort_s: 20.0

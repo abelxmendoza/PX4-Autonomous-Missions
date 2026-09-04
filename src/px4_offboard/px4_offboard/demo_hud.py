@@ -15,6 +15,7 @@ class DemoHud(Node):
         super().__init__("demo_hud")
         self._last_state = None
         self._last_obstacle = "none"
+        self._last_exec_mode = None
         self._last_summary = 0.0
         self.create_subscription(
             String, "/px4_offboard/mission_status", self._status_callback, 10
@@ -30,6 +31,7 @@ class DemoHud(Node):
 
         state = status.get("state", "UNKNOWN")
         obstacle = status.get("obstacle", "none")
+        exec_mode = status.get("executive_mode", "NOMINAL")
         now = time.monotonic()
 
         if state != self._last_state:
@@ -37,6 +39,16 @@ class DemoHud(Node):
                 f"MISSION PHASE | {self._last_state or 'START'} -> {state}"
             )
             self._last_state = state
+
+        if exec_mode != self._last_exec_mode:
+            reason = status.get("executive_reason", "")
+            level = self.get_logger().info
+            if exec_mode in ("SAFE", "ABORT"):
+                level = self.get_logger().error
+            elif exec_mode == "DEGRADED":
+                level = self.get_logger().warning
+            level(f"EXECUTIVE    | {exec_mode}" + (f" — {reason}" if reason else ""))
+            self._last_exec_mode = exec_mode
 
         if obstacle != self._last_obstacle:
             if obstacle == "none":
@@ -53,13 +65,19 @@ class DemoHud(Node):
             )
 
         if now - self._last_summary >= 2.0:
+            skipped = status.get("skipped_waypoints") or []
+            skip_txt = f"  skip={skipped}" if skipped else ""
             self.get_logger().info(
                 "FLIGHT        | "
                 f"N {status.get('north_m', 0):>6.1f} m  "
                 f"E {status.get('east_m', 0):>6.1f} m  "
                 f"ALT {status.get('altitude_m', 0):>5.1f} m  | "
                 f"WP {status.get('waypoint', 0)}/{status.get('waypoints_total', 0)}  | "
-                f"GEOFENCE {'OK' if status.get('inside_geofence') else 'BREACH'}"
+                f"GEOFENCE {'OK' if status.get('inside_geofence') else 'BREACH'}  | "
+                f"BATT {float(status.get('battery_frac', 1.0)):.0%}  "
+                f"LINK {float(status.get('link_quality', 1.0)):.0%}  "
+                f"PROP {float(status.get('propellant_time_s', 0)):.0f}s"
+                f"{skip_txt}"
             )
             self._last_summary = now
 

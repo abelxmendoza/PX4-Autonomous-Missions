@@ -47,8 +47,10 @@ MAVSDK scripts (mission.py / offboard_avoidance.py)
 | Node / Launch | Command | Description |
 |---------------|---------|-------------|
 | `full_stack` | `ros2 launch px4_offboard full_stack.launch.py` | One-shot: PX4 + XRCE + mission |
-| `offboard_mission` | `ros2 run px4_offboard offboard_mission` | State machine + AABB avoidance + failsafes + CSV log |
+| `offboard_mission` | `ros2 run px4_offboard offboard_mission` | State machine + AABB avoidance + failsafes + mission executive + CSV log |
 | `offboard_control` | `ros2 run px4_offboard offboard_control` | Minimal hover — baseline sanity check |
+| `demo_hud` | (via full_stack / run_demo) | Presentation console: phase, avoidance, resources |
+| `vv_replay` | `ros2 run px4_offboard vv_replay -- <csv>` | Offline V&V: requirement checks on flight logs |
 
 ### MAVSDK Scripts
 
@@ -244,6 +246,51 @@ Included automatically in `full_stack.launch.py`.
 | Mission timeout | 180 s | FAILSAFE → land |
 | Stuck in avoidance | 12 s without WP progress | FAILSAFE → land |
 | Geofence breach | when enabled | FAILSAFE → `geofence_action` |
+
+### Mission executive + resource manager
+
+Spacecraft-style onboard executive layered on the flight state machine. Pure logic lives in `mission_executive.py` (unit-tested); `offboard_mission` wires it into MOVE / failsafes.
+
+| Mode | Trigger (defaults) | Action |
+|------|--------------------|--------|
+| `NOMINAL` | Resources healthy | Full waypoint set |
+| `DEGRADED` | Battery ≤45%, link ≤55%, propellant ≤90 s, or high compute | Skip `science_waypoints` (default 2,4,6) |
+| `SAFE` | Battery ≤25%, link ≤30%, propellant ≤45 s | Hold position (stop advancing) |
+| `ABORT` | Battery ≤12%, link ≤10%, propellant ≤20 s, or link lost ≥8 s | FAILSAFE → land |
+
+Simulated resources: battery fraction, link quality (tied to position freshness), compute load, propellant time budget. Drain rates rise while moving / avoiding / using LiDAR.
+
+```bash
+ros2 topic echo /px4_offboard/executive_status
+ros2 topic echo /px4_offboard/mission_status   # includes executive_mode + battery/link/prop
+```
+
+Tune via `config/offboard_mission.yaml` (`executive_enable`, thresholds, `science_waypoints`).
+
+### Flight-log replay + V&V
+
+Offline verification maps named requirements to checks against `flight_log_mission_*.csv` (no Gazebo required). Logs now include FAILSAFE/LANDING rows plus executive resource columns for evidence.
+
+| ID | Requirement |
+|----|-------------|
+| `REQ-STATE-01` | Legal mission state transitions |
+| `REQ-WP-01` | Waypoint index never decreases |
+| `REQ-GEOCAGE-01` | Caged setpoints stay inside the fence |
+| `REQ-GEOFENCE-01` | Airborne breach → FAILSAFE (or recovery) within 1.5 s |
+| `REQ-ALT-01` | Altitude keep-in while geofence enabled |
+| `REQ-TERM-01` | No return to MOVE after LANDING/FAILSAFE |
+| `REQ-EXEC-01` | Executive ABORT followed by terminal state (SHOULD) |
+
+```bash
+# After a sim flight:
+ros2 run px4_offboard vv_replay -- flight_log_mission_YYYYMMDD_HHMMSS.csv
+
+# Or without sourcing install:
+PYTHONPATH=src/px4_offboard:$PYTHONPATH \
+  python3 -m px4_offboard.vv_replay flight_log_mission_....csv
+```
+
+Exit code `0` = all MUST requirements passed; `1` = fail (interview-friendly evidence trail).
 
 ---
 

@@ -13,7 +13,8 @@ Architecture:
   │                 /px4_offboard/obstacle_dir
   │                 /px4_offboard/geocage_enable  (std_msgs/Bool) — soft keep-in
   │                 /px4_offboard/geofence_enable (std_msgs/Bool) — hard breach → failsafe
-  └── Core logic  — state machine, trajectory, AABB avoidance, geo-cage, geofence, CSV log
+  └── Core logic  — state machine, trajectory, AABB avoidance, geo-cage, geofence,
+                    mission executive (resources + NOMINAL/DEGRADED/SAFE/ABORT), CSV log
 
 Run:
   ros2 run px4_offboard offboard_mission
@@ -46,6 +47,12 @@ from px4_msgs.msg import (
     VehicleControlMode,
     VehicleLocalPosition,
     VehicleStatus,
+)
+from px4_offboard.mission_executive import (
+    ExecutiveAction,
+    MissionExecutive,
+    MissionExecutiveConfig,
+    ResourceBudgets,
 )
 from px4_offboard.mission_logic import (
     Fence,
@@ -149,6 +156,9 @@ class OffboardMission(Node):
         self._pub_mission_status = self.create_publisher(
             String, "/px4_offboard/mission_status", 10
         )
+        self._pub_executive_status = self.create_publisher(
+            String, "/px4_offboard/executive_status", 10
+        )
 
         self.create_subscription(
             VehicleLocalPosition,
@@ -244,6 +254,11 @@ class OffboardMission(Node):
         self._land_sent = False
         self._geocage_hit = False
         self._geofence_breach = False
+        self._executive_hold = False
+        self._last_exec_mode = None
+        self._last_loop_t = time.monotonic()
+
+        self._executive = MissionExecutive(self._executive_config)
 
         self._log_file = None
         self._log_writer = None
@@ -255,6 +270,7 @@ class OffboardMission(Node):
             f"alt={self.hover_alt}m waypoints={len(self.waypoints)} "
             f"geocage={'ON' if self.geocage_enable else 'OFF'} "
             f"geofence={'ON' if self.geofence_enable else 'OFF'} "
+            f"executive={'ON' if self._executive.config.enable else 'OFF'} "
             f"box N[{self.fence_n_min},{self.fence_n_max}] "
             f"E[{self.fence_e_min},{self.fence_e_max}] "
             f"alt≤{self.fence_alt_max}m"
@@ -297,6 +313,22 @@ class OffboardMission(Node):
         self.declare_parameter("geocage_margin_m", 1.0)
         self.declare_parameter("geofence_action", "land")  # land | hold | rtl
         self.declare_parameter("px4_fence_cmd", False)  # also send VEHICLE_CMD_DO_FENCE_ENABLE
+
+        # Mission executive / resource manager
+        self.declare_parameter("executive_enable", True)
+        self.declare_parameter("science_waypoints", [2, 4, 6])
+        self.declare_parameter("initial_battery", 1.0)
+        self.declare_parameter("initial_propellant_s", 180.0)
+        self.declare_parameter("battery_degraded", 0.45)
+        self.declare_parameter("battery_safe", 0.25)
+        self.declare_parameter("battery_abort", 0.12)
+        self.declare_parameter("link_degraded", 0.55)
+        self.declare_parameter("link_safe", 0.30)
+        self.declare_parameter("link_abort", 0.10)
+        self.declare_parameter("link_loss_abort_s", 8.0)
+        self.declare_parameter("propellant_degraded_s", 90.0)
+        self.declare_parameter("propellant_safe_s", 45.0)
+        self.declare_parameter("propellant_abort_s", 20.0)
 
     def _load_params(self):
         mode = self.get_parameter("trajectory_mode").value.lower()
@@ -360,6 +392,37 @@ class OffboardMission(Node):
                 [wp[0], wp[1], -self.hover_alt] for wp in DEFAULT_WAYPOINTS
             ]
 
+        science_raw = self.get_parameter("science_waypoints").value
+        science_wps = tuple(int(i) for i in science_raw) if science_raw else ()
+        self._executive_config = MissionExecutiveConfig(
+            enable=bool(self.get_parameter("executive_enable").value),
+            science_waypoints=science_wps,
+            initial_battery=float(self.get_parameter("initial_battery").value),
+            initial_propellant_s=float(
+                self.get_parameter("initial_propellant_s").value
+            ),
+            budgets=ResourceBudgets(
+                battery_degraded=float(self.get_parameter("battery_degraded").value),
+                battery_safe=float(self.get_parameter("battery_safe").value),
+                battery_abort=float(self.get_parameter("battery_abort").value),
+                link_degraded=float(self.get_parameter("link_degraded").value),
+                link_safe=float(self.get_parameter("link_safe").value),
+                link_abort=float(self.get_parameter("link_abort").value),
+                link_loss_abort_s=float(
+                    self.get_parameter("link_loss_abort_s").value
+                ),
+                propellant_degraded_s=float(
+                    self.get_parameter("propellant_degraded_s").value
+                ),
+                propellant_safe_s=float(
+                    self.get_parameter("propellant_safe_s").value
+                ),
+                propellant_abort_s=float(
+                    self.get_parameter("propellant_abort_s").value
+                ),
+            ),
+        )
+
     # ── Telemetry log ─────────────────────────────────────────────────────────
 
     def _open_log(self):
@@ -390,6 +453,10 @@ class OffboardMission(Node):
                 "vn",
                 "ve",
                 "vd",
+                "executive_mode",
+                "battery_frac",
+                "link_quality",
+                "propellant_s",
             ]
         )
         self.get_logger().info(f"Logging to {path}")
@@ -420,6 +487,10 @@ class OffboardMission(Node):
                 round(self.current_vx, 3),
                 round(self.current_vy, 3),
                 round(self.current_vz, 3),
+                self._executive.mode.name,
+                round(self._executive.resources.battery_frac, 4),
+                round(self._executive.resources.link_quality, 4),
+                round(self._executive.resources.propellant_time_s, 2),
             ]
         )
         self._log_file.flush()
@@ -502,6 +573,7 @@ class OffboardMission(Node):
 
     def _control_loop(self):
         self._publish_offboard_control_mode()
+        self._tick_executive()
 
         if self._state not in (State.PREFLIGHT, State.FAILSAFE, State.LANDING):
             if self._check_failsafes():
@@ -555,19 +627,31 @@ class OffboardMission(Node):
                 self._transition(State.MOVE)
 
         elif self._state == State.MOVE:
-            target = self._next_target()
-            obs = self._detect_obstacle(target)
-            self._last_obstacle = obs
-            target = self._apply_avoidance(target, obs)
-            target = self._apply_geocage(target)
-            self._publish_setpoint(target)
-            self._log_row(target, self._last_obstacle)
-            self._mission_t += 0.1
+            if self._apply_executive_decision():
+                return  # ABORT → FAILSAFE entered
+            if self._state != State.MOVE:
+                pass  # e.g. skip last science WP → LANDING
+            elif self._executive_hold:
+                hold = [self.current_x, self.current_y, self.current_z]
+                hold = self._apply_geocage(hold)
+                self._publish_setpoint(hold)
+                self._log_row(hold, self._last_obstacle)
+            else:
+                target = self._next_target()
+                obs = self._detect_obstacle(target)
+                self._last_obstacle = obs
+                target = self._apply_avoidance(target, obs)
+                target = self._apply_geocage(target)
+                self._publish_setpoint(target)
+                self._log_row(target, self._last_obstacle)
+                self._mission_t += 0.1
 
         elif self._state == State.LANDING:
             hold = [self.current_x, self.current_y, 0.0]
             hold = self._apply_geocage(hold)
             self._publish_setpoint(hold)
+            if self._counter % 5 == 0:
+                self._log_row(hold, self._last_obstacle)
             if not self._land_sent:
                 self._send_land()
                 self._land_sent = True
@@ -591,9 +675,11 @@ class OffboardMission(Node):
                     max(self.current_z, -self.fence_alt_max),
                 ]
                 self._publish_setpoint(hold)
+                self._log_row(hold, self._last_obstacle)
             else:
                 hold = [self.current_x, self.current_y, min(self.current_z, -2.0)]
                 self._publish_setpoint(hold)
+                self._log_row(hold, self._last_obstacle)
                 if not self._land_sent:
                     self.get_logger().error(
                         f"FAILSAFE: {self._failsafe_reason} — {self.geofence_action}"
@@ -607,8 +693,73 @@ class OffboardMission(Node):
         if self._counter % 10 == 0:  # 1 Hz status
             self._publish_fence_status()
             self._publish_mission_status()
+            self._publish_executive_status()
 
         self._counter += 1
+
+    def _tick_executive(self) -> None:
+        now = time.monotonic()
+        dt = max(0.0, min(0.5, now - self._last_loop_t))
+        self._last_loop_t = now
+        airborne = self._state in (
+            State.TAKEOFF,
+            State.HOVER,
+            State.MOVE,
+            State.LANDING,
+            State.FAILSAFE,
+        )
+        link_ok = self._have_position and (
+            now - self._pos_stamp
+        ) < self.position_timeout
+        lidar_active = bool(self._sensor_stamp) and (
+            now - self._sensor_stamp
+        ) < self.sensor_timeout
+        self._executive.update(
+            dt,
+            airborne=airborne and self._flag_armed,
+            moving=self._state == State.MOVE and not self._executive_hold,
+            avoiding=self._last_obstacle is not None,
+            link_ok=link_ok,
+            lidar_active=lidar_active,
+        )
+
+    def _apply_executive_decision(self) -> bool:
+        """Evaluate executive; return True if MOVE loop should stop advancing."""
+        remaining = max(0, len(self.waypoints) - self._wp_index)
+        decision = self._executive.evaluate(
+            current_wp_index=self._wp_index,
+            remaining_waypoints=remaining,
+        )
+        if decision.mode is not self._last_exec_mode:
+            self.get_logger().warn(
+                f"EXECUTIVE {decision.mode.name}: {decision.reason}"
+            )
+            self._last_exec_mode = decision.mode
+
+        if decision.action is ExecutiveAction.ABORT_LAND:
+            self._executive_hold = False
+            return self._enter_failsafe(f"executive abort: {decision.reason}")
+
+        if decision.action is ExecutiveAction.HOLD_SAFE:
+            self._executive_hold = True
+            return False
+
+        self._executive_hold = False
+
+        if decision.action is ExecutiveAction.SKIP_SCIENCE:
+            for wp_i in decision.skipped_waypoints:
+                self._executive.mark_skipped(wp_i)
+                self.get_logger().warn(
+                    f"EXECUTIVE skip science WP {wp_i} ({decision.reason})"
+                )
+                if self._wp_index == wp_i:
+                    self._wp_index += 1
+                    self._last_wp_progress_t = time.monotonic()
+                    if self._wp_index >= len(self.waypoints):
+                        self._transition(State.LANDING)
+            return False
+
+        return False
 
     def _check_failsafes(self) -> bool:
         now = time.monotonic()
@@ -923,8 +1074,19 @@ class OffboardMission(Node):
             "offboard": self._flag_offboard,
             "inside_geofence": inside,
             "failsafe": self._failsafe_reason or "none",
+            "executive_mode": self._executive.mode.name,
+            "executive_reason": self._executive.last_reason,
+            "battery_frac": self._executive.resources.battery_frac,
+            "link_quality": self._executive.resources.link_quality,
+            "propellant_time_s": self._executive.resources.propellant_time_s,
+            "skipped_waypoints": list(self._executive.skipped_waypoints),
         }
         self._pub_mission_status.publish(String(data=json.dumps(payload)))
+
+    def _publish_executive_status(self):
+        self._pub_executive_status.publish(
+            String(data=json.dumps(self._executive.status_dict()))
+        )
 
     def _send_px4_fence_enable(self, enable: bool):
         """Best-effort: enable/disable PX4 onboard geofence module (if configured)."""

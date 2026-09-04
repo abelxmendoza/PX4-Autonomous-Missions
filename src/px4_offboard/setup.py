@@ -29,6 +29,7 @@ setup(
             "flight_trail = px4_offboard.flight_trail:main",
             "demo_hud = px4_offboard.demo_hud:main",
             "lidar_sectors = px4_offboard.lidar_sectors:main",
+            "vv_replay = px4_offboard.vv_replay:main",
         ],
     },
 )
