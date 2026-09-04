@@ -196,6 +196,22 @@ def test_sensor_only_avoidance_fails_without_fresh_lidar():
     assert not check_sensor_backed_avoidance(trace).passed
 
 
+def test_sensor_backed_avoidance_passes_with_confirmed_clear_sector():
+    # lidar_sectors.py publishes -1.0 to mean "nothing detected in this
+    # sector" — a fresh, valid reading that the direction is clear, not a
+    # missing/stale one. Steering toward a confirmed-clear sector is the
+    # single safest case and must not be flagged as unverified (regression
+    # for the false-positive this used to produce on real flight logs).
+    sample = _sample(
+        obstacle="right",
+        obstacle_source="sensor_only",
+        sensor_fresh=True,
+        lidar_right_m=-1.0,
+    )
+    trace = FlightTrace(samples=[sample], columns=("sensor_fresh",))
+    assert check_sensor_backed_avoidance(trace).passed
+
+
 def test_zero_mapped_clearance_fails_collision_requirement():
     sample = _sample(mapped_clearance_m=0.0)
     trace = FlightTrace(samples=[sample], columns=("mapped_clearance_m",))

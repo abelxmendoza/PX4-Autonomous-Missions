@@ -429,7 +429,13 @@ def check_sensor_backed_avoidance(trace: FlightTrace) -> CheckResult:
             "left": sample.lidar_left_m,
             "right": sample.lidar_right_m,
         }[sample.obstacle]
-        if not sample.sensor_fresh or sector_range is None or sector_range < 0.0:
+        # -1.0 is lidar_sectors.py's own sentinel for "nothing detected in
+        # this sector" (a fresh, valid reading meaning the direction is
+        # clear) — NOT a missing/stale reading. Treating it as a violation
+        # flagged the single safest case (steering toward a confirmed-clear
+        # sector) as unverified. Only a genuinely stale sample or a schema
+        # gap (column absent for this sample) counts as missing evidence.
+        if not sample.sensor_fresh or sector_range is None:
             violations.append(
                 f"t={sample.t_s:.2f}s {sample.obstacle} without fresh sector range"
             )

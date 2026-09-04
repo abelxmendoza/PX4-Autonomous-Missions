@@ -22,3 +22,22 @@ jobs:
           test/test_mission_state.py
           test/test_mission_executive.py
           test/test_flight_vv.py
+
+  vv-regression:
+    # Offline end-to-end check: replays the real recorded flight logs
+    # committed for the web viewer against the formal V&V requirements
+    # (vv_harness.py) — catches a regression in state-machine legality,
+    # fence containment, or avoidance behavior without needing a live
+    # Gazebo/PX4 SITL run in CI.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: |
+          for log in web/replay/data/*.csv; do
+            echo "::group::vv_replay $log"
+            PYTHONPATH=src/px4_offboard python3 -m px4_offboard.vv_replay "$log"
+            echo "::endgroup::"
+          done

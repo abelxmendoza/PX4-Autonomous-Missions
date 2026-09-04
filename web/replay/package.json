@@ -1,0 +1,12 @@
+{
+  "name": "px4-flight-replay",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "three": "0.128.0",
+    "vitest": "^2.1.0"
+  }
+}

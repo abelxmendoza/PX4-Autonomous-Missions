@@ -25,6 +25,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan as RosLaserScan
 from std_msgs.msg import Float32MultiArray, String
 
+from .sensor_logic import sector_from_scan
+
 try:
     from gz.msgs10.laserscan_pb2 import LaserScan as GzLaserScan
     from gz.transport13 import Node as GzNode
@@ -44,28 +46,13 @@ def _sector_from_scan(
     trigger_m: float,
     front_deg: float,
     side_deg: float,
+    side_trigger_m: float | None = None,
 ) -> tuple[str | None, dict[str, float]]:
-    """Return (label, sector_mins). label is front|left|right|None."""
-    mins = {"front": float("inf"), "left": float("inf"), "right": float("inf")}
-    for i, r in enumerate(ranges):
-        if r < range_min or r > range_max or math.isinf(r) or math.isnan(r):
-            continue
-        deg = math.degrees(angle_min + i * angle_step)
-        # normalize to [-180, 180]
-        deg = (deg + 180.0) % 360.0 - 180.0
-        if abs(deg) <= front_deg:
-            mins["front"] = min(mins["front"], r)
-        elif front_deg < deg <= side_deg:
-            mins["left"] = min(mins["left"], r)
-        elif -side_deg <= deg < -front_deg:
-            mins["right"] = min(mins["right"], r)
-
-    hits = {k: v for k, v in mins.items() if v < trigger_m}
-    if not hits:
-        return None, mins
-    # Prefer closest hit; break ties with front first
-    label = min(hits.items(), key=lambda kv: (kv[1], 0 if kv[0] == "front" else 1))[0]
-    return label, mins
+    """Backward-compatible wrapper around the pure scan processor."""
+    return sector_from_scan(
+        ranges, angle_min, angle_step, range_min, range_max,
+        trigger_m, front_deg, side_deg, side_trigger_m,
+    )
 
 
 class LidarSectors(Node):
@@ -77,6 +64,7 @@ class LidarSectors(Node):
             "/world/obstacle_world/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan",
         )
         self.declare_parameter("trigger_m", 4.0)
+        self.declare_parameter("side_trigger_m", 2.0)
         self.declare_parameter("ignore_inside_m", 0.6)
         self.declare_parameter("front_angle_deg", 35.0)
         self.declare_parameter("side_angle_deg", 90.0)
@@ -86,6 +74,7 @@ class LidarSectors(Node):
 
         self.gz_topic = str(self.get_parameter("gz_topic").value)
         self.trigger_m = float(self.get_parameter("trigger_m").value)
+        self.side_trigger_m = float(self.get_parameter("side_trigger_m").value)
         self.ignore_inside_m = float(self.get_parameter("ignore_inside_m").value)
         self.front_deg = float(self.get_parameter("front_angle_deg").value)
         self.side_deg = float(self.get_parameter("side_angle_deg").value)
@@ -120,7 +109,8 @@ class LidarSectors(Node):
         period = 1.0 / max(self.publish_hz, 1.0)
         self.create_timer(period, self._tick)
         self.get_logger().info(
-            f"LidarSectors ready — trigger={self.trigger_m}m "
+            f"LidarSectors ready — front={self.trigger_m}m "
+            f"sides={self.side_trigger_m}m "
             f"front±{self.front_deg}° sides±{self.side_deg}°"
         )
 
@@ -153,6 +143,7 @@ class LidarSectors(Node):
             self.trigger_m,
             self.front_deg,
             self.side_deg,
+            self.side_trigger_m,
         )
 
         candidate = label if label else "none"

@@ -63,6 +63,7 @@ from px4_offboard.mission_logic import (
     distance_3d,
     obstacle_clearance,
     sensor_bypass_plan,
+    sensor_hit_within_segment,
     yaw_toward,
 )
 from px4_offboard.mission_state import (
@@ -98,7 +99,7 @@ OBSTACLE_BOXES = (
 # NED [north, east, down] — z negative = up.
 DEFAULT_WAYPOINTS = [
     [0.0, 0.0, -5.0],
-    [5.0, -6.0, -5.0],    # line up with OB1 before the avoidance run
+    [3.0, -6.0, -5.0],    # stage 5.5 m before OB1 so yaw/LiDAR align before entry
     [15.0, -6.0, -5.0],   # beyond OB1; reactive avoidance curves around it
     [18.0, 0.0, -5.0],
     [24.0, 0.0, -5.0],    # OB3 / OB4 corridor
@@ -926,6 +927,15 @@ class OffboardMission(Node):
                     f"LiDAR sector active → {self._sensor_dir}",
                     throttle_duration_sec=2.0,
                 )
+            if self._sensor_dir and self._sensor_mins:
+                if not sensor_hit_within_segment(
+                    [self.current_x, self.current_y, self.current_z],
+                    target,
+                    self._sensor_dir,
+                    *self._sensor_mins,
+                    endpoint_margin_m=max(0.5, self.wp_accept),
+                ):
+                    return None
             return self._sensor_dir
 
         if self.obstacle_source == "sensor_only":

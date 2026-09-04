@@ -12,6 +12,7 @@ from px4_offboard.mission_logic import (
     obstacle_clearance,
     sensor_bypass_target,
     sensor_bypass_plan,
+    sensor_hit_within_segment,
     yaw_toward,
 )
 
@@ -206,3 +207,15 @@ def test_sensor_bypass_plan_clears_three_metre_wall_from_trigger_range():
     wall = Obstacle(east=-6.0, north=10.0, size_east=3.0, size_north=3.0, height=11.5)
     assert obstacle_clearance(lateral, wall) >= 2.5
     assert obstacle_clearance(advance, wall) >= 2.5
+
+
+def test_sensor_return_beyond_alignment_waypoint_is_not_actionable():
+    assert not sensor_hit_within_segment(
+        [3.5, -4.5, -3.5], [5.0, -6.0, -3.5], "front", 4.9, 20.0, 4.4
+    )
+
+
+def test_sensor_return_on_long_following_leg_is_actionable():
+    assert sensor_hit_within_segment(
+        [5.0, -6.0, -3.5], [15.0, -6.0, -3.5], "front", 4.9, 20.0, 4.4
+    )

@@ -165,6 +165,30 @@ def sensor_bypass_plan(
     return lateral, combined
 
 
+def sensor_hit_within_segment(
+    position: Vector3,
+    target: Vector3,
+    obstacle_sector: str | None,
+    front_range_m: float,
+    left_range_m: float,
+    right_range_m: float,
+    endpoint_margin_m: float = 0.5,
+) -> bool:
+    """True when a sector return can obstruct the current horizontal leg."""
+    if obstacle_sector is None:
+        return False
+    ranges = {
+        "front": front_range_m,
+        "left": left_range_m,
+        "right": right_range_m,
+    }
+    hit_range = ranges.get(obstacle_sector, -1.0)
+    if hit_range < 0.0:
+        return False
+    leg_length = math.hypot(target[0] - position[0], target[1] - position[1])
+    return hit_range <= leg_length + endpoint_margin_m
+
+
 def circle_target(
     elapsed_s: float, radius_m: float, period_s: float, altitude_m: float
 ) -> list[float]:

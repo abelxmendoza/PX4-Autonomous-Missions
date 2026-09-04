@@ -130,6 +130,7 @@ def _launch_setup(context, *args, **kwargs):
                     "sensor/lidar_2d_v2/scan"
                 ),
                 "trigger_m": float(lidar_trigger),
+                "side_trigger_m": 2.0,
                 "front_angle_deg": 35.0,
                 "side_angle_deg": 90.0,
                 "publish_hz": 20.0,
