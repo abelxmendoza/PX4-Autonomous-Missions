@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PX4 Autonomous Mission — Flight Replay</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#11161f; --panel-b:rgba(255,255,255,0.08);
+    --text:#e6edf3; --muted:#7d8a9c; --accent:#4da3ff;
+    --ok:#3ddc84; --warn:#ffb020; --danger:#ff5555;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;}
+  #scene{position:fixed;inset:0;}
+  #scene canvas{display:block;}
+
+  .overlay{position:fixed;pointer-events:none;}
+  .overlay > *{pointer-events:auto;}
+
+  header{top:0;left:0;right:0;padding:14px 18px;display:flex;align-items:baseline;
+    justify-content:space-between;gap:12px;background:linear-gradient(180deg,rgba(10,14,20,.85),rgba(10,14,20,0));}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.02em;}
+  header h1 .dim{color:var(--muted);font-weight:400;}
+  header a{color:var(--accent);text-decoration:none;font-size:12px;}
+  header a:hover{text-decoration:underline;}
+
+  .hud{top:56px;right:16px;width:230px;display:flex;flex-direction:column;gap:8px;}
+  .card{background:var(--panel);border:1px solid var(--panel-b);border-radius:10px;
+    padding:10px 12px;font-size:12px;backdrop-filter:blur(6px);}
+  .card h2{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    margin:0 0 6px 0;font-weight:600;}
+  .row{display:flex;justify-content:space-between;padding:2px 0;}
+  .row .k{color:var(--muted);}
+  .row .v{font-weight:600;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;
+    letter-spacing:.03em;}
+  .badge.state-PREFLIGHT,.badge.state-ARMING{background:#2a3a52;color:#8fc4ff;}
+  .badge.state-TAKEOFF,.badge.state-HOVER{background:#3a3520;color:var(--warn);}
+  .badge.state-MOVE{background:#173a2a;color:var(--ok);}
+  .badge.state-LANDING{background:#3a1f1f;color:#ff9a7a;}
+  .badge.state-FAILSAFE{background:#3a1414;color:var(--danger);}
+  .badge.avoid-none{background:#182230;color:var(--muted);}
+  .badge.avoid-front{background:#3a2a12;color:var(--warn);}
+  .badge.avoid-left,.badge.avoid-right{background:#332018;color:#ff9a5a;}
+  .badge.avoid-bypass{background:#173a1c;color:#7CFC00;}
+  .badge.avoid-obstacle{background:#3a1414;color:var(--danger);}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;}
+  .dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok);}
+  .dot.off{background:#444;}
+
+  .legend .item{display:flex;align-items:center;gap:6px;padding:2px 0;color:var(--muted);}
+  .legend .sw{width:10px;height:10px;border-radius:2px;flex:none;}
+
+  .transport{left:16px;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;
+    max-width:900px;margin:0 auto;}
+  .scrubwrap{background:var(--panel);border:1px solid var(--panel-b);border-radius:10px;
+    padding:10px 14px;display:flex;align-items:center;gap:12px;backdrop-filter:blur(6px);}
+  button{background:#1a2130;border:1px solid var(--panel-b);color:var(--text);
+    border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;}
+  button:hover{background:#232c40;}
+  button.primary{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:700;}
+  button.primary:hover{filter:brightness(1.08);}
+  input[type=range]{flex:1;accent-color:var(--accent);}
+  select{background:#1a2130;color:var(--text);border:1px solid var(--panel-b);border-radius:8px;
+    padding:6px 8px;font:inherit;font-size:12px;}
+  .time{font-size:12px;color:var(--muted);min-width:118px;text-align:right;}
+
+  .hint{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);
+    color:var(--muted);font-size:11px;opacity:.7;}
+
+  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+
+<div id="scene"></div>
+<div id="loading" class="loading">Loading flight log…</div>
+
+<div class="overlay">
+  <header>
+    <h1>PX4 Autonomous Mission <span class="dim">— Flight Replay</span></h1>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <select id="missionSelect"></select>
+      <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">
+        source ↗
+      </a>
+    </div>
+  </header>
+
+  <div class="hud">
+    <div class="card">
+      <h2 id="missionLabel">Mission</h2>
+      <div class="row"><span class="k">Avoidance events</span><span id="hudEvents" class="v">–</span></div>
+      <div class="row"><span class="k">Duration</span><span id="hudDuration" class="v">–</span></div>
+    </div>
+    <div class="card">
+      <h2>Mission Phase</h2>
+      <div class="row"><span class="k">State</span>
+        <span id="hudState" class="badge state-PREFLIGHT">—</span></div>
+      <div class="row"><span class="k">Waypoint</span><span id="hudWp" class="v">–/–</span></div>
+      <div class="row"><span class="k">Sim time</span><span id="hudTime" class="v">0.0 s</span></div>
+    </div>
+    <div class="card">
+      <h2>Position (NED)</h2>
+      <div class="row"><span class="k">North</span><span id="hudN" class="v">0.00 m</span></div>
+      <div class="row"><span class="k">East</span><span id="hudE" class="v">0.00 m</span></div>
+      <div class="row"><span class="k">Altitude</span><span id="hudAlt" class="v">0.00 m</span></div>
+      <div class="row"><span class="k">Target dist</span><span id="hudDist" class="v">0.00 m</span></div>
+    </div>
+    <div class="card">
+      <h2>Avoidance</h2>
+      <div class="row"><span class="k">Status</span>
+        <span id="hudAvoid" class="badge avoid-none">nominal</span></div>
+      <div class="row"><span class="k">Geocage</span>
+        <span><span id="dotCage" class="dot off"></span><span id="hudCage" class="v">–</span></span></div>
+      <div class="row"><span class="k">Geofence</span>
+        <span><span id="dotFence" class="dot off"></span><span id="hudFence" class="v">–</span></span></div>
+    </div>
+    <div class="card legend">
+      <h2>Obstacle Course</h2>
+      <div class="item"><span class="sw" style="background:#d92626"></span>OB1 · red · 4m</div>
+      <div class="item"><span class="sw" style="background:#e58010"></span>OB2 · orange · 6m</div>
+      <div class="item"><span class="sw" style="background:#26a626"></span>OB3 · green · 4m</div>
+      <div class="item"><span class="sw" style="background:#2626d9"></span>OB4 · blue · 5m</div>
+      <div class="item"><span class="sw" style="background:#a600bf"></span>OB5 · purple · 4m</div>
+    </div>
+  </div>
+
+  <div class="hint">drag to orbit · scroll to zoom · real recorded Gazebo SITL flight, not a physics simulation</div>
+
+  <div class="transport">
+    <div class="scrubwrap">
+      <button id="btnPlay" class="primary">⏸ Pause</button>
+      <button id="btnRestart">⟲ Restart</button>
+      <button id="btnView">🗺 Top-Down</button>
+      <input id="scrub" type="range" min="0" max="1" step="1" value="0"/>
+      <select id="speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+      <span id="hudRange" class="time">frame 0 / 0</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Obstacle course — fixed geometry, mirrors worlds/obstacle_world.sdf exactly.
+// sdf local frame: x=east, y=north, z=up. size = (eastExtent, northExtent, height).
+// ---------------------------------------------------------------------------
+const OBSTACLES = [
+  { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:4, color:0xd92626 },
+  { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6, color:0xe58010 },
+  { name:'OB3', east:-8, north:24, sizeE:4, sizeN:3, h:4, color:0x26a626 },
+  { name:'OB4', east:6,  north:24, sizeE:2, sizeN:2, h:5, color:0x2626d9 },
+  { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:4, color:0xa600bf },
+];
+
+const AVOID_COLOR = {
+  '':        0x4da3ff,
+  'front':   0xffa500,
+  'left':    0xffd400,
+  'right':   0xff5da2,
+  'bypass':  0x7CFC00,
+  'obstacle':0xff3030,
+};
+
+const DT = 0.1; // seconds/row — PX4 offboard setpoints stream at 10 Hz
+
+// world <- NED :  x=east, y=altitude(=-down), z=-north
+function toWorld(n, e, d){ return new THREE.Vector3(e, -d, -n); }
+
+// ---------------------------------------------------------------------------
+// Scene setup
+// ---------------------------------------------------------------------------
+const container = document.getElementById('scene');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e14);
+scene.fog = new THREE.Fog(0x0a0e14, 60, 220);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
+const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
+// North-up map convention: world z = -north, so up=(0,0,-1) puts +north toward
+// the top of the screen when looking straight down.
+orthoCamera.up.set(0, 0, -1);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+container.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 5;
+controls.maxDistance = 150;
+
+const orthoControls = new THREE.OrbitControls(orthoCamera, renderer.domElement);
+orthoControls.enableDamping = true;
+orthoControls.dampingFactor = 0.08;
+orthoControls.enableRotate = false; // pan + zoom only — stays a flat map view
+orthoControls.screenSpacePanning = true;
+orthoControls.minZoom = 0.2;
+orthoControls.maxZoom = 8;
+
+let topDown = false;
+function activeCamera()  { return topDown ? orthoCamera  : camera;  }
+function activeControls(){ return topDown ? orthoControls : controls; }
+
+scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x0a0e14, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+sun.position.set(-15, 40, 20);
+scene.add(sun);
+
+// Ground
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(120, 120),
+  new THREE.MeshStandardMaterial({ color:0x152018, roughness:1 })
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.set(0, 0, -20);
+scene.add(ground);
+
+const grid = new THREE.GridHelper(120, 24, 0x2a3546, 0x1a2230);
+grid.position.set(0, 0.01, -20);
+scene.add(grid);
+
+// Launch pad
+const pad = new THREE.Mesh(
+  new THREE.CylinderGeometry(2.5, 2.5, 0.05, 32),
+  new THREE.MeshStandardMaterial({ color:0x11161f })
+);
+pad.position.set(0, 0.03, 0);
+scene.add(pad);
+
+// Obstacles
+for (const ob of OBSTACLES) {
+  const geo = new THREE.BoxGeometry(ob.sizeE, ob.h, ob.sizeN);
+  const mat = new THREE.MeshStandardMaterial({ color:ob.color, roughness:0.6, metalness:0.05 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(ob.east, ob.h/2, -ob.north);
+  scene.add(mesh);
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:0.35 })
+  );
+  edges.position.copy(mesh.position);
+  scene.add(edges);
+}
+
+function makeLabelSprite(text, bg) {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bg || 'rgba(20,26,38,0.85)';
+  roundRect(ctx, 2, 2, 124, 60, 12); ctx.fill();
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = 'bold 30px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 64, 34);
+  const tex = new THREE.CanvasTexture(c);
+  const mat = new THREE.SpriteMaterial({ map:tex, depthTest:false });
+  const spr = new THREE.Sprite(mat);
+  spr.scale.set(2.2, 1.1, 1);
+  return spr;
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+// Drone model — small quad body
+const drone = new THREE.Group();
+{
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.28, 0.1, 0.28),
+    new THREE.MeshStandardMaterial({ color:0x1a2130 })
+  );
+  drone.add(body);
+  const armMat = new THREE.MeshStandardMaterial({ color:0x2a3446 });
+  const rotorMat = new THREE.MeshStandardMaterial({ color:0x4da3ff, emissive:0x1a4a80 });
+  for (const [dx,dz] of [[0.32,0.32],[-0.32,0.32],[0.32,-0.32],[-0.32,-0.32]]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.45,6), armMat);
+    arm.rotation.z = Math.PI/2;
+    arm.position.set(dx/2, 0, dz/2);
+    arm.lookAt(dx, 0, dz);
+    arm.rotation.z = Math.PI/2;
+    drone.add(arm);
+    const rotor = new THREE.Mesh(new THREE.TorusGeometry(0.13,0.02,6,16), rotorMat);
+    rotor.rotation.x = Math.PI/2;
+    rotor.position.set(dx, 0.03, dz);
+    drone.add(rotor);
+  }
+}
+scene.add(drone);
+
+const droneLight = new THREE.PointLight(0x4da3ff, 1.2, 4);
+drone.add(droneLight);
+
+// ---------------------------------------------------------------------------
+// Missions — real recorded flight_log_mission_*.csv files, same obstacle
+// course, different runs. See README "Recruiter Demo Mode" for how these
+// are produced (scripts/run_demo.sh).
+// ---------------------------------------------------------------------------
+const MISSIONS = [
+  {
+    id: 'full', file: 'data/mission_full_avoidance.csv',
+    label: 'Reactive Avoidance — Full Course',
+  },
+  {
+    id: 'clean', file: 'data/mission_clean_pass.csv',
+    label: 'Clean Pass — No Obstacles Triggered',
+  },
+  {
+    id: 'quick', file: 'data/mission_quick_avoidance.csv',
+    label: 'Reactive Avoidance — Quick Run',
+  },
+];
+
+let rows = [];
+let waypointObjects = []; // meshes + label sprites, cleared between missions
+let trailLine, trailGeo, trailColors, trailPositions;
+let frameIndex = 0;
+let playing = true;
+let speed = 1;
+let acc = 0;
+let dragging = false;
+let animating = false;
+
+const missionSelect = document.getElementById('missionSelect');
+for (const m of MISSIONS) {
+  const opt = document.createElement('option');
+  opt.value = m.id; opt.textContent = m.label;
+  missionSelect.appendChild(opt);
+}
+missionSelect.addEventListener('change', () => {
+  const m = MISSIONS.find(x => x.id === missionSelect.value);
+  loadMission(m);
+});
+
+function clearMissionObjects() {
+  for (const obj of waypointObjects) scene.remove(obj);
+  waypointObjects = [];
+  if (trailLine) scene.remove(trailLine);
+}
+
+function loadMission(m) {
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('loading').textContent = 'Loading flight log…';
+  playing = false;
+  fetch(m.file)
+    .then(r => r.text())
+    .then(text => {
+      clearMissionObjects();
+      rows = parseCsv(text);
+      buildWaypoints();
+      buildTrail();
+      fitCamera();
+      document.getElementById('missionLabel').textContent = m.label;
+      const events = rows.filter(r => r.obstacle).length;
+      document.getElementById('hudEvents').textContent = events;
+      document.getElementById('hudDuration').textContent = (rows.length * DT).toFixed(1) + ' s';
+      const scrub = document.getElementById('scrub');
+      scrub.max = rows.length - 1;
+      document.getElementById('loading').style.display = 'none';
+      updateFrame(0, true);
+      playing = true;
+      document.getElementById('btnPlay').textContent = '⏸ Pause';
+      if (!animating) { animating = true; animate(); }
+    })
+    .catch(err => {
+      document.getElementById('loading').textContent =
+        'Failed to load flight log: ' + err.message;
+    });
+}
+
+loadMission(MISSIONS[0]);
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines[0].split(',');
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    if (cols.length < header.length) continue;
+    const o = {};
+    header.forEach((h, idx) => { o[h] = cols[idx]; });
+    o.north = parseFloat(o.north); o.east = parseFloat(o.east); o.down = parseFloat(o.down);
+    o.tgt_n = parseFloat(o.tgt_n); o.tgt_e = parseFloat(o.tgt_e); o.tgt_d = parseFloat(o.tgt_d);
+    o.wp_index = parseInt(o.wp_index, 10);
+    o.geocage = o.geocage === '1'; o.geofence = o.geofence === '1';
+    out.push(o);
+  }
+  return out;
+}
+
+function buildWaypoints() {
+  const seen = new Set();
+  let n = 1;
+  for (const r of rows) {
+    if (!seen.has(r.wp_index)) {
+      seen.add(r.wp_index);
+      const pos = toWorld(r.tgt_n, r.tgt_e, r.tgt_d);
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.35, 16, 16),
+        new THREE.MeshStandardMaterial({ color:0x3ddc84, emissive:0x0a3a20, transparent:true, opacity:0.85 })
+      );
+      marker.position.copy(pos);
+      scene.add(marker);
+      const label = makeLabelSprite('WP' + n);
+      label.position.copy(pos).add(new THREE.Vector3(0, 1.1, 0));
+      scene.add(label);
+      waypointObjects.push(marker, label);
+      n++;
+    }
+  }
+}
+
+function buildTrail() {
+  trailPositions = new Float32Array(rows.length * 3);
+  trailColors = new Float32Array(rows.length * 3);
+  trailGeo = new THREE.BufferGeometry();
+  trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+  trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+  trailGeo.setDrawRange(0, 0);
+  const mat = new THREE.LineBasicMaterial({ vertexColors:true, linewidth:2 });
+  trailLine = new THREE.Line(trailGeo, mat);
+  scene.add(trailLine);
+}
+
+function fitCamera() {
+  const box = new THREE.Box3();
+  for (const r of rows) box.expandByPoint(toWorld(r.north, r.east, r.down));
+  for (const ob of OBSTACLES) {
+    box.expandByPoint(new THREE.Vector3(ob.east, 0, -ob.north));
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+
+  controls.target.copy(center);
+  camera.position.set(center.x + 22, 18, center.z + 26);
+  controls.update();
+
+  orthoControls.target.copy(center);
+  orthoCamera.position.set(center.x, 80, center.z);
+  const halfSpan = Math.max(size.x, size.z) / 2 + 8;
+  const aspect = innerWidth / innerHeight;
+  orthoCamera.left = -halfSpan * aspect; orthoCamera.right = halfSpan * aspect;
+  orthoCamera.top = halfSpan; orthoCamera.bottom = -halfSpan;
+  orthoCamera.zoom = 1;
+  orthoCamera.updateProjectionMatrix();
+  orthoControls.update();
+}
+
+// ---------------------------------------------------------------------------
+// Playback
+// ---------------------------------------------------------------------------
+const col = new THREE.Color();
+function updateFrame(idx, snapToo) {
+  frameIndex = Math.max(0, Math.min(idx, rows.length - 1));
+  const r = rows[frameIndex];
+  const pos = toWorld(r.north, r.east, r.down);
+  drone.position.copy(pos);
+
+  // orientation: face direction of travel
+  const prev = rows[Math.max(0, frameIndex - 1)];
+  const prevPos = toWorld(prev.north, prev.east, prev.down);
+  const dir = pos.clone().sub(prevPos);
+  if (dir.lengthSq() > 1e-6) {
+    const yaw = Math.atan2(dir.x, dir.z);
+    drone.rotation.y = yaw;
+  }
+
+  // rebuild trail up to current frame with per-vertex avoidance color
+  for (let i = 0; i <= frameIndex; i++) {
+    const rr = rows[i];
+    const p = toWorld(rr.north, rr.east, rr.down);
+    trailPositions[i*3] = p.x; trailPositions[i*3+1] = p.y; trailPositions[i*3+2] = p.z;
+    col.setHex(AVOID_COLOR[rr.obstacle] ?? AVOID_COLOR['']);
+    trailColors[i*3] = col.r; trailColors[i*3+1] = col.g; trailColors[i*3+2] = col.b;
+  }
+  trailGeo.setDrawRange(0, frameIndex + 1);
+  trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.attributes.color.needsUpdate = true;
+
+  // HUD
+  const stateEl = document.getElementById('hudState');
+  stateEl.textContent = r.state;
+  stateEl.className = 'badge state-' + r.state;
+
+  document.getElementById('hudWp').textContent = r.wp_index + ' / 9';
+  document.getElementById('hudTime').textContent = (frameIndex * DT).toFixed(1) + ' s';
+  document.getElementById('hudN').textContent = r.north.toFixed(2) + ' m';
+  document.getElementById('hudE').textContent = r.east.toFixed(2) + ' m';
+  document.getElementById('hudAlt').textContent = (-r.down).toFixed(2) + ' m';
+
+  const dist = Math.hypot(r.tgt_n - r.north, r.tgt_e - r.east, r.tgt_d - r.down);
+  document.getElementById('hudDist').textContent = dist.toFixed(2) + ' m';
+
+  const avoidEl = document.getElementById('hudAvoid');
+  const label = r.obstacle || 'nominal';
+  avoidEl.textContent = label;
+  avoidEl.className = 'badge avoid-' + (r.obstacle || 'none');
+
+  document.getElementById('dotCage').className = 'dot ' + (r.geocage ? 'on' : 'off');
+  document.getElementById('hudCage').textContent = r.geocage ? 'active' : 'off';
+  document.getElementById('dotFence').className = 'dot ' + (r.geofence ? 'on' : 'off');
+  document.getElementById('hudFence').textContent = r.geofence ? 'active' : 'off';
+
+  document.getElementById('hudRange').textContent = `frame ${frameIndex} / ${rows.length - 1}`;
+  if (!dragging) document.getElementById('scrub').value = frameIndex;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (playing && rows.length) {
+    acc += (1/60) * speed;
+    if (acc >= DT) {
+      acc = 0;
+      let next = frameIndex + 1;
+      if (next >= rows.length) next = 0; // loop
+      updateFrame(next);
+    }
+  }
+  activeControls().update();
+  renderer.render(scene, activeCamera());
+}
+
+// ---------------------------------------------------------------------------
+// Controls wiring
+// ---------------------------------------------------------------------------
+const btnPlay = document.getElementById('btnPlay');
+btnPlay.addEventListener('click', () => {
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸ Pause' : '▶ Play';
+});
+document.getElementById('btnRestart').addEventListener('click', () => {
+  updateFrame(0, true);
+  playing = true;
+  btnPlay.textContent = '⏸ Pause';
+});
+document.getElementById('speed').addEventListener('change', e => {
+  speed = parseFloat(e.target.value);
+});
+document.getElementById('btnView').addEventListener('click', e => {
+  topDown = !topDown;
+  e.target.textContent = topDown ? '🎥 Orbit' : '🗺 Top-Down';
+});
+const scrub = document.getElementById('scrub');
+scrub.addEventListener('mousedown', () => dragging = true);
+scrub.addEventListener('touchstart', () => dragging = true);
+scrub.addEventListener('input', e => updateFrame(parseInt(e.target.value, 10)));
+window.addEventListener('mouseup', () => dragging = false);
+window.addEventListener('touchend', () => dragging = false);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  const aspect = innerWidth/innerHeight;
+  const halfSpan = (orthoCamera.top - orthoCamera.bottom) / 2;
+  orthoCamera.left = -halfSpan * aspect; orthoCamera.right = halfSpan * aspect;
+  orthoCamera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
