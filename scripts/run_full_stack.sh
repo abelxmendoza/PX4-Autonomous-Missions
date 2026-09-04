@@ -8,14 +8,15 @@ cd "$ROOT"
 if [[ ! -f install/setup.bash ]]; then
   echo "Building workspace..."
   # shellcheck disable=SC1091
-  source /opt/ros/humble/setup.bash
+  set +u; source /opt/ros/humble/setup.bash; set -u
   colcon build --symlink-install
 fi
 
+# ROS setup scripts reference unset vars under `set -u` (e.g. AMENT_TRACE_SETUP_FILES).
 # shellcheck disable=SC1091
-source /opt/ros/humble/setup.bash
+set +u; source /opt/ros/humble/setup.bash; set -u
 # shellcheck disable=SC1091
-source "$ROOT/install/setup.bash"
+set +u; source "$ROOT/install/setup.bash"; set -u
 
 MODE="${1:-waypoints}"
 EXTRA=()

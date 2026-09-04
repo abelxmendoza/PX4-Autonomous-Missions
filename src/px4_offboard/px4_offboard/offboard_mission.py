@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import time
 from enum import Enum
 from pathlib import Path
@@ -87,12 +88,12 @@ OBSTACLE_BOXES = (
 # NED [north, east, down] — z negative = up.
 DEFAULT_WAYPOINTS = [
     [0.0, 0.0, -5.0],
-    [5.0, 5.0, -5.0],
-    [10.0, -6.0, -5.0],   # toward OB1
+    [5.0, -6.0, -5.0],    # line up with OB1 before the avoidance run
+    [15.0, -6.0, -5.0],   # beyond OB1; reactive avoidance curves around it
     [18.0, 0.0, -5.0],
     [24.0, 0.0, -5.0],    # OB3 / OB4 corridor
     [32.0, 0.0, -5.0],    # toward OB5
-    [38.0, 0.0, -5.0],
+    [43.0, 0.0, -5.0],    # beyond OB5; reactive avoidance curves around it
     [46.0, 8.0, -5.0],
     [50.0, 0.0, -5.0],
 ]
@@ -193,6 +194,10 @@ class OffboardMission(Node):
         self._flag_armed = False
         self._flag_offboard = False
         self._last_obstacle = None
+        self._bypass_target = None
+        self._bypass_obstacle = None
+        self._bypassed_obstacles = set()
+        self._last_bypass_distance = float("inf")
 
         self._state_machine = MissionStateMachine()
         self._counter = 0
@@ -238,6 +243,7 @@ class OffboardMission(Node):
         self.declare_parameter("side_angle_deg", 70.0)
         self.declare_parameter("avoid_smooth", 0.25)
         self.declare_parameter("sidestep_m", 2.0)
+        self.declare_parameter("avoidance_strategy", "climb")
         self.declare_parameter("climb_clearance_m", 1.5)
         self.declare_parameter("max_alt_m", 12.0)
         self.declare_parameter("circle_radius_m", 8.0)
@@ -279,6 +285,10 @@ class OffboardMission(Node):
         self.side_angle = float(self.get_parameter("side_angle_deg").value)
         self.avoid_smooth = float(self.get_parameter("avoid_smooth").value)
         self.sidestep_m = float(self.get_parameter("sidestep_m").value)
+        strategy = str(self.get_parameter("avoidance_strategy").value).lower()
+        self.avoidance_strategy = (
+            strategy if strategy in ("climb", "sidestep") else "climb"
+        )
         self.climb_clearance = float(self.get_parameter("climb_clearance_m").value)
         self.max_alt = float(self.get_parameter("max_alt_m").value)
         self.circle_radius = float(self.get_parameter("circle_radius_m").value)
@@ -472,7 +482,7 @@ class OffboardMission(Node):
             target = self._apply_avoidance(target, obs)
             target = self._apply_geocage(target)
             self._publish_setpoint(target)
-            self._log_row(target, obs)
+            self._log_row(target, self._last_obstacle)
             self._mission_t += 0.1
 
         elif self._state == State.LANDING:
@@ -594,24 +604,110 @@ class OffboardMission(Node):
 
     def _detect_obstacle(self, target: list) -> str | None:
         """
-        Prefer live sensor on /px4_offboard/obstacle_dir when fresh.
+        Prefer live sensor on /px4_offboard/obstacle_dir when fresh
+        (e.g. lidar_sectors from Gazebo GPU LiDAR).
         Otherwise use AABB geometry against obstacle_world.sdf.
         """
         now = time.monotonic()
         if self._sensor_stamp and (now - self._sensor_stamp) < self.sensor_timeout:
+            if self._counter % 20 == 0 and self._sensor_dir:
+                self.get_logger().info(
+                    f"LiDAR sector active → {self._sensor_dir}",
+                    throttle_duration_sec=2.0,
+                )
             return self._sensor_dir
 
+        obstacles = (
+            tuple(
+                obstacle
+                for obstacle in OBSTACLE_BOXES
+                if obstacle not in self._bypassed_obstacles
+            )
+            if self.avoidance_strategy == "sidestep"
+            else OBSTACLE_BOXES
+        )
         return detect_obstacle(
             [self.current_x, self.current_y, self.current_z],
             target,
-            OBSTACLE_BOXES,
+            obstacles,
             self.detection_margin,
             self.front_angle,
             self.side_angle,
+            self.avoidance_strategy == "sidestep",
         )
 
     def _apply_avoidance(self, target: list, obs: str | None) -> list:
         adjusted = list(target)
+
+        if self.avoidance_strategy == "sidestep":
+            if self._bypass_target is None and obs is not None:
+                nearest = min(
+                    (
+                        obstacle
+                        for obstacle in OBSTACLE_BOXES
+                        if obstacle not in self._bypassed_obstacles
+                    ),
+                    key=lambda obstacle: math.hypot(
+                        obstacle.north - self.current_x,
+                        obstacle.east - self.current_y,
+                    ),
+                )
+                self._bypass_target = [
+                    nearest.north
+                    + nearest.size_north / 2.0
+                    + min(self.detection_margin, 2.5),
+                    nearest.east + self.sidestep_m,
+                    target[2],
+                ]
+                self._bypass_obstacle = nearest
+                self._last_bypass_distance = self._distance_to_wp(
+                    self._bypass_target
+                )
+                self.get_logger().warn(
+                    "BYPASS created -> "
+                    f"N={self._bypass_target[0]:.1f} "
+                    f"E={self._bypass_target[1]:.1f}"
+                )
+
+            if self._bypass_target is not None:
+                bypass_distance = self._distance_to_wp(self._bypass_target)
+                if bypass_distance <= max(1.0, self.wp_accept):
+                    self.get_logger().info("BYPASS complete -> resuming mission")
+                    if self._bypass_obstacle is not None:
+                        self._bypassed_obstacles.add(self._bypass_obstacle)
+                    self._bypass_target = None
+                    self._bypass_obstacle = None
+                    self._last_bypass_distance = float("inf")
+                    self._avoid_active_t = 0.0
+                    self._last_wp_progress_t = time.monotonic()
+                    self._smooth_target = list(adjusted)
+                    self._pub_avoiding.publish(Bool(data=False))
+                    return adjusted
+
+                if bypass_distance < self._last_bypass_distance - 0.25:
+                    self._last_bypass_distance = bypass_distance
+                    self._last_wp_progress_t = time.monotonic()
+
+                adjusted = list(self._bypass_target)
+                self._last_obstacle = obs or "bypass"
+                if self._avoid_active_t == 0.0:
+                    self._avoid_active_t = time.monotonic()
+                self._pub_avoiding.publish(Bool(data=True))
+                self.get_logger().warn(
+                    "AVOID sidestep",
+                    throttle_duration_sec=1.0,
+                )
+                a = self.avoid_smooth
+                self._smooth_target[0] = self.current_x + a * (
+                    adjusted[0] - self.current_x
+                )
+                self._smooth_target[1] = self.current_y + a * (
+                    adjusted[1] - self.current_y
+                )
+                self._smooth_target[2] = self.current_z + a * (
+                    adjusted[2] - self.current_z
+                )
+                return list(self._smooth_target)
 
         if obs is None:
             self._avoid_active_t = 0.0
@@ -625,13 +721,14 @@ class OffboardMission(Node):
         self.get_logger().warn(f"AVOID {obs}", throttle_duration_sec=1.0)
 
         if obs == "front":
-            # Prefer climb if obstacle is short enough; else sidestep east
-            blocking_h = self._blocking_height(target)
-            climb_alt = blocking_h + self.climb_clearance
-            if climb_alt <= self.max_alt:
-                adjusted[2] = -climb_alt
-            else:
-                adjusted[1] += self.sidestep_m
+            if self.avoidance_strategy == "climb":
+                # Prefer climb if obstacle is short enough; else sidestep east.
+                blocking_h = self._blocking_height(target)
+                climb_alt = blocking_h + self.climb_clearance
+                if climb_alt <= self.max_alt:
+                    adjusted[2] = -climb_alt
+                else:
+                    adjusted[1] += self.sidestep_m
         elif obs == "left":
             adjusted[1] += self.sidestep_m
         elif obs == "right":
@@ -703,6 +800,7 @@ class OffboardMission(Node):
         payload = {
             "state": self._state.name,
             "mode": self.trajectory_mode.value,
+            "avoidance_strategy": self.avoidance_strategy,
             "north_m": round(self.current_x, 2),
             "east_m": round(self.current_y, 2),
             "altitude_m": round(-self.current_z, 2),

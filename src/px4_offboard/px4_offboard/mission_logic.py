@@ -105,6 +105,7 @@ def detect_obstacle(
     detection_margin_m: float,
     front_angle_deg: float,
     side_angle_deg: float,
+    detect_when_above: bool = False,
 ) -> str | None:
     """Classify the nearest relevant obstacle relative to direction of travel."""
     delta_north = target[0] - position[0]
@@ -117,7 +118,7 @@ def detect_obstacle(
     best: tuple[float, str] | None = None
 
     for obstacle in obstacles:
-        if altitude_agl > obstacle.height + 0.5:
+        if not detect_when_above and altitude_agl > obstacle.height + 0.5:
             continue
 
         half_north = obstacle.size_north / 2.0

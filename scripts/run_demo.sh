@@ -83,6 +83,9 @@ echo "============================================================"
 ros2 launch px4_offboard full_stack.launch.py \
   "px4_dir:=$PX4_CHECKOUT" \
   "trajectory_mode:=$MODE" \
+  "avoidance_strategy:=sidestep" \
+  "sidestep_m:=6.0" \
+  "detection_margin_m:=5.0" \
   "demo_mode:=true" \
   "headless:=false" &
 LAUNCH_PID=$!

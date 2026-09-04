@@ -14,6 +14,7 @@
     side_angle_deg: 70.0
     avoid_smooth: 0.25
     sidestep_m: 2.0
+    avoidance_strategy: "climb"  # climb | sidestep
     climb_clearance_m: 1.5
     max_alt_m: 12.0
 

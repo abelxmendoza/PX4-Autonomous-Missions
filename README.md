@@ -83,7 +83,12 @@ Launch the visible Gazebo mission with a concise presentation feed:
 The demo starts PX4 SITL, Gazebo, Micro XRCE-DDS, the autonomous mission,
 the in-world flight trail, and a readable console HUD. The HUD highlights
 mission-phase transitions, obstacle-avoidance events, position, altitude,
-waypoint progress, and geofence health.
+waypoint progress, and geofence health. Demo mode forces a 6 m lateral
+sidestep so avoidance is clearly visible in both the world and flight trail;
+demo detection also starts 5 m outside the obstacle boundary so the turn is
+established early. Normal `full_stack.launch.py` launches also default to
+`avoidance_strategy:=sidestep`; pass `avoidance_strategy:=climb` for the
+climb-first strategy instead.
 
 After the vehicle lands, press **Ctrl+C**. The runner closes the stack and
 automatically saves a recruiter-ready flight report under `demo_artifacts/`.
@@ -180,16 +185,22 @@ ros2 launch px4_offboard full_stack.launch.py trajectory_mode:=circle
 
 Or edit `config/offboard_mission.yaml` / pass `--params-file`.
 
-### Sensor hook
+### Sensor hook / live LiDAR
 
-Publish obstacle sectors to override geometry (for LiDAR / depth / sim sensors):
+Default full-stack launch uses **`gz_x500_lidar_2d`** plus `lidar_sectors`, which reads the Gazebo GPU LiDAR and publishes:
 
 ```bash
-ros2 topic pub /px4_offboard/obstacle_dir std_msgs/msg/String "{data: front}"
-# data: front | left | right | none
+/px4_offboard/obstacle_dir      # front | left | right | none
+/px4_offboard/scan              # sensor_msgs/LaserScan (RViz)
+/px4_offboard/lidar_sector_mins # [front, left, right] metres
 ```
 
-Replace `_detect_obstacle()` geometry path when wiring real sensors — avoidance + failsafes stay unchanged.
+`offboard_mission` prefers live LiDAR when fresh; AABB map geometry is only a fallback.
+
+```bash
+ros2 launch px4_offboard full_stack.launch.py use_lidar:=true vehicle:=gz_x500_lidar_2d
+ros2 topic echo /px4_offboard/obstacle_dir
+```
 
 ### Geo-cage & geofence
 

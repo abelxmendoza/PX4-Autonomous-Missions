@@ -97,6 +97,20 @@ def test_ignores_obstacle_when_vehicle_is_above_it():
     assert result is None
 
 
+def test_sidestep_mode_detects_obstacle_even_when_above_it():
+    result = detect_obstacle(
+        position=[0.0, 0.0, -5.0],
+        target=[10.0, 0.0, -5.0],
+        obstacles=[OBSTACLES[0]],
+        detection_margin_m=3.0,
+        front_angle_deg=35.0,
+        side_angle_deg=70.0,
+        detect_when_above=True,
+    )
+
+    assert result == "front"
+
+
 def test_blocking_height_uses_tallest_obstacle_in_corridor():
     height = blocking_height(
         position=[0.0, 0.0, -3.0],
