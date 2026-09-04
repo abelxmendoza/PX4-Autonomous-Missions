@@ -271,10 +271,17 @@ sudo make install
 
 ### 3 — ROS 2 workspace
 
+`px4_msgs` and `px4_ros_com` are PX4's own message/bridge packages and aren't
+vendored in this repo — clone them into `src/` before building, matching
+whatever PX4 firmware version you're running (v1.15+ here):
+
 ```bash
 sudo apt install ros-humble-desktop python3-colcon-common-extensions
 
 cd ~/Desktop/px4-autonomous-mission
+git clone https://github.com/PX4/px4_msgs.git src/px4_msgs
+git clone https://github.com/PX4/px4_ros_com.git src/px4_ros_com
+
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/setup.bash
