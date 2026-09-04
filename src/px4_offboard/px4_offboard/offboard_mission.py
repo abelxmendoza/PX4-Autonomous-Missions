@@ -41,6 +41,7 @@ from std_msgs.msg import Bool, Float32MultiArray, String
 from px4_msgs.msg import (
     OffboardControlMode,
     TrajectorySetpoint,
+    VehicleAttitude,
     VehicleCommand,
     VehicleControlMode,
     VehicleLocalPosition,
@@ -155,6 +156,12 @@ class OffboardMission(Node):
             self._position_callback,
             qos_sub,
         )
+        self.create_subscription(
+            VehicleAttitude,
+            "/fmu/out/vehicle_attitude",
+            self._attitude_callback,
+            qos_sub,
+        )
         # PX4 v1.15+ publishes the live topic as vehicle_status_v1
         self.create_subscription(
             VehicleStatus,
@@ -196,8 +203,20 @@ class OffboardMission(Node):
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_z = 0.0
+        self.current_vx = 0.0
+        self.current_vy = 0.0
+        self.current_vz = 0.0
         self._pos_stamp = 0.0
         self._have_position = False
+
+        # Attitude — roll/pitch/yaw (radians), converted from the FRD-body→NED
+        # quaternion PX4 publishes on vehicle_attitude. Logged and used for
+        # real drone orientation in the web replay viewer (previously the
+        # viewer inferred heading from direction of travel only).
+        self.current_roll = 0.0
+        self.current_pitch = 0.0
+        self.current_yaw = 0.0
+        self._have_attitude = False
 
         self._nav_state = -1
         self._arming_state = -1
@@ -365,6 +384,12 @@ class OffboardMission(Node):
                 "geofence",
                 "inside",
                 "caged",
+                "roll_deg",
+                "pitch_deg",
+                "yaw_deg",
+                "vn",
+                "ve",
+                "vd",
             ]
         )
         self.get_logger().info(f"Logging to {path}")
@@ -375,7 +400,7 @@ class OffboardMission(Node):
         inside = self._inside_fence(self.current_x, self.current_y, self.current_z)
         self._log_writer.writerow(
             [
-                time.strftime("%H:%M:%S"),
+                time.strftime("%H:%M:%S.%f")[:-3],
                 self._state.name,
                 round(self.current_x, 3),
                 round(self.current_y, 3),
@@ -389,6 +414,12 @@ class OffboardMission(Node):
                 int(self.geofence_enable),
                 int(inside),
                 int(self._geocage_hit),
+                round(math.degrees(self.current_roll), 2),
+                round(math.degrees(self.current_pitch), 2),
+                round(math.degrees(self.current_yaw), 2),
+                round(self.current_vx, 3),
+                round(self.current_vy, 3),
+                round(self.current_vz, 3),
             ]
         )
         self._log_file.flush()
@@ -399,8 +430,26 @@ class OffboardMission(Node):
         self.current_x = msg.x
         self.current_y = msg.y
         self.current_z = msg.z
+        self.current_vx = msg.vx
+        self.current_vy = msg.vy
+        self.current_vz = msg.vz
         self._pos_stamp = time.monotonic()
         self._have_position = True
+
+    def _attitude_callback(self, msg: VehicleAttitude):
+        # q is [w, x, y, z], Hamilton convention, FRD body → NED earth frame.
+        # Standard aerospace ZYX Euler extraction (same formula PX4/MAVLink use).
+        qw, qx, qy, qz = msg.q[0], msg.q[1], msg.q[2], msg.q[3]
+        self.current_roll = math.atan2(
+            2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx * qx + qy * qy)
+        )
+        sinp = 2.0 * (qw * qy - qz * qx)
+        sinp = max(-1.0, min(1.0, sinp))
+        self.current_pitch = math.asin(sinp)
+        self.current_yaw = math.atan2(
+            2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz)
+        )
+        self._have_attitude = True
 
     def _status_callback(self, msg: VehicleStatus):
         self._nav_state = msg.nav_state
