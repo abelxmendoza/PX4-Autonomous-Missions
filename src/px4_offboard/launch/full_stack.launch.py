@@ -123,6 +123,14 @@ def _launch_setup(context, *args, **kwargs):
         ],
     )
 
+    demo_hud_node = Node(
+        package="px4_offboard",
+        executable="demo_hud",
+        name="demo_hud",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("demo_mode")),
+    )
+
     # Boot order: PX4/Gazebo → XRCE → fake GCS heartbeat → mission + trail
     # Delays assume a warm PX4 build (cold cmake can take minutes — use scripts/run_full_stack.sh)
     delayed_xrce = TimerAction(period=6.0, actions=[xrce_agent])
@@ -146,6 +154,7 @@ def _launch_setup(context, *args, **kwargs):
         delayed_gcs,
         delayed_trail,
         delayed_mission,
+        demo_hud_node,
         delayed_mavros,
     ]
 
@@ -172,6 +181,11 @@ def generate_launch_description():
                 "hover_alt_m",
                 default_value="5.0",
                 description="Mission altitude AGL (metres)",
+            ),
+            DeclareLaunchArgument(
+                "demo_mode",
+                default_value="false",
+                description="Show concise recruiter-friendly mission telemetry",
             ),
             DeclareLaunchArgument(
                 "use_mavros",

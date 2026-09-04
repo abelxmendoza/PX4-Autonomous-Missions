@@ -72,6 +72,37 @@ MAVSDK scripts (mission.py / offboard_avoidance.py)
 
 ---
 
+## Recruiter Demo Mode
+
+Launch the visible Gazebo mission with a concise presentation feed:
+
+```bash
+./scripts/run_demo.sh
+```
+
+The demo starts PX4 SITL, Gazebo, Micro XRCE-DDS, the autonomous mission,
+the in-world flight trail, and a readable console HUD. The HUD highlights
+mission-phase transitions, obstacle-avoidance events, position, altitude,
+waypoint progress, and geofence health.
+
+After the vehicle lands, press **Ctrl+C**. The runner closes the stack and
+automatically saves a recruiter-ready flight report under `demo_artifacts/`.
+The source telemetry CSV remains in the repository root.
+
+Available mission variants:
+
+```bash
+./scripts/run_demo.sh waypoints  # reactive avoidance (best live demo)
+./scripts/run_demo.sh course     # pre-planned clearance route
+./scripts/run_demo.sh circle     # orbit demonstration
+```
+
+For a recorded portfolio clip, capture Gazebo and QGroundControl side by side
+while this command runs. Keep the video to 60–90 seconds and finish on the
+generated flight report.
+
+---
+
 ## Obstacle World Layout
 
 Five static obstacles in `worlds/obstacle_world.sdf` (GPS origin `47.397742°N, 8.545594°E`):

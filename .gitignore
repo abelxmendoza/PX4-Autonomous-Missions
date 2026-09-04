@@ -9,3 +9,4 @@ install/
 log/
 mavsdk_server
 .vscode/
+demo_artifacts/

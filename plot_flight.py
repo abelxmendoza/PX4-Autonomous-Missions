@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import glob
 import os
 
@@ -9,19 +10,35 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Plot PX4 mission telemetry")
+    parser.add_argument("--log", help="CSV log to plot (defaults to latest)")
+    parser.add_argument(
+        "--output", default=os.path.join(ROOT, "flight_plot.png"),
+        help="PNG output path",
+    )
+    parser.add_argument(
+        "--no-show", action="store_true", help="save without opening a window"
+    )
+    return parser.parse_args()
+
+
+args = parse_args()
 logs = sorted(glob.glob(os.path.join(ROOT, "flight_log_*.csv")))
-if not logs:
-    print("No flight logs found.")
+latest = os.path.abspath(args.log) if args.log else (logs[-1] if logs else None)
+if latest is None or not os.path.isfile(latest):
+    print("No flight log found.")
     raise SystemExit(1)
 
-latest = logs[-1]
 print(f"Plotting: {latest}")
 df = pd.read_csv(latest)
 is_mission = "north" in df.columns
 
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 title = "Offboard Mission — NED Telemetry" if is_mission else "Flight Telemetry"
-fig.suptitle(title, fontsize=14, fontweight="bold")
+fig.suptitle(f"PX4 Autonomous Mission Demo — {title}", fontsize=14, fontweight="bold")
 
 if is_mission:
     ax1 = axes[0, 0]
@@ -30,6 +47,20 @@ if is_mission:
     ax1.scatter(df["east"].iloc[-1], df["north"].iloc[-1], c="red", s=80, zorder=5, label="End")
     if "tgt_e" in df.columns:
         ax1.plot(df["tgt_e"], df["tgt_n"], "c--", alpha=0.5, linewidth=1, label="setpoint")
+    obstacle_specs = [
+        (-6.0, 10.0, 3.0, 3.0, "#d92626"),
+        (10.0, 10.0, 3.0, 3.0, "#e6800d"),
+        (-8.0, 24.0, 4.0, 3.0, "#269926"),
+        (6.0, 24.0, 2.0, 2.0, "#2626d9"),
+        (0.0, 38.0, 5.0, 3.0, "#a600bf"),
+    ]
+    for east, north, width, depth, color in obstacle_specs:
+        ax1.add_patch(
+            plt.Rectangle(
+                (east - width / 2, north - depth / 2), width, depth,
+                color=color, alpha=0.55,
+            )
+        )
     ax1.set_title("Path (East / North)")
     ax1.set_xlabel("East (m)")
     ax1.set_ylabel("North (m)")
@@ -104,7 +135,9 @@ else:
     ax4.grid(True)
 
 plt.tight_layout()
-output = os.path.join(ROOT, "flight_plot.png")
+output = os.path.abspath(args.output)
+os.makedirs(os.path.dirname(output), exist_ok=True)
 plt.savefig(output, dpi=150)
 print(f"Plot saved to: {output}")
-plt.show()
+if not args.no_show:
+    plt.show()

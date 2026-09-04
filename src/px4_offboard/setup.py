@@ -26,6 +26,7 @@ setup(
             "offboard_control = px4_offboard.offboard_control:main",
             "offboard_mission = px4_offboard.offboard_mission:main",
             "flight_trail = px4_offboard.flight_trail:main",
+            "demo_hud = px4_offboard.demo_hud:main",
         ],
     },
 )

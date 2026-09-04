@@ -27,9 +27,9 @@ Toggle at runtime:
 from __future__ import annotations
 
 import csv
-import math
+import json
 import time
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
 
 import rclpy
@@ -45,6 +45,25 @@ from px4_msgs.msg import (
     VehicleLocalPosition,
     VehicleStatus,
 )
+from px4_offboard.mission_logic import (
+    Fence,
+    Obstacle,
+    blocking_height,
+    circle_target,
+    detect_obstacle,
+    distance_3d,
+    yaw_toward,
+)
+from px4_offboard.mission_state import (
+    FailsafeInputs,
+    MissionStateMachine,
+    State,
+    arming_complete,
+    failsafe_reason,
+    hover_complete,
+    should_start_arming,
+    takeoff_complete,
+)
 
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
@@ -55,24 +74,14 @@ class TrajectoryMode(Enum):
     CIRCLE = "circle"         # orbit, then land after max_orbits
 
 
-class State(Enum):
-    PREFLIGHT = auto()
-    ARMING = auto()
-    TAKEOFF = auto()
-    HOVER = auto()
-    MOVE = auto()
-    LANDING = auto()
-    FAILSAFE = auto()
-
-
 # Obstacle AABB: (east_m, north_m, size_e, size_n, height_m) — matches obstacle_world.sdf
-OBSTACLE_BOXES = [
-    (-6.0, 10.0, 3.0, 3.0, 4.0),   # OB1 red
-    (10.0, 10.0, 3.0, 3.0, 6.0),   # OB2 orange
-    (-8.0, 24.0, 4.0, 3.0, 4.0),   # OB3 green
-    (6.0, 24.0, 2.0, 2.0, 5.0),    # OB4 blue
-    (0.0, 38.0, 5.0, 3.0, 4.0),    # OB5 purple
-]
+OBSTACLE_BOXES = (
+    Obstacle(-6.0, 10.0, 3.0, 3.0, 4.0),   # OB1 red
+    Obstacle(10.0, 10.0, 3.0, 3.0, 6.0),   # OB2 orange
+    Obstacle(-8.0, 24.0, 4.0, 3.0, 4.0),   # OB3 green
+    Obstacle(6.0, 24.0, 2.0, 2.0, 5.0),    # OB4 blue
+    Obstacle(0.0, 38.0, 5.0, 3.0, 4.0),    # OB5 purple
+)
 
 # Reactive path: approaches obstacles so AABB avoidance must engage.
 # NED [north, east, down] — z negative = up.
@@ -135,6 +144,9 @@ class OffboardMission(Node):
             String, "/px4_offboard/fence_status", 10
         )
         self._pub_avoiding = self.create_publisher(Bool, "/px4_offboard/avoiding", 10)
+        self._pub_mission_status = self.create_publisher(
+            String, "/px4_offboard/mission_status", 10
+        )
 
         self.create_subscription(
             VehicleLocalPosition,
@@ -180,8 +192,9 @@ class OffboardMission(Node):
         self._arming_state = -1
         self._flag_armed = False
         self._flag_offboard = False
+        self._last_obstacle = None
 
-        self._state = State.PREFLIGHT
+        self._state_machine = MissionStateMachine()
         self._counter = 0
         self._hover_timer = 0.0
         self._mission_t = 0.0
@@ -288,6 +301,13 @@ class OffboardMission(Node):
         action = str(self.get_parameter("geofence_action").value).lower()
         self.geofence_action = action if action in ("land", "hold", "rtl") else "land"
         self.px4_fence_cmd = bool(self.get_parameter("px4_fence_cmd").value)
+        self.fence = Fence(
+            self.fence_n_min,
+            self.fence_n_max,
+            self.fence_e_min,
+            self.fence_e_max,
+            self.fence_alt_max,
+        )
 
         if self.trajectory_mode == TrajectoryMode.COURSE:
             # Clearance path flies above tallest obstacle (OB2 = 6 m)
@@ -404,7 +424,7 @@ class OffboardMission(Node):
             self._publish_setpoint(target)
             if self._counter == self.preflight_cycles:
                 self._send_offboard_mode()
-            if self._counter == self.preflight_cycles + 5:
+            if should_start_arming(self._counter, self.preflight_cycles):
                 self._send_arm()
                 if self.px4_fence_cmd and self.geofence_enable:
                     self._send_px4_fence_enable(True)
@@ -418,22 +438,22 @@ class OffboardMission(Node):
             if self._counter % 20 == 0:  # every 2 s
                 self._send_offboard_mode()
                 self._send_arm()
-            armed = self._flag_armed or self._arming_state == 2
-            offboard = self._flag_offboard or self._nav_state == 14
-            if armed and offboard:
-                self._transition(State.TAKEOFF)
-            # Fallback: already airborne from prior arm (stale sim session)
-            elif self._have_position and abs(self.current_z) > 1.0 and self._counter > 50:
-                self.get_logger().warn(
-                    "ARMING fallback — position indicates airborne; advancing"
-                )
+            if arming_complete(
+                self._flag_armed,
+                self._arming_state,
+                self._flag_offboard,
+                self._nav_state,
+                self._have_position,
+                self.current_z,
+                self._counter,
+            ):
                 self._transition(State.TAKEOFF)
 
         elif self._state == State.TAKEOFF:
             target = [0.0, 0.0, -self.hover_alt]
             target = self._apply_geocage(target)
             self._publish_setpoint(target)
-            if abs(self.current_z - (-self.hover_alt)) < self.takeoff_z_tol:
+            if takeoff_complete(self.current_z, self.hover_alt, self.takeoff_z_tol):
                 self._transition(State.HOVER)
 
         elif self._state == State.HOVER:
@@ -441,13 +461,14 @@ class OffboardMission(Node):
             target = self._apply_geocage(target)
             self._publish_setpoint(target)
             self._hover_timer += 0.1
-            if self._hover_timer >= self.hover_hold_s:
+            if hover_complete(self._hover_timer, self.hover_hold_s):
                 self._last_wp_progress_t = time.monotonic()
                 self._transition(State.MOVE)
 
         elif self._state == State.MOVE:
             target = self._next_target()
             obs = self._detect_obstacle(target)
+            self._last_obstacle = obs
             target = self._apply_avoidance(target, obs)
             target = self._apply_geocage(target)
             self._publish_setpoint(target)
@@ -496,37 +517,38 @@ class OffboardMission(Node):
 
         if self._counter % 10 == 0:  # 1 Hz status
             self._publish_fence_status()
+            self._publish_mission_status()
 
         self._counter += 1
 
     def _check_failsafes(self) -> bool:
         now = time.monotonic()
-
-        if self._have_position and (now - self._pos_stamp) > self.position_timeout:
-            return self._enter_failsafe("position timeout (XRCE / EKF)")
-
-        if self._state == State.MOVE and self._mission_t > self.mission_timeout:
-            return self._enter_failsafe("mission timeout")
-
-        if (
-            self._state == State.MOVE
-            and self._avoid_active_t > 0
-            and (now - self._avoid_active_t) > self.avoid_stuck_s
-            and (now - self._last_wp_progress_t) > self.avoid_stuck_s
-        ):
-            return self._enter_failsafe("stuck in avoidance without waypoint progress")
-
-        if self.geofence_enable and self._have_position:
-            # Only enforce once airborne — avoids false trip if restarting mid-field
-            if self._state in (State.TAKEOFF, State.HOVER, State.MOVE):
-                if not self._inside_fence(self.current_x, self.current_y, self.current_z):
-                    self._geofence_breach = True
-                    return self._enter_failsafe(
-                        f"geofence breach at N={self.current_x:.1f} E={self.current_y:.1f} "
-                        f"alt={-self.current_z:.1f}"
-                    )
-
-        return False
+        reason = failsafe_reason(
+            FailsafeInputs(
+                state=self._state,
+                now_s=now,
+                have_position=self._have_position,
+                position_stamp_s=self._pos_stamp,
+                position_timeout_s=self.position_timeout,
+                mission_elapsed_s=self._mission_t,
+                mission_timeout_s=self.mission_timeout,
+                avoidance_started_s=self._avoid_active_t,
+                waypoint_progress_s=self._last_wp_progress_t,
+                avoidance_stuck_s=self.avoid_stuck_s,
+                geofence_enabled=self.geofence_enable,
+                inside_fence=self._inside_fence(
+                    self.current_x, self.current_y, self.current_z
+                ),
+                north_m=self.current_x,
+                east_m=self.current_y,
+                down_m=self.current_z,
+            )
+        )
+        if reason is None:
+            return False
+        if reason.startswith("geofence breach"):
+            self._geofence_breach = True
+        return self._enter_failsafe(reason)
 
     def _enter_failsafe(self, reason: str) -> bool:
         self._failsafe_reason = reason
@@ -561,18 +583,12 @@ class OffboardMission(Node):
         if self._mission_t >= self.max_orbits * self.circle_period:
             self._transition(State.LANDING)
             return [0.0, 0.0, -self.hover_alt]
-        angle = (2 * math.pi / self.circle_period) * self._mission_t
-        return [
-            self.circle_radius * math.cos(angle),
-            self.circle_radius * math.sin(angle),
-            -self.hover_alt,
-        ]
+        return circle_target(
+            self._mission_t, self.circle_radius, self.circle_period, self.hover_alt
+        )
 
     def _distance_to_wp(self, target: list) -> float:
-        dx = self.current_x - target[0]
-        dy = self.current_y - target[1]
-        dz = self.current_z - target[2]
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
+        return distance_3d([self.current_x, self.current_y, self.current_z], target)
 
     # ── Obstacle detection (AABB + optional sensor) ───────────────────────────
 
@@ -585,55 +601,14 @@ class OffboardMission(Node):
         if self._sensor_stamp and (now - self._sensor_stamp) < self.sensor_timeout:
             return self._sensor_dir
 
-        dx = target[0] - self.current_x
-        dy = target[1] - self.current_y
-        if abs(dx) < 1e-3 and abs(dy) < 1e-3:
-            return None
-        travel_yaw = math.degrees(math.atan2(dy, dx))
-
-        best: tuple[float, str] | None = None
-        alt_agl = -self.current_z
-
-        for east, north, size_e, size_n, height in OBSTACLE_BOXES:
-            if alt_agl > height + 0.5:
-                continue  # already above this obstacle
-
-            # Vehicle in NED (x=north, y=east); box center in ENU
-            cx, cy = north, east
-            half_n, half_e = size_n / 2.0, size_e / 2.0
-            # Distance from point to AABB in horizontal plane
-            nearest_n = min(max(self.current_x, cx - half_n), cx + half_n)
-            nearest_e = min(max(self.current_y, cy - half_e), cy + half_e)
-            dn = nearest_n - self.current_x
-            de = nearest_e - self.current_y
-            dist = math.hypot(dn, de)
-
-            # Also consider distance to box center for bearing
-            bearing_n = cx - self.current_x
-            bearing_e = cy - self.current_y
-            center_dist = math.hypot(bearing_n, bearing_e)
-            trigger = half_n + half_e  # rough half-diagonal proxy
-            trigger = max(half_n, half_e) + self.detection_margin
-
-            if dist > trigger and center_dist > trigger:
-                continue
-
-            angle = math.degrees(math.atan2(bearing_e, bearing_n))
-            rel = (angle - travel_yaw + 180.0) % 360.0 - 180.0
-
-            if abs(rel) < self.front_angle:
-                label = "front"
-            elif 0 < rel < self.side_angle:
-                label = "left"
-            elif -self.side_angle < rel < 0:
-                label = "right"
-            else:
-                continue
-
-            if best is None or dist < best[0]:
-                best = (dist, label)
-
-        return best[1] if best else None
+        return detect_obstacle(
+            [self.current_x, self.current_y, self.current_z],
+            target,
+            OBSTACLE_BOXES,
+            self.detection_margin,
+            self.front_angle,
+            self.side_angle,
+        )
 
     def _apply_avoidance(self, target: list, obs: str | None) -> list:
         adjusted = list(target)
@@ -671,32 +646,18 @@ class OffboardMission(Node):
 
     def _blocking_height(self, target: list) -> float:
         """Tallest obstacle near the travel corridor."""
-        dx = target[0] - self.current_x
-        dy = target[1] - self.current_y
-        travel_yaw = math.degrees(math.atan2(dy, dx)) if (abs(dx) + abs(dy)) > 1e-3 else 0.0
-        tallest = 0.0
-        for east, north, size_e, size_n, height in OBSTACLE_BOXES:
-            cx, cy = north, east
-            bearing_n = cx - self.current_x
-            bearing_e = cy - self.current_y
-            dist = math.hypot(bearing_n, bearing_e)
-            if dist > max(size_n, size_e) + self.detection_margin + 1.0:
-                continue
-            angle = math.degrees(math.atan2(bearing_e, bearing_n))
-            rel = (angle - travel_yaw + 180.0) % 360.0 - 180.0
-            if abs(rel) < self.side_angle:
-                tallest = max(tallest, height)
-        return tallest
+        return blocking_height(
+            [self.current_x, self.current_y, self.current_z],
+            target,
+            OBSTACLE_BOXES,
+            self.detection_margin,
+            self.side_angle,
+        )
 
     # ── Geo-cage / geofence ───────────────────────────────────────────────────
 
     def _inside_fence(self, north: float, east: float, down: float) -> bool:
-        alt = -down
-        return (
-            self.fence_n_min <= north <= self.fence_n_max
-            and self.fence_e_min <= east <= self.fence_e_max
-            and alt <= self.fence_alt_max + 0.05
-        )
+        return self.fence.contains([north, east, down])
 
     def _apply_geocage(self, target: list) -> list:
         """
@@ -707,22 +668,7 @@ class OffboardMission(Node):
             self._geocage_hit = False
             return target
 
-        m = self.geocage_margin
-        n_lo, n_hi = self.fence_n_min + m, self.fence_n_max - m
-        e_lo, e_hi = self.fence_e_min + m, self.fence_e_max - m
-        if n_lo >= n_hi or e_lo >= e_hi:
-            n_lo, n_hi = self.fence_n_min, self.fence_n_max
-            e_lo, e_hi = self.fence_e_min, self.fence_e_max
-
-        caged = list(target)
-        caged[0] = min(max(caged[0], n_lo), n_hi)
-        caged[1] = min(max(caged[1], e_lo), e_hi)
-        # Clamp altitude AGL (NED down is negative up)
-        min_down = -self.fence_alt_max
-        if caged[2] < min_down:
-            caged[2] = min_down
-
-        self._geocage_hit = caged != list(target)
+        caged, self._geocage_hit = self.fence.clamp(target, self.geocage_margin)
         if self._geocage_hit:
             self.get_logger().warn(
                 f"GEO-CAGE clamp → N={caged[0]:.1f} E={caged[1]:.1f} "
@@ -746,6 +692,29 @@ class OffboardMission(Node):
             f"action={self.geofence_action}"
         )
         self._pub_fence_status.publish(msg)
+
+    def _publish_mission_status(self):
+        """Publish a stable, presentation-friendly snapshot for demo tooling."""
+        inside = (
+            self._inside_fence(self.current_x, self.current_y, self.current_z)
+            if self._have_position
+            else True
+        )
+        payload = {
+            "state": self._state.name,
+            "mode": self.trajectory_mode.value,
+            "north_m": round(self.current_x, 2),
+            "east_m": round(self.current_y, 2),
+            "altitude_m": round(-self.current_z, 2),
+            "waypoint": min(self._wp_index + 1, len(self.waypoints)),
+            "waypoints_total": len(self.waypoints),
+            "obstacle": self._last_obstacle or "none",
+            "armed": self._flag_armed,
+            "offboard": self._flag_offboard,
+            "inside_geofence": inside,
+            "failsafe": self._failsafe_reason or "none",
+        }
+        self._pub_mission_status.publish(String(data=json.dumps(payload)))
 
     def _send_px4_fence_enable(self, enable: bool):
         """Best-effort: enable/disable PX4 onboard geofence module (if configured)."""
@@ -814,17 +783,17 @@ class OffboardMission(Node):
 
     def _transition(self, new_state: State):
         self.get_logger().info(f"  {self._state.name} → {new_state.name}")
-        self._state = new_state
+        self._state_machine.transition(new_state)
+
+    @property
+    def _state(self) -> State:
+        return self._state_machine.state
 
     def _ts(self) -> int:
         return self.get_clock().now().nanoseconds // 1000
 
     def _yaw_toward(self, target: list) -> float:
-        dx = target[0] - self.current_x
-        dy = target[1] - self.current_y
-        if abs(dx) < 0.1 and abs(dy) < 0.1:
-            return float("nan")
-        return math.atan2(dy, dx)
+        return yaw_toward([self.current_x, self.current_y, self.current_z], target)
 
     def destroy_node(self):
         if self._log_file:
