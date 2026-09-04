@@ -13,6 +13,7 @@ from px4_offboard.mission_logic import (
     sensor_bypass_target,
     sensor_bypass_plan,
     sensor_hit_within_segment,
+    segment_endpoint_passed,
     yaw_toward,
 )
 
@@ -218,4 +219,13 @@ def test_sensor_return_beyond_alignment_waypoint_is_not_actionable():
 def test_sensor_return_on_long_following_leg_is_actionable():
     assert sensor_hit_within_segment(
         [5.0, -6.0, -3.5], [15.0, -6.0, -3.5], "front", 4.9, 20.0, 4.4
+    )
+
+
+def test_cross_track_bypass_that_passes_finish_plane_completes_leg():
+    assert segment_endpoint_passed(
+        [15.0, -6.0, -3.5], [18.0, 0.0, -3.5], [25.0, 2.0, -3.5], 0.6
+    )
+    assert not segment_endpoint_passed(
+        [5.0, -6.0, -3.5], [15.0, -6.0, -3.5], [12.0, -10.0, -3.5], 0.6
     )

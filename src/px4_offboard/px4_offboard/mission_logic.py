@@ -189,6 +189,25 @@ def sensor_hit_within_segment(
     return hit_range <= leg_length + endpoint_margin_m
 
 
+def segment_endpoint_passed(
+    origin: Vector3,
+    endpoint: Vector3,
+    position: Vector3,
+    tolerance_m: float = 0.0,
+) -> bool:
+    """True after position crosses the plane normal to a horizontal leg."""
+    leg_n = endpoint[0] - origin[0]
+    leg_e = endpoint[1] - origin[1]
+    length = math.hypot(leg_n, leg_e)
+    if length < 1e-6:
+        return True
+    progress = (
+        (position[0] - origin[0]) * leg_n
+        + (position[1] - origin[1]) * leg_e
+    ) / length
+    return progress >= length - tolerance_m
+
+
 def circle_target(
     elapsed_s: float, radius_m: float, period_s: float, altitude_m: float
 ) -> list[float]:

@@ -64,6 +64,7 @@ from px4_offboard.mission_logic import (
     obstacle_clearance,
     sensor_bypass_plan,
     sensor_hit_within_segment,
+    segment_endpoint_passed,
     yaw_toward,
 )
 from px4_offboard.mission_state import (
@@ -101,9 +102,9 @@ DEFAULT_WAYPOINTS = [
     [0.0, 0.0, -5.0],
     [3.0, -6.0, -5.0],    # stage 5.5 m before OB1 so yaw/LiDAR align before entry
     [15.0, -6.0, -5.0],   # beyond OB1; reactive avoidance curves around it
-    [18.0, 0.0, -5.0],
-    [24.0, 0.0, -5.0],    # OB3 / OB4 corridor
-    [32.0, 0.0, -5.0],    # toward OB5
+    [18.0, -14.0, -5.0],  # enter the wide west transit lane
+    [30.0, -14.0, -5.0],  # pass the narrow mid-course corridor safely
+    [31.0, 0.0, -5.0],    # stage 5.5 m before OB5
     [43.0, 0.0, -5.0],    # beyond OB5; reactive avoidance curves around it
     [46.0, 8.0, -5.0],
     [50.0, 0.0, -5.0],
@@ -239,6 +240,8 @@ class OffboardMission(Node):
         self._bypass_target = None
         self._bypass_obstacle = None
         self._sensor_advance_target = None
+        self._sensor_leg_origin = None
+        self._sensor_leg_target = None
         self._bypassed_obstacles = set()
         self._last_bypass_distance = float("inf")
 
@@ -1015,6 +1018,10 @@ class OffboardMission(Node):
                         left_m,
                         right_m,
                     )
+                    self._sensor_leg_origin = [
+                        self.current_x, self.current_y, self.current_z
+                    ]
+                    self._sensor_leg_target = list(target)
                     self._bypass_obstacle = None
                 if self.geocage_enable:
                     self._bypass_target, _ = self.fence.clamp(
@@ -1047,11 +1054,34 @@ class OffboardMission(Node):
                         )
                         return list(self._bypass_target)
                     self.get_logger().info("BYPASS complete -> resuming mission")
+                    if (
+                        self._bypass_obstacle is None
+                        and self._sensor_leg_origin is not None
+                        and self._sensor_leg_target is not None
+                        and segment_endpoint_passed(
+                            self._sensor_leg_origin,
+                            self._sensor_leg_target,
+                            [self.current_x, self.current_y, self.current_z],
+                            tolerance_m=self.wp_accept,
+                        )
+                        and self._wp_index < len(self.waypoints)
+                    ):
+                        self.get_logger().info(
+                            f"WP {self._wp_index} passed during sensor bypass"
+                        )
+                        self._wp_index += 1
+                        self._last_wp_progress_t = time.monotonic()
+                        if self._wp_index >= len(self.waypoints):
+                            self._transition(State.LANDING)
+                        else:
+                            adjusted = list(self.waypoints[self._wp_index])
                     if self._bypass_obstacle is not None:
                         self._bypassed_obstacles.add(self._bypass_obstacle)
                     self._bypass_target = None
                     self._bypass_obstacle = None
                     self._sensor_advance_target = None
+                    self._sensor_leg_origin = None
+                    self._sensor_leg_target = None
                     self._last_bypass_distance = float("inf")
                     self._avoid_active_t = 0.0
                     self._last_wp_progress_t = time.monotonic()
