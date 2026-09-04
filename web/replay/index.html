@@ -511,6 +511,10 @@ const MISSIONS = [
     id: 'quick', file: 'data/mission_quick_avoidance.csv',
     label: 'Reactive Avoidance — Quick Run',
   },
+  {
+    id: 'course', file: 'data/mission_course_attitude.csv',
+    label: 'Pre-Planned Course — Real Attitude',
+  },
 ];
 
 let rows = [];
@@ -603,10 +607,17 @@ function parseCsv(text) {
     o.tgt_n = parseFloat(o.tgt_n); o.tgt_e = parseFloat(o.tgt_e); o.tgt_d = parseFloat(o.tgt_d);
     o.wp_index = parseInt(o.wp_index, 10);
     o.geocage = o.geocage === '1'; o.geofence = o.geofence === '1';
+    // Real PX4 attitude/velocity — absent (NaN) on older recordings made
+    // before offboard_mission.py logged them; callers fall back accordingly.
+    o.roll_deg = parseFloat(o.roll_deg); o.pitch_deg = parseFloat(o.pitch_deg);
+    o.yaw_deg = parseFloat(o.yaw_deg);
+    o.vn = parseFloat(o.vn); o.ve = parseFloat(o.ve); o.vd = parseFloat(o.vd);
     out.push(o);
   }
   return out;
 }
+
+let totalWaypoints = 0;
 
 function buildWaypoints() {
   const seen = new Set();
@@ -628,6 +639,7 @@ function buildWaypoints() {
       n++;
     }
   }
+  totalWaypoints = seen.size;
 }
 
 function buildTrail() {
@@ -676,13 +688,31 @@ function updateFrame(idx, snapToo) {
   const pos = toWorld(r.north, r.east, r.down);
   drone.position.copy(pos);
 
-  // orientation: face direction of travel
-  const prev = rows[Math.max(0, frameIndex - 1)];
-  const prevPos = toWorld(prev.north, prev.east, prev.down);
-  const dir = pos.clone().sub(prevPos);
-  if (dir.lengthSq() > 1e-6) {
-    const yaw = Math.atan2(dir.x, dir.z);
-    drone.rotation.y = yaw;
+  // Orientation. Prefer real PX4 attitude (roll/pitch/yaw from the
+  // vehicle_attitude quaternion, logged since the attitude-instrumentation
+  // pass) so the drone actually banks/pitches; older recordings without
+  // those columns fall back to inferring heading from travel direction only.
+  //
+  // yaw_deg is compass heading (0=North, clockwise+, NED convention). This
+  // frame maps x=east, y=alt, z=-north with local forward=+Z, so facing
+  // world -Z means facing North — which works out to rotation.y = PI - yaw.
+  // Pitch/roll are negated to match PX4's "+pitch=nose up, +roll=right wing
+  // down" against this frame's axes — check a banked turn visually and
+  // flip the sign here if it looks inverted (can't render pixels to verify
+  // this myself in the current sandbox).
+  if (Number.isFinite(r.yaw_deg)) {
+    const yawRad = THREE.MathUtils.degToRad(r.yaw_deg);
+    const pitchRad = THREE.MathUtils.degToRad(r.pitch_deg);
+    const rollRad = THREE.MathUtils.degToRad(r.roll_deg);
+    drone.rotation.set(-pitchRad, Math.PI - yawRad, -rollRad, 'YXZ');
+  } else {
+    const prev = rows[Math.max(0, frameIndex - 1)];
+    const prevPos = toWorld(prev.north, prev.east, prev.down);
+    const dir = pos.clone().sub(prevPos);
+    if (dir.lengthSq() > 1e-6) {
+      const yaw = Math.atan2(dir.x, dir.z);
+      drone.rotation.set(0, yaw, 0, 'XYZ');
+    }
   }
 
   // rebuild trail up to current frame with per-vertex avoidance color
@@ -702,7 +732,7 @@ function updateFrame(idx, snapToo) {
   stateEl.textContent = r.state;
   stateEl.className = 'badge state-' + r.state;
 
-  document.getElementById('hudWp').textContent = r.wp_index + ' / 9';
+  document.getElementById('hudWp').textContent = r.wp_index + ' / ' + totalWaypoints;
   document.getElementById('hudTime').textContent = (frameIndex * DT).toFixed(1) + ' s';
   document.getElementById('hudN').textContent = r.north.toFixed(2) + ' m';
   document.getElementById('hudE').textContent = r.east.toFixed(2) + ' m';
