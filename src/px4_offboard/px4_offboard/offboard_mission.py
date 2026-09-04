@@ -36,7 +36,7 @@ from pathlib import Path
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, Float32MultiArray, String
 
 from px4_msgs.msg import (
     OffboardControlMode,
@@ -176,6 +176,16 @@ class OffboardMission(Node):
             self._sensor_callback,
             10,
         )
+        # Per-sector minimum ranges [front, left, right] — used to check
+        # whether a lateral escape direction is also blocked before
+        # committing to it (a single "obstacle_dir" label can't tell us
+        # whether the *other* side is clear too).
+        self.create_subscription(
+            Float32MultiArray,
+            "/px4_offboard/lidar_sector_mins",
+            self._sensor_mins_callback,
+            10,
+        )
         self.create_subscription(
             Bool, "/px4_offboard/geocage_enable", self._geocage_toggle_cb, 10
         )
@@ -209,6 +219,8 @@ class OffboardMission(Node):
         self._smooth_target = [0.0, 0.0, -self.hover_alt]
         self._sensor_dir: str | None = None
         self._sensor_stamp = 0.0
+        self._sensor_mins: tuple[float, float, float] | None = None
+        self._sensor_mins_stamp = 0.0
         self._failsafe_reason = ""
         self._land_sent = False
         self._geocage_hit = False
@@ -403,6 +415,24 @@ class OffboardMission(Node):
         if value in ("front", "left", "right", "none", ""):
             self._sensor_dir = None if value in ("none", "") else value
             self._sensor_stamp = time.monotonic()
+
+    def _sensor_mins_callback(self, msg: Float32MultiArray):
+        if len(msg.data) == 3:
+            self._sensor_mins = (msg.data[0], msg.data[1], msg.data[2])
+            self._sensor_mins_stamp = time.monotonic()
+
+    def _lateral_blocked(self, side: str) -> bool:
+        """True if the live LiDAR shows `side` (left|right) also within
+        the danger margin — i.e. sidestepping that way would not clear
+        the obstacle either. Unknown/stale sensor data reads as clear,
+        preserving existing AABB-only behaviour."""
+        if self._sensor_mins is None:
+            return False
+        if (time.monotonic() - self._sensor_mins_stamp) >= self.sensor_timeout:
+            return False
+        _, left_m, right_m = self._sensor_mins
+        value = left_m if side == "left" else right_m
+        return 0.0 <= value < self.detection_margin
 
     def _geocage_toggle_cb(self, msg: Bool):
         self.geocage_enable = bool(msg.data)
@@ -641,25 +671,42 @@ class OffboardMission(Node):
 
         if self.avoidance_strategy == "sidestep":
             if self._bypass_target is None and obs is not None:
-                nearest = min(
-                    (
-                        obstacle
-                        for obstacle in OBSTACLE_BOXES
-                        if obstacle not in self._bypassed_obstacles
-                    ),
-                    key=lambda obstacle: math.hypot(
-                        obstacle.north - self.current_x,
-                        obstacle.east - self.current_y,
-                    ),
-                )
-                self._bypass_target = [
-                    nearest.north
-                    + nearest.size_north / 2.0
-                    + min(self.detection_margin, 2.5),
-                    nearest.east + self.sidestep_m,
-                    target[2],
+                remaining = [
+                    obstacle
+                    for obstacle in OBSTACLE_BOXES
+                    if obstacle not in self._bypassed_obstacles
                 ]
-                self._bypass_obstacle = nearest
+                if remaining:
+                    nearest = min(
+                        remaining,
+                        key=lambda obstacle: math.hypot(
+                            obstacle.north - self.current_x,
+                            obstacle.east - self.current_y,
+                        ),
+                    )
+                    self._bypass_target = [
+                        nearest.north
+                        + nearest.size_north / 2.0
+                        + min(self.detection_margin, 2.5),
+                        nearest.east + self.sidestep_m,
+                        target[2],
+                    ]
+                    self._bypass_obstacle = nearest
+                else:
+                    # Live LiDAR sees something ahead that isn't in the
+                    # known AABB map (or every mapped obstacle is already
+                    # bypassed) — sidestep from the current position instead
+                    # of relying on obstacle geometry.
+                    self._bypass_target = [
+                        self.current_x + max(self.detection_margin, 2.5),
+                        self.current_y + self.sidestep_m,
+                        target[2],
+                    ]
+                    self._bypass_obstacle = None
+                if self.geocage_enable:
+                    self._bypass_target, _ = self.fence.clamp(
+                        self._bypass_target, self.geocage_margin
+                    )
                 self._last_bypass_distance = self._distance_to_wp(
                     self._bypass_target
                 )
@@ -720,19 +767,35 @@ class OffboardMission(Node):
         self._pub_avoiding.publish(Bool(data=True))
         self.get_logger().warn(f"AVOID {obs}", throttle_duration_sec=1.0)
 
+        blocking_h = self._blocking_height(target)
+        climb_alt = blocking_h + self.climb_clearance
+        can_climb = climb_alt <= self.max_alt
+
         if obs == "front":
             if self.avoidance_strategy == "climb":
-                # Prefer climb if obstacle is short enough; else sidestep east.
-                blocking_h = self._blocking_height(target)
-                climb_alt = blocking_h + self.climb_clearance
-                if climb_alt <= self.max_alt:
+                if can_climb:
                     adjusted[2] = -climb_alt
                 else:
                     adjusted[1] += self.sidestep_m
+                    if self._lateral_blocked("right"):
+                        self.get_logger().error(
+                            "AVOID front: boxed in (too tall to climb, "
+                            "right side also blocked)",
+                            throttle_duration_sec=2.0,
+                        )
         elif obs == "left":
-            adjusted[1] += self.sidestep_m
+            # Escaping "left" means steering east; if the right side is
+            # also blocked, that escape would clip a second obstacle —
+            # climb over instead, when there's altitude room to do so.
+            if can_climb and self._lateral_blocked("right"):
+                adjusted[2] = -climb_alt
+            else:
+                adjusted[1] += self.sidestep_m
         elif obs == "right":
-            adjusted[1] -= self.sidestep_m
+            if can_climb and self._lateral_blocked("left"):
+                adjusted[2] = -climb_alt
+            else:
+                adjusted[1] -= self.sidestep_m
 
         # Smooth only while avoiding — prevents setpoint step jumps
         a = self.avoid_smooth

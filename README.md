@@ -83,12 +83,12 @@ Launch the visible Gazebo mission with a concise presentation feed:
 The demo starts PX4 SITL, Gazebo, Micro XRCE-DDS, the autonomous mission,
 the in-world flight trail, and a readable console HUD. The HUD highlights
 mission-phase transitions, obstacle-avoidance events, position, altitude,
-waypoint progress, and geofence health. Demo mode forces a 6 m lateral
-sidestep so avoidance is clearly visible in both the world and flight trail;
-demo detection also starts 5 m outside the obstacle boundary so the turn is
-established early. Normal `full_stack.launch.py` launches also default to
-`avoidance_strategy:=sidestep`; pass `avoidance_strategy:=climb` for the
-climb-first strategy instead.
+waypoint progress, and geofence health. Both the demo and normal
+`full_stack.launch.py` launches default to `avoidance_strategy:=climb`
+(vertical clearance). `avoidance_strategy:=sidestep` (lateral bypass) is
+available as an opt-in / beta strategy — it only reasons about the nearest
+obstacle, so in dense clusters it can route around one obstacle and into
+another; use it with caution outside sparse obstacle layouts.
 
 After the vehicle lands, press **Ctrl+C**. The runner closes the stack and
 automatically saves a recruiter-ready flight report under `demo_artifacts/`.

@@ -82,6 +82,7 @@ class LidarSectors(Node):
         self.declare_parameter("side_angle_deg", 90.0)
         self.declare_parameter("publish_hz", 20.0)
         self.declare_parameter("fallback_none", True)
+        self.declare_parameter("confirm_ticks", 2)
 
         self.gz_topic = str(self.get_parameter("gz_topic").value)
         self.trigger_m = float(self.get_parameter("trigger_m").value)
@@ -90,10 +91,14 @@ class LidarSectors(Node):
         self.side_deg = float(self.get_parameter("side_angle_deg").value)
         self.publish_hz = float(self.get_parameter("publish_hz").value)
         self.fallback_none = bool(self.get_parameter("fallback_none").value)
+        self.confirm_ticks = max(1, int(self.get_parameter("confirm_ticks").value))
 
         self._lock = threading.Lock()
         self._latest: GzLaserScan | None = None
         self._last_label = "none"
+        self._published_label = "none"
+        self._pending_label = "none"
+        self._pending_count = 0
         self._scan_count = 0
         self._gz = None
 
@@ -150,8 +155,17 @@ class LidarSectors(Node):
             self.side_deg,
         )
 
+        candidate = label if label else "none"
+        if candidate == self._pending_label:
+            self._pending_count += 1
+        else:
+            self._pending_label = candidate
+            self._pending_count = 1
+        if self._pending_count >= self.confirm_ticks:
+            self._published_label = candidate
+
         out = String()
-        out.data = label if label else "none"
+        out.data = self._published_label
         self._pub_dir.publish(out)
 
         mins_msg = Float32MultiArray()

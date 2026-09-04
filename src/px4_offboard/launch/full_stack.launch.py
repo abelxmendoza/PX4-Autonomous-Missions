@@ -216,7 +216,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "lidar_trigger_m",
-                default_value="4.0",
+                default_value="6.0",
                 description="LiDAR sector trigger distance (metres)",
             ),
             DeclareLaunchArgument(
@@ -231,17 +231,22 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "detection_margin_m",
-                default_value="2.5",
+                default_value="5.0",
                 description="AABB fallback detection margin (metres)",
             ),
             DeclareLaunchArgument(
                 "avoidance_strategy",
-                default_value="sidestep",
-                description="climb | sidestep",
+                default_value="climb",
+                description=(
+                    "climb (default, vertical clearance) | sidestep "
+                    "(lateral bypass — only reasons about the nearest "
+                    "obstacle, can clip a second one in dense clusters; "
+                    "opt-in / beta)"
+                ),
             ),
             DeclareLaunchArgument(
                 "sidestep_m",
-                default_value="2.0",
+                default_value="4.0",
                 description="Lateral avoidance offset in metres",
             ),
             DeclareLaunchArgument(
