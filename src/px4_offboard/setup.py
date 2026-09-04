@@ -16,6 +16,7 @@ setup(
         (os.path.join("share", package_name, "rviz"), glob("rviz/*.rviz")),
     ],
     install_requires=["setuptools"],
+    tests_require=["pytest"],
     zip_safe=True,
     maintainer="Abel",
     maintainer_email="abelxmendoza@gmail.com",
