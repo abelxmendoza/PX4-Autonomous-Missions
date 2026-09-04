@@ -39,7 +39,8 @@
   header a{color:var(--accent);text-decoration:none;font-size:12px;}
   header a:hover{text-decoration:underline;}
 
-  .hud{top:56px;right:16px;width:230px;display:flex;flex-direction:column;gap:8px;}
+  .hud{top:56px;right:16px;width:230px;max-height:calc(100vh - 150px);overflow-y:auto;
+    display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;}
   .card{background:var(--panel);border:1px solid var(--panel-b);border-radius:10px;
     padding:10px 12px;font-size:12px;backdrop-filter:blur(6px);}
   .card h2{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
@@ -65,6 +66,12 @@
 
   .legend .item{display:flex;align-items:center;gap:6px;padding:2px 0;color:var(--muted);}
   .legend .sw{width:10px;height:10px;border-radius:2px;flex:none;}
+
+  .toggle-row{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;user-select:none;}
+  .toggle-row input{accent-color:var(--accent);width:13px;height:13px;flex:none;cursor:pointer;}
+  .toggle-row .sw{width:10px;height:10px;border-radius:2px;flex:none;}
+  .toggle-row span.label{flex:1;}
+  .toggle-row span.hint{color:var(--muted);font-size:10.5px;}
 
   .transport{left:16px;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;
     max-width:900px;margin:0 auto;}
@@ -157,6 +164,27 @@
         <span><span id="dotCage" class="dot off"></span><span id="hudCage" class="v">–</span></span></div>
       <div class="row"><span class="k">Geofence</span>
         <span><span id="dotFence" class="dot off"></span><span id="hudFence" class="v">–</span></span></div>
+    </div>
+    <div class="card">
+      <h2>Overlays</h2>
+      <label class="toggle-row">
+        <input type="checkbox" id="toggleFence"/>
+        <span class="sw" style="background:transparent;border:1.5px solid #ff5555;"></span>
+        <span class="label">Geofence</span>
+        <span class="hint">hard</span>
+      </label>
+      <label class="toggle-row">
+        <input type="checkbox" id="toggleCage"/>
+        <span class="sw" style="background:transparent;border:1.5px solid #4da3ff;"></span>
+        <span class="label">Geo-cage</span>
+        <span class="hint">soft</span>
+      </label>
+      <label class="toggle-row">
+        <input type="checkbox" id="toggleLidar"/>
+        <span class="sw" style="background:transparent;border:1.5px solid #7CFC00;"></span>
+        <span class="label">LiDAR range</span>
+        <span class="hint">4.0m</span>
+      </label>
     </div>
     <div class="card legend">
       <h2>Obstacle Course</h2>
@@ -295,6 +323,125 @@ for (const ob of OBSTACLES) {
   edges.position.copy(mesh.position);
   scene.add(edges);
 }
+
+// ---------------------------------------------------------------------------
+// Geofence / geo-cage — exact bounds from config/offboard_mission.yaml.
+// Geofence is the hard keep-in box (breach → land/hold/rtl). Geo-cage is the
+// soft box that setpoints get clamped inside, geofence inset by
+// geocage_margin_m on N/E only (see Fence.clamp in mission_logic.py — the
+// altitude bound is NOT inset).
+// ---------------------------------------------------------------------------
+const FENCE = { nMin:-5, nMax:55, eMin:-23, eMax:17, altMax:12 };
+const GEOCAGE_MARGIN = 1.0;
+const GEOCAGE = {
+  nMin: FENCE.nMin + GEOCAGE_MARGIN, nMax: FENCE.nMax - GEOCAGE_MARGIN,
+  eMin: FENCE.eMin + GEOCAGE_MARGIN, eMax: FENCE.eMax - GEOCAGE_MARGIN,
+  altMax: FENCE.altMax,
+};
+
+function makeFenceBox(b, color) {
+  const sizeE = b.eMax - b.eMin, sizeN = b.nMax - b.nMin;
+  const geo = new THREE.BoxGeometry(sizeE, b.altMax, sizeN);
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.55 })
+  );
+  edges.position.set((b.eMin+b.eMax)/2, b.altMax/2, -(b.nMin+b.nMax)/2);
+  edges.visible = false;
+  scene.add(edges);
+  return edges;
+}
+const fenceBox = makeFenceBox(FENCE, 0xff5555);
+const geocageBox = makeFenceBox(GEOCAGE, 0x4da3ff);
+
+document.getElementById('toggleFence').addEventListener('change', e => {
+  fenceBox.visible = e.target.checked;
+});
+document.getElementById('toggleCage').addEventListener('change', e => {
+  geocageBox.visible = e.target.checked;
+});
+
+// ---------------------------------------------------------------------------
+// LiDAR sensing overlay — exact geometry from lidar_sectors.py / the
+// offboard_mission.yaml avoidance params. Attached to the drone so it moves
+// and rotates with it; wedge colors update live from the CSV's real
+// `obstacle` column each frame, in updateFrame().
+//
+// Sensor convention (ROS REP103, matches lidar_sectors.py's angle math):
+// angle 0 = forward, positive angle = left (CCW), negative = right.
+// In this drone model's local frame, forward is local +Z; a wedge point at
+// local angle θ (measured the same way) sits at (sin θ, 0, cos θ) * r —
+// which puts local +X at θ=+90°. Local +X is the drone's geometric right
+// (right = up × forward = (0,1,0)×(0,0,1) = +X), so a REP103 "left" (+θ)
+// wedge must be drawn on the NEGATIVE local-angle side. Front is symmetric,
+// so it's unaffected by this flip.
+// ---------------------------------------------------------------------------
+const LIDAR_TRIGGER_M = 4.0;
+const LIDAR_DEAD_M    = 0.6;
+const LIDAR_FRONT_DEG = 35;
+const LIDAR_SIDE_DEG  = 90;
+
+function wedgeGeometry(r0, r1, startDeg, endDeg, segments) {
+  const geo = new THREE.BufferGeometry();
+  const verts = [];
+  const a0 = THREE.MathUtils.degToRad(startDeg);
+  const a1 = THREE.MathUtils.degToRad(endDeg);
+  for (let i = 0; i < segments; i++) {
+    const t0 = a0 + (a1 - a0) * (i / segments);
+    const t1 = a0 + (a1 - a0) * ((i + 1) / segments);
+    const p0o = [Math.sin(t0) * r1, 0, Math.cos(t0) * r1];
+    const p1o = [Math.sin(t1) * r1, 0, Math.cos(t1) * r1];
+    const p0i = [Math.sin(t0) * r0, 0, Math.cos(t0) * r0];
+    const p1i = [Math.sin(t1) * r0, 0, Math.cos(t1) * r0];
+    verts.push(...p0i, ...p0o, ...p1o,  ...p0i, ...p1o, ...p1i);
+  }
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const LIDAR_INACTIVE = 0x2a3a52;
+const lidarGroup = new THREE.Group();
+lidarGroup.visible = false;
+lidarGroup.position.y = 0.05; // just above drone origin — avoids z-fighting with ground
+
+const lidarSectors = {
+  front: new THREE.Mesh(
+    wedgeGeometry(LIDAR_DEAD_M, LIDAR_TRIGGER_M, -LIDAR_FRONT_DEG, LIDAR_FRONT_DEG, 12),
+    new THREE.MeshBasicMaterial({ color:LIDAR_INACTIVE, transparent:true, opacity:0.28, side:THREE.DoubleSide })
+  ),
+  // REP103 "left" (+θ) drawn on the negative local-angle side — see comment above.
+  left: new THREE.Mesh(
+    wedgeGeometry(LIDAR_DEAD_M, LIDAR_TRIGGER_M, -LIDAR_SIDE_DEG, -LIDAR_FRONT_DEG, 12),
+    new THREE.MeshBasicMaterial({ color:LIDAR_INACTIVE, transparent:true, opacity:0.28, side:THREE.DoubleSide })
+  ),
+  right: new THREE.Mesh(
+    wedgeGeometry(LIDAR_DEAD_M, LIDAR_TRIGGER_M, LIDAR_FRONT_DEG, LIDAR_SIDE_DEG, 12),
+    new THREE.MeshBasicMaterial({ color:LIDAR_INACTIVE, transparent:true, opacity:0.28, side:THREE.DoubleSide })
+  ),
+};
+for (const key in lidarSectors) lidarGroup.add(lidarSectors[key]);
+
+// trigger-radius + dead-zone rings for scale reference
+const triggerRing = new THREE.Mesh(
+  new THREE.RingGeometry(LIDAR_TRIGGER_M - 0.03, LIDAR_TRIGGER_M, 64),
+  new THREE.MeshBasicMaterial({ color:0x7CFC00, transparent:true, opacity:0.5, side:THREE.DoubleSide })
+);
+triggerRing.rotation.x = -Math.PI / 2;
+lidarGroup.add(triggerRing);
+
+const deadRing = new THREE.Mesh(
+  new THREE.RingGeometry(LIDAR_DEAD_M - 0.02, LIDAR_DEAD_M, 32),
+  new THREE.MeshBasicMaterial({ color:0xff5555, transparent:true, opacity:0.4, side:THREE.DoubleSide })
+);
+deadRing.rotation.x = -Math.PI / 2;
+lidarGroup.add(deadRing);
+
+drone.add(lidarGroup);
+
+document.getElementById('toggleLidar').addEventListener('change', e => {
+  lidarGroup.visible = e.target.checked;
+});
 
 function makeLabelSprite(text, bg) {
   const c = document.createElement('canvas');
@@ -568,6 +715,16 @@ function updateFrame(idx, snapToo) {
   const label = r.obstacle || 'nominal';
   avoidEl.textContent = label;
   avoidEl.className = 'badge avoid-' + (r.obstacle || 'none');
+
+  // LiDAR sector wedges — colored to match whichever sector the real logged
+  // avoidance controller reacted to this frame ('' / front / left / right /
+  // bypass, see lidar_sectors.py's classification).
+  const activeSectorColor = AVOID_COLOR[r.obstacle] ?? AVOID_COLOR[''];
+  for (const key of ['front', 'left', 'right']) {
+    const isActive = r.obstacle === key;
+    lidarSectors[key].material.color.setHex(isActive ? activeSectorColor : LIDAR_INACTIVE);
+    lidarSectors[key].material.opacity = isActive ? 0.55 : 0.22;
+  }
 
   document.getElementById('dotCage').className = 'dot ' + (r.geocage ? 'on' : 'off');
   document.getElementById('hudCage').textContent = r.geocage ? 'active' : 'off';
