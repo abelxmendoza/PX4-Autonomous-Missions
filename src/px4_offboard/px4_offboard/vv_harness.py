@@ -92,6 +92,18 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         severity=Severity.SHOULD,
         description="If executive_mode becomes ABORT, FAILSAFE or LANDING should follow.",
     ),
+    Requirement(
+        id="REQ-AVOID-SENSOR-01",
+        title="Avoidance backed by live sensor evidence",
+        severity=Severity.MUST,
+        description="Every direct avoidance classification must have fresh LiDAR range evidence.",
+    ),
+    Requirement(
+        id="REQ-CLEARANCE-01",
+        title="No mapped-obstacle intersection",
+        severity=Severity.MUST,
+        description="The vehicle must retain positive clearance from every mapped obstacle.",
+    ),
 )
 
 
@@ -400,6 +412,75 @@ def check_executive_abort(trace: FlightTrace, response_window_s: float = 2.0) ->
     )
 
 
+def check_sensor_backed_avoidance(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-AVOID-SENSOR-01")
+    if "sensor_fresh" not in trace.columns:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            "legacy log has no sensor-evidence columns", skipped=True,
+        )
+    direct = [
+        s for s in trace.samples if s.obstacle in {"front", "left", "right"}
+    ]
+    violations: list[str] = []
+    for sample in direct:
+        sector_range = {
+            "front": sample.lidar_front_m,
+            "left": sample.lidar_left_m,
+            "right": sample.lidar_right_m,
+        }[sample.obstacle]
+        if not sample.sensor_fresh or sector_range is None or sector_range < 0.0:
+            violations.append(
+                f"t={sample.t_s:.2f}s {sample.obstacle} without fresh sector range"
+            )
+    sensor_only_stale = [
+        s for s in trace.samples
+        if s.state == "MOVE" and s.obstacle_source == "sensor_only" and not s.sensor_fresh
+    ]
+    if sensor_only_stale:
+        violations.append(
+            f"{len(sensor_only_stale)} sensor-only MOVE sample(s) used stale LiDAR"
+        )
+    return CheckResult(
+        req.id,
+        req.title,
+        req.severity,
+        not violations,
+        f"{len(direct)} direct avoidance sample(s) backed by LiDAR"
+        if not violations else f"{len(violations)} sensor-evidence violation(s)",
+        evidence=violations[:8],
+    )
+
+
+def check_obstacle_clearance(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-CLEARANCE-01")
+    if "mapped_clearance_m" not in trace.columns:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            "legacy log has no mapped-clearance column", skipped=True,
+        )
+    measured = [
+        s for s in trace.samples if s.mapped_clearance_m is not None
+    ]
+    collisions = [
+        f"t={s.t_s:.2f}s clearance={s.mapped_clearance_m:.3f}m"
+        for s in measured if s.mapped_clearance_m <= 0.0
+    ]
+    minimum = min((s.mapped_clearance_m for s in measured), default=None)
+    return CheckResult(
+        req.id,
+        req.title,
+        req.severity,
+        not collisions,
+        (
+            "no clearance samples"
+            if minimum is None
+            else f"minimum mapped clearance {minimum:.3f}m"
+        ),
+        evidence=collisions[:8],
+    )
+
+
 def run_vv(
     trace: FlightTrace,
     fence: Fence | None = None,
@@ -415,5 +496,7 @@ def run_vv(
         check_altitude_limit(trace, fence),
         check_terminal_finality(trace),
         check_executive_abort(trace),
+        check_sensor_backed_avoidance(trace),
+        check_obstacle_clearance(trace),
     ]
     return VvReport(source=trace.source, results=results, summary=trace.summary())

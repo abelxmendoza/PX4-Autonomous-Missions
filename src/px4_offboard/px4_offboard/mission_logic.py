@@ -77,6 +77,94 @@ def distance_3d(first: Vector3, second: Vector3) -> float:
     return math.sqrt(sum((a - b) ** 2 for a, b in zip(first, second)))
 
 
+def obstacle_clearance(position: Vector3, obstacle: Obstacle) -> float:
+    """Shortest distance from a NED point to an obstacle's solid AABB.
+
+    Returns zero when the point lies inside the obstacle volume. The obstacle
+    rests on the ground and extends upward to ``height``.
+    """
+    north, east, down = position
+    altitude = -down
+    delta_north = max(abs(north - obstacle.north) - obstacle.size_north / 2.0, 0.0)
+    delta_east = max(abs(east - obstacle.east) - obstacle.size_east / 2.0, 0.0)
+    if altitude < 0.0:
+        delta_altitude = -altitude
+    elif altitude > obstacle.height:
+        delta_altitude = altitude - obstacle.height
+    else:
+        delta_altitude = 0.0
+    return math.sqrt(
+        delta_north * delta_north
+        + delta_east * delta_east
+        + delta_altitude * delta_altitude
+    )
+
+
+def sensor_bypass_target(
+    position: Vector3,
+    target: Vector3,
+    obstacle_sector: str,
+    forward_m: float,
+    lateral_m: float,
+    left_range_m: float = -1.0,
+    right_range_m: float = -1.0,
+) -> list[float]:
+    """Create a committed local bypass without using mapped geometry."""
+    delta_n = target[0] - position[0]
+    delta_e = target[1] - position[1]
+    norm = math.hypot(delta_n, delta_e)
+    if norm < 1e-6:
+        forward_n, forward_e = 1.0, 0.0
+    else:
+        forward_n, forward_e = delta_n / norm, delta_e / norm
+    # Right-hand unit vector in the horizontal NED plane.
+    right_n, right_e = -forward_e, forward_n
+    if obstacle_sector == "left":
+        side_sign = 1.0
+    elif obstacle_sector == "right":
+        side_sign = -1.0
+    else:
+        left_clear = math.inf if left_range_m < 0.0 else left_range_m
+        right_clear = math.inf if right_range_m < 0.0 else right_range_m
+        side_sign = -1.0 if left_clear >= right_clear else 1.0
+    return [
+        position[0] + forward_n * forward_m + right_n * side_sign * lateral_m,
+        position[1] + forward_e * forward_m + right_e * side_sign * lateral_m,
+        target[2],
+    ]
+
+
+def sensor_bypass_plan(
+    position: Vector3,
+    target: Vector3,
+    obstacle_sector: str,
+    forward_m: float,
+    lateral_m: float,
+    left_range_m: float = -1.0,
+    right_range_m: float = -1.0,
+) -> tuple[list[float], list[float]]:
+    """Return lateral-escape then forward-clearance targets for blind AABB-free flight."""
+    lateral = sensor_bypass_target(
+        position,
+        target,
+        obstacle_sector,
+        0.0,
+        lateral_m,
+        left_range_m,
+        right_range_m,
+    )
+    combined = sensor_bypass_target(
+        position,
+        target,
+        obstacle_sector,
+        forward_m,
+        lateral_m,
+        left_range_m,
+        right_range_m,
+    )
+    return lateral, combined
+
+
 def circle_target(
     elapsed_s: float, radius_m: float, period_s: float, altitude_m: float
 ) -> list[float]:

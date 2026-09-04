@@ -61,6 +61,8 @@ from px4_offboard.mission_logic import (
     circle_target,
     detect_obstacle,
     distance_3d,
+    obstacle_clearance,
+    sensor_bypass_plan,
     yaw_toward,
 )
 from px4_offboard.mission_state import (
@@ -85,11 +87,11 @@ class TrajectoryMode(Enum):
 
 # Obstacle AABB: (east_m, north_m, size_e, size_n, height_m) — matches obstacle_world.sdf
 OBSTACLE_BOXES = (
-    Obstacle(-6.0, 10.0, 3.0, 3.0, 4.0),   # OB1 red
-    Obstacle(10.0, 10.0, 3.0, 3.0, 6.0),   # OB2 orange
-    Obstacle(-8.0, 24.0, 4.0, 3.0, 4.0),   # OB3 green
-    Obstacle(6.0, 24.0, 2.0, 2.0, 5.0),    # OB4 blue
-    Obstacle(0.0, 38.0, 5.0, 3.0, 4.0),    # OB5 purple
+    Obstacle(-6.0, 10.0, 3.0, 3.0, 11.5),  # OB1 red — taller than fence ceiling, climb not an option
+    Obstacle(10.0, 10.0, 3.0, 3.0, 6.0),   # OB2 orange — off to the side, rarely on the flight path
+    Obstacle(-8.0, 24.0, 5.0, 3.0, 4.0),   # OB3 green — widened, tighter corridor with OB4
+    Obstacle(6.0, 24.0, 3.0, 2.0, 5.0),    # OB4 blue — widened, tighter corridor with OB3
+    Obstacle(0.0, 38.0, 5.0, 3.0, 11.5),   # OB5 purple — taller than fence ceiling, climb not an option
 )
 
 # Reactive path: approaches obstacles so AABB avoidance must engage.
@@ -235,6 +237,7 @@ class OffboardMission(Node):
         self._last_obstacle = None
         self._bypass_target = None
         self._bypass_obstacle = None
+        self._sensor_advance_target = None
         self._bypassed_obstacles = set()
         self._last_bypass_distance = float("inf")
 
@@ -270,6 +273,7 @@ class OffboardMission(Node):
             f"alt={self.hover_alt}m waypoints={len(self.waypoints)} "
             f"geocage={'ON' if self.geocage_enable else 'OFF'} "
             f"geofence={'ON' if self.geofence_enable else 'OFF'} "
+            f"obstacles={self.obstacle_source} "
             f"executive={'ON' if self._executive.config.enable else 'OFF'} "
             f"box N[{self.fence_n_min},{self.fence_n_max}] "
             f"E[{self.fence_e_min},{self.fence_e_max}] "
@@ -300,6 +304,7 @@ class OffboardMission(Node):
         self.declare_parameter("mission_timeout_s", 180.0)
         self.declare_parameter("avoid_stuck_s", 12.0)
         self.declare_parameter("sensor_timeout_s", 0.5)
+        self.declare_parameter("obstacle_source", "hybrid")
         self.declare_parameter("log_dir", ".")
 
         # Geo-cage (soft keep-in: clamp setpoints) / geofence (hard: breach → action)
@@ -361,6 +366,12 @@ class OffboardMission(Node):
         self.mission_timeout = float(self.get_parameter("mission_timeout_s").value)
         self.avoid_stuck_s = float(self.get_parameter("avoid_stuck_s").value)
         self.sensor_timeout = float(self.get_parameter("sensor_timeout_s").value)
+        obstacle_source = str(self.get_parameter("obstacle_source").value).lower()
+        self.obstacle_source = (
+            obstacle_source
+            if obstacle_source in ("hybrid", "sensor_only", "map_only")
+            else "hybrid"
+        )
         self.log_dir = Path(self.get_parameter("log_dir").value)
 
         self.geocage_enable = bool(self.get_parameter("geocage_enable").value)
@@ -426,10 +437,20 @@ class OffboardMission(Node):
     # ── Telemetry log ─────────────────────────────────────────────────────────
 
     def _open_log(self):
-        self.log_dir.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%d_%H%M%S")
-        path = self.log_dir / f"flight_log_mission_{stamp}.csv"
-        self._log_file = open(path, "w", newline="")
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            path = self.log_dir / f"flight_log_mission_{stamp}.csv"
+            self._log_file = open(path, "w", newline="")
+        except OSError as exc:
+            # Unwritable log dir / full disk / permissions — fly without a
+            # log rather than fail node startup over telemetry.
+            self.get_logger().error(
+                f"Could not open flight log ({exc}); continuing without logging"
+            )
+            self._log_file = None
+            self._log_writer = None
+            return
         self._log_writer = csv.writer(self._log_file)
         self._log_writer.writerow(
             [
@@ -442,6 +463,15 @@ class OffboardMission(Node):
                 "tgt_e",
                 "tgt_d",
                 "obstacle",
+                "obstacle_source",
+                "sensor_fresh",
+                "lidar_front_m",
+                "lidar_left_m",
+                "lidar_right_m",
+                "mapped_clearance_m",
+                "nominal_n",
+                "nominal_e",
+                "nominal_d",
                 "wp_index",
                 "geocage",
                 "geofence",
@@ -461,39 +491,76 @@ class OffboardMission(Node):
         )
         self.get_logger().info(f"Logging to {path}")
 
-    def _log_row(self, target: list, obstacle: str | None):
+    def _log_row(
+        self,
+        target: list,
+        obstacle: str | None,
+        nominal_target: list | None = None,
+    ):
         if self._log_writer is None:
             return
         inside = self._inside_fence(self.current_x, self.current_y, self.current_z)
-        self._log_writer.writerow(
-            [
-                time.strftime("%H:%M:%S.%f")[:-3],
-                self._state.name,
-                round(self.current_x, 3),
-                round(self.current_y, 3),
-                round(self.current_z, 3),
-                round(target[0], 3),
-                round(target[1], 3),
-                round(target[2], 3),
-                obstacle or "",
-                self._wp_index,
-                int(self.geocage_enable),
-                int(self.geofence_enable),
-                int(inside),
-                int(self._geocage_hit),
-                round(math.degrees(self.current_roll), 2),
-                round(math.degrees(self.current_pitch), 2),
-                round(math.degrees(self.current_yaw), 2),
-                round(self.current_vx, 3),
-                round(self.current_vy, 3),
-                round(self.current_vz, 3),
-                self._executive.mode.name,
-                round(self._executive.resources.battery_frac, 4),
-                round(self._executive.resources.link_quality, 4),
-                round(self._executive.resources.propellant_time_s, 2),
-            ]
+        nominal = nominal_target if nominal_target is not None else target
+        sensor_fresh = self._sensor_data_fresh()
+        sector_mins = self._sensor_mins if sensor_fresh and self._sensor_mins else (-1.0, -1.0, -1.0)
+        clearance = min(
+            obstacle_clearance(
+                [self.current_x, self.current_y, self.current_z], obstacle_box
+            )
+            for obstacle_box in OBSTACLE_BOXES
         )
-        self._log_file.flush()
+        row = [
+            time.strftime("%H:%M:%S.%f")[:-3],
+            self._state.name,
+            round(self.current_x, 3),
+            round(self.current_y, 3),
+            round(self.current_z, 3),
+            round(target[0], 3),
+            round(target[1], 3),
+            round(target[2], 3),
+            obstacle or "",
+            self.obstacle_source,
+            int(sensor_fresh),
+            round(sector_mins[0], 3),
+            round(sector_mins[1], 3),
+            round(sector_mins[2], 3),
+            round(clearance, 3),
+            round(nominal[0], 3),
+            round(nominal[1], 3),
+            round(nominal[2], 3),
+            self._wp_index,
+            int(self.geocage_enable),
+            int(self.geofence_enable),
+            int(inside),
+            int(self._geocage_hit),
+            round(math.degrees(self.current_roll), 2),
+            round(math.degrees(self.current_pitch), 2),
+            round(math.degrees(self.current_yaw), 2),
+            round(self.current_vx, 3),
+            round(self.current_vy, 3),
+            round(self.current_vz, 3),
+            self._executive.mode.name,
+            round(self._executive.resources.battery_frac, 4),
+            round(self._executive.resources.link_quality, 4),
+            round(self._executive.resources.propellant_time_s, 2),
+        ]
+        try:
+            self._log_writer.writerow(row)
+            self._log_file.flush()
+        except OSError as exc:
+            # Disk full / handle error mid-flight — drop logging rather than
+            # let this propagate out of the control-loop timer callback and
+            # abort rclpy.spin(), which would stop setpoint streaming.
+            self.get_logger().error(
+                f"Flight log write failed ({exc}); disabling further logging",
+                throttle_duration_sec=5.0,
+            )
+            try:
+                self._log_file.close()
+            except OSError:
+                pass
+            self._log_writer = None
+            self._log_file = None
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
 
@@ -540,6 +607,15 @@ class OffboardMission(Node):
         if len(msg.data) == 3:
             self._sensor_mins = (msg.data[0], msg.data[1], msg.data[2])
             self._sensor_mins_stamp = time.monotonic()
+
+    def _sensor_data_fresh(self) -> bool:
+        now = time.monotonic()
+        return bool(
+            self._sensor_stamp
+            and self._sensor_mins_stamp
+            and (now - self._sensor_stamp) < self.sensor_timeout
+            and (now - self._sensor_mins_stamp) < self.sensor_timeout
+        )
 
     def _lateral_blocked(self, side: str) -> bool:
         """True if the live LiDAR shows `side` (left|right) also within
@@ -637,13 +713,17 @@ class OffboardMission(Node):
                 self._publish_setpoint(hold)
                 self._log_row(hold, self._last_obstacle)
             else:
-                target = self._next_target()
+                if self.obstacle_source == "sensor_only" and not self._sensor_data_fresh():
+                    self._enter_failsafe("LiDAR timeout in sensor-only mode")
+                    return
+                nominal_target = self._next_target()
+                target = list(nominal_target)
                 obs = self._detect_obstacle(target)
                 self._last_obstacle = obs
                 target = self._apply_avoidance(target, obs)
                 target = self._apply_geocage(target)
                 self._publish_setpoint(target)
-                self._log_row(target, self._last_obstacle)
+                self._log_row(target, self._last_obstacle, nominal_target)
                 self._mission_t += 0.1
 
         elif self._state == State.LANDING:
@@ -834,18 +914,22 @@ class OffboardMission(Node):
 
     def _detect_obstacle(self, target: list) -> str | None:
         """
-        Prefer live sensor on /px4_offboard/obstacle_dir when fresh
-        (e.g. lidar_sectors from Gazebo GPU LiDAR).
-        Otherwise use AABB geometry against obstacle_world.sdf.
+        Select live LiDAR and/or mapped AABB geometry according to
+        ``obstacle_source`` (hybrid | sensor_only | map_only).
         """
         now = time.monotonic()
-        if self._sensor_stamp and (now - self._sensor_stamp) < self.sensor_timeout:
+        if self.obstacle_source != "map_only" and self._sensor_stamp and (
+            now - self._sensor_stamp
+        ) < self.sensor_timeout:
             if self._counter % 20 == 0 and self._sensor_dir:
                 self.get_logger().info(
                     f"LiDAR sector active → {self._sensor_dir}",
                     throttle_duration_sec=2.0,
                 )
             return self._sensor_dir
+
+        if self.obstacle_source == "sensor_only":
+            return None
 
         obstacles = (
             tuple(
@@ -869,13 +953,17 @@ class OffboardMission(Node):
     def _apply_avoidance(self, target: list, obs: str | None) -> list:
         adjusted = list(target)
 
-        if self.avoidance_strategy == "sidestep":
+        if self.avoidance_strategy == "sidestep" or self.obstacle_source == "sensor_only":
             if self._bypass_target is None and obs is not None:
-                remaining = [
-                    obstacle
-                    for obstacle in OBSTACLE_BOXES
-                    if obstacle not in self._bypassed_obstacles
-                ]
+                remaining = (
+                    []
+                    if self.obstacle_source == "sensor_only"
+                    else [
+                        obstacle
+                        for obstacle in OBSTACLE_BOXES
+                        if obstacle not in self._bypassed_obstacles
+                    ]
+                )
                 if remaining:
                     nearest = min(
                         remaining,
@@ -897,16 +985,35 @@ class OffboardMission(Node):
                     # known AABB map (or every mapped obstacle is already
                     # bypassed) — sidestep from the current position instead
                     # of relying on obstacle geometry.
-                    self._bypass_target = [
-                        self.current_x + max(self.detection_margin, 2.5),
-                        self.current_y + self.sidestep_m,
-                        target[2],
-                    ]
+                    _, left_m, right_m = self._sensor_mins or (-1.0, -1.0, -1.0)
+                    # A sensor-only plan has no obstacle depth to consult.  The
+                    # advance leg must therefore carry the aircraft from the
+                    # trigger envelope, past the unseen obstacle thickness,
+                    # and out the far-side safety margin.  Likewise, a bare
+                    # ``sidestep_m`` can put the vehicle centre just outside a
+                    # wall while its arms still intersect it.
+                    sensor_forward_m = max(8.0, 2.0 * self.detection_margin + 3.0)
+                    sensor_lateral_m = max(
+                        4.0, self.sidestep_m, self.detection_margin + 1.5
+                    )
+                    self._bypass_target, self._sensor_advance_target = sensor_bypass_plan(
+                        [self.current_x, self.current_y, self.current_z],
+                        target,
+                        obs,
+                        sensor_forward_m,
+                        sensor_lateral_m,
+                        left_m,
+                        right_m,
+                    )
                     self._bypass_obstacle = None
                 if self.geocage_enable:
                     self._bypass_target, _ = self.fence.clamp(
                         self._bypass_target, self.geocage_margin
                     )
+                    if self._sensor_advance_target is not None:
+                        self._sensor_advance_target, _ = self.fence.clamp(
+                            self._sensor_advance_target, self.geocage_margin
+                        )
                 self._last_bypass_distance = self._distance_to_wp(
                     self._bypass_target
                 )
@@ -919,11 +1026,22 @@ class OffboardMission(Node):
             if self._bypass_target is not None:
                 bypass_distance = self._distance_to_wp(self._bypass_target)
                 if bypass_distance <= max(1.0, self.wp_accept):
+                    if self._sensor_advance_target is not None:
+                        self._bypass_target = self._sensor_advance_target
+                        self._sensor_advance_target = None
+                        self._last_bypass_distance = self._distance_to_wp(
+                            self._bypass_target
+                        )
+                        self.get_logger().warn(
+                            "BYPASS lateral clear -> advancing past obstacle"
+                        )
+                        return list(self._bypass_target)
                     self.get_logger().info("BYPASS complete -> resuming mission")
                     if self._bypass_obstacle is not None:
                         self._bypassed_obstacles.add(self._bypass_obstacle)
                     self._bypass_target = None
                     self._bypass_obstacle = None
+                    self._sensor_advance_target = None
                     self._last_bypass_distance = float("inf")
                     self._avoid_active_t = 0.0
                     self._last_wp_progress_t = time.monotonic()
@@ -967,7 +1085,11 @@ class OffboardMission(Node):
         self._pub_avoiding.publish(Bool(data=True))
         self.get_logger().warn(f"AVOID {obs}", throttle_duration_sec=1.0)
 
-        blocking_h = self._blocking_height(target)
+        blocking_h = (
+            self.max_alt
+            if self.obstacle_source == "sensor_only"
+            else self._blocking_height(target)
+        )
         climb_alt = blocking_h + self.climb_clearance
         can_climb = climb_alt <= self.max_alt
 
@@ -1064,6 +1186,9 @@ class OffboardMission(Node):
             "state": self._state.name,
             "mode": self.trajectory_mode.value,
             "avoidance_strategy": self.avoidance_strategy,
+            "obstacle_source": self.obstacle_source,
+            "sensor_fresh": self._sensor_data_fresh(),
+            "lidar_sector_mins": list(self._sensor_mins or (-1.0, -1.0, -1.0)),
             "north_m": round(self.current_x, 2),
             "east_m": round(self.current_y, 2),
             "altitude_m": round(-self.current_z, 2),
@@ -1169,7 +1294,10 @@ class OffboardMission(Node):
 
     def destroy_node(self):
         if self._log_file:
-            self._log_file.close()
+            try:
+                self._log_file.close()
+            except OSError:
+                pass
         super().destroy_node()
 
 

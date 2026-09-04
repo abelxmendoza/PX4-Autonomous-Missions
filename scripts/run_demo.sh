@@ -84,6 +84,7 @@ ros2 launch px4_offboard full_stack.launch.py \
   "px4_dir:=$PX4_CHECKOUT" \
   "trajectory_mode:=$MODE" \
   "avoidance_strategy:=climb" \
+  "obstacle_source:=sensor_only" \
   "detection_margin_m:=5.0" \
   "demo_mode:=true" \
   "headless:=false" &

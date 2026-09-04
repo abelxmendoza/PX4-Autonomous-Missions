@@ -76,6 +76,28 @@ def test_abort_on_sustained_link_loss():
     assert "link lost" in d.reason
 
 
+def test_compute_load_triggers_degraded():
+    # compute_load feeds _classify_mode alongside battery/link/propellant
+    # (mission_executive.py's DEGRADED/SAFE branches both check it) but had
+    # no test coverage. Note: under the default drain-rate constants,
+    # update()'s compute EMA converges to ~0.70 steady-state even at max
+    # avoid+lidar load, so it can never naturally cross compute_degraded
+    # (0.80) through update() alone — hence direct injection here, matching
+    # this file's existing convention for the battery/link threshold tests.
+    ex = _exec()
+    ex.resources.compute_load = 0.85  # above compute_degraded (0.80), below compute_safe (0.92)
+    d = ex.evaluate(current_wp_index=1, remaining_waypoints=5)
+    assert d.mode is MissionMode.DEGRADED
+
+
+def test_compute_load_triggers_safe():
+    ex = _exec()
+    ex.resources.compute_load = 0.95  # above compute_safe (0.92)
+    d = ex.evaluate(current_wp_index=1, remaining_waypoints=5)
+    assert d.mode is MissionMode.SAFE
+    assert d.action is ExecutiveAction.HOLD_SAFE
+
+
 def test_link_recovers():
     ex = _exec()
     ex.resources.link_quality = 0.2

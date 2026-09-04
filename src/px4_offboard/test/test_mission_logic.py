@@ -9,6 +9,9 @@ from px4_offboard.mission_logic import (
     circle_target,
     detect_obstacle,
     distance_3d,
+    obstacle_clearance,
+    sensor_bypass_target,
+    sensor_bypass_plan,
     yaw_toward,
 )
 
@@ -111,6 +114,37 @@ def test_sidestep_mode_detects_obstacle_even_when_above_it():
     assert result == "front"
 
 
+def test_detects_obstacle_to_the_left_of_travel():
+    # Traveling due north (travel_yaw=0); obstacle bears +45° from position,
+    # landing in the (front_angle_deg, side_angle_deg) branch -> "left".
+    obstacle = Obstacle(east=3.0, north=3.0, size_east=2.0, size_north=2.0, height=4.0)
+    result = detect_obstacle(
+        position=[0.0, 0.0, -3.0],
+        target=[10.0, 0.0, -3.0],
+        obstacles=[obstacle],
+        detection_margin_m=3.0,
+        front_angle_deg=35.0,
+        side_angle_deg=70.0,
+    )
+
+    assert result == "left"
+
+
+def test_detects_obstacle_to_the_right_of_travel():
+    # Mirror of the left case: obstacle bears -45° -> "right".
+    obstacle = Obstacle(east=-3.0, north=3.0, size_east=2.0, size_north=2.0, height=4.0)
+    result = detect_obstacle(
+        position=[0.0, 0.0, -3.0],
+        target=[10.0, 0.0, -3.0],
+        obstacles=[obstacle],
+        detection_margin_m=3.0,
+        front_angle_deg=35.0,
+        side_angle_deg=70.0,
+    )
+
+    assert result == "right"
+
+
 def test_blocking_height_uses_tallest_obstacle_in_corridor():
     height = blocking_height(
         position=[0.0, 0.0, -3.0],
@@ -121,3 +155,54 @@ def test_blocking_height_uses_tallest_obstacle_in_corridor():
     )
 
     assert height == 7.0
+
+
+def test_obstacle_clearance_is_zero_inside_volume():
+    assert obstacle_clearance([5.0, 0.0, -2.0], OBSTACLES[0]) == 0.0
+
+
+def test_obstacle_clearance_accounts_for_horizontal_and_vertical_distance():
+    clearance = obstacle_clearance([2.0, 3.0, -5.0], OBSTACLES[0])
+    assert clearance == pytest.approx(3.0)
+
+
+def test_sensor_bypass_steers_away_from_right_sector_without_map():
+    target = sensor_bypass_target(
+        [0.0, 0.0, -3.5], [10.0, 0.0, -3.5], "right", 4.0, 3.0
+    )
+    assert target == pytest.approx([4.0, -3.0, -3.5])
+
+
+def test_front_bypass_chooses_side_with_more_clearance():
+    target = sensor_bypass_target(
+        [0.0, 0.0, -3.5],
+        [10.0, 0.0, -3.5],
+        "front",
+        4.0,
+        3.0,
+        left_range_m=8.0,
+        right_range_m=2.0,
+    )
+    assert target == pytest.approx([4.0, -3.0, -3.5])
+
+
+def test_sensor_bypass_plan_moves_laterally_before_advancing():
+    lateral, advance = sensor_bypass_plan(
+        [0.0, 0.0, -3.5], [10.0, 0.0, -3.5], "right", 7.0, 4.0
+    )
+    assert lateral == pytest.approx([0.0, -4.0, -3.5])
+    assert advance == pytest.approx([7.0, -4.0, -3.5])
+
+
+def test_sensor_bypass_plan_clears_three_metre_wall_from_trigger_range():
+    # Detection occurs four metres before a 3 m deep wall.  An 8 m advance
+    # exits one metre beyond its far face, while a 4 m lateral leg keeps the
+    # airframe comfortably outside its 1.5 m half-width.
+    lateral, advance = sensor_bypass_plan(
+        [4.5, -6.0, -5.0], [15.0, -6.0, -5.0], "front", 8.0, 4.0
+    )
+    assert lateral == pytest.approx([4.5, -10.0, -5.0])
+    assert advance == pytest.approx([12.5, -10.0, -5.0])
+    wall = Obstacle(east=-6.0, north=10.0, size_east=3.0, size_north=3.0, height=11.5)
+    assert obstacle_clearance(lateral, wall) >= 2.5
+    assert obstacle_clearance(advance, wall) >= 2.5

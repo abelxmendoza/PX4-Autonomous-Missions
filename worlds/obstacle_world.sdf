@@ -4,11 +4,11 @@
   Origin: 47.397742°N, 8.545594°E (PX4 Gazebo default — Zurich)
 
   Obstacle layout (ENU, meters from spawn):
-    OB1 — (east=-6, north=10) — 3×3×4m  — red
-    OB2 — (east=10, north=10) — 3×3×6m  — orange
-    OB3 — (east=-8, north=24) — 4×3×4m  — green
-    OB4 — (east=6, north=24) — 2×2×5m  — blue
-    OB5 — (east=0, north=38) — 5×3×4m  — purple
+    OB1 — (east=-6, north=10) — 3×3×11.5m — red    (taller than the fence ceiling — climb is not an option)
+    OB2 — (east=10, north=10) — 3×3×6m    — orange (off to the side, rarely on the flight path)
+    OB3 — (east=-8, north=24) — 5×3×4m    — green  (widened — tighter corridor with OB4)
+    OB4 — (east=6, north=24) — 3×2×5m     — blue   (widened — tighter corridor with OB3)
+    OB5 — (east=0, north=38) — 5×3×11.5m  — purple (taller than the fence ceiling — climb is not an option)
 
   Usage:
     Place this file in PX4-Autopilot/Tools/simulation/gz/worlds/
@@ -168,16 +168,16 @@
       </link>
     </model>
 
-    <!-- ── OB1: Red building — east=-6m, north=10m, 4m tall ── -->
+    <!-- ── OB1: Red building — east=-6m, north=10m, 11.5m tall — taller than the fence ceiling ── -->
     <model name="obstacle_1">
       <static>true</static>
-      <pose>-6 10 2 0 0 0</pose>
+      <pose>-6 10 5.75 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>3 3 4</size></box></geometry>
+          <geometry><box><size>3 3 11.5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry><box><size>3 3 4</size></box></geometry>
+          <geometry><box><size>3 3 11.5</size></box></geometry>
           <material>
             <ambient>0.85 0.15 0.15 1</ambient>
             <diffuse>0.85 0.15 0.15 1</diffuse>
@@ -185,7 +185,7 @@
           </material>
         </visual>
         <visual name="roof_marker">
-          <pose>0 0 3.03 0 0 0</pose>
+          <pose>0 0 5.45 0 0 0</pose>
           <geometry><box><size>3.18 3.18 0.12</size></box></geometry>
           <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
         </visual>
@@ -216,16 +216,16 @@
       </link>
     </model>
 
-    <!-- ── OB3: Green block — east=-8m, north=24m, 4m tall ── -->
+    <!-- ── OB3: Green block — east=-8m, north=24m, 4m tall — widened, tighter corridor with OB4 ── -->
     <model name="obstacle_3">
       <static>true</static>
       <pose>-8 24 2 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>4 3 4</size></box></geometry>
+          <geometry><box><size>5 3 4</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry><box><size>4 3 4</size></box></geometry>
+          <geometry><box><size>5 3 4</size></box></geometry>
           <material>
             <ambient>0.15 0.65 0.15 1</ambient>
             <diffuse>0.15 0.65 0.15 1</diffuse>
@@ -240,16 +240,16 @@
       </link>
     </model>
 
-    <!-- ── OB4: Blue pillar — east=6m, north=24m, 5m tall ── -->
+    <!-- ── OB4: Blue pillar — east=6m, north=24m, 5m tall — widened, tighter corridor with OB3 ── -->
     <model name="obstacle_4">
       <static>true</static>
       <pose>6 24 2.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>2 2 5</size></box></geometry>
+          <geometry><box><size>3 2 5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry><box><size>2 2 5</size></box></geometry>
+          <geometry><box><size>3 2 5</size></box></geometry>
           <material>
             <ambient>0.15 0.15 0.85 1</ambient>
             <diffuse>0.15 0.15 0.85 1</diffuse>
@@ -264,16 +264,16 @@
       </link>
     </model>
 
-    <!-- ── OB5: Purple wall — east=0m, north=38m, 4m tall ── -->
+    <!-- ── OB5: Purple wall — east=0m, north=38m, 11.5m tall — taller than the fence ceiling ── -->
     <model name="obstacle_5">
       <static>true</static>
-      <pose>0 38 2 0 0 0</pose>
+      <pose>0 38 5.75 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>5 3 4</size></box></geometry>
+          <geometry><box><size>5 3 11.5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry><box><size>5 3 4</size></box></geometry>
+          <geometry><box><size>5 3 11.5</size></box></geometry>
           <material>
             <ambient>0.65 0.0 0.75 1</ambient>
             <diffuse>0.65 0.0 0.75 1</diffuse>
@@ -281,7 +281,7 @@
           </material>
         </visual>
         <visual name="roof_marker">
-          <pose>0 0 2.03 0 0 0</pose>
+          <pose>0 0 5.45 0 0 0</pose>
           <geometry><box><size>5.18 3.18 0.12</size></box></geometry>
           <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
         </visual>

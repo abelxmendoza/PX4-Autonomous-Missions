@@ -47,6 +47,7 @@ def _launch_setup(context, *args, **kwargs):
     vehicle = LaunchConfiguration("vehicle").perform(context)
     use_lidar = LaunchConfiguration("use_lidar").perform(context).lower() == "true"
     lidar_trigger = LaunchConfiguration("lidar_trigger_m").perform(context)
+    obstacle_source = LaunchConfiguration("obstacle_source").perform(context)
 
     root = _repo_root()
     worlds_dir = os.path.join(root, "worlds")
@@ -92,6 +93,7 @@ def _launch_setup(context, *args, **kwargs):
                 "sidestep_m": float(sidestep_m),
                 "detection_margin_m": float(detection_margin),
                 "sensor_timeout_s": 0.75 if use_lidar else 0.5,
+                "obstacle_source": obstacle_source,
                 "log_dir": root,
             },
         ],
@@ -218,6 +220,11 @@ def generate_launch_description():
                 "lidar_trigger_m",
                 default_value="6.0",
                 description="LiDAR sector trigger distance (metres)",
+            ),
+            DeclareLaunchArgument(
+                "obstacle_source",
+                default_value="hybrid",
+                description="hybrid | sensor_only | map_only",
             ),
             DeclareLaunchArgument(
                 "trajectory_mode",

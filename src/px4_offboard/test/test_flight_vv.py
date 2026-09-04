@@ -4,6 +4,8 @@ from pathlib import Path
 
 from px4_offboard.flight_replay import FlightSample, FlightTrace, load_flight_log, write_flight_log
 from px4_offboard.vv_harness import (
+    check_obstacle_clearance,
+    check_sensor_backed_avoidance,
     check_executive_abort,
     check_geofence_response,
     check_legal_state_sequence,
@@ -50,6 +52,29 @@ def test_load_roundtrip(tmp_path: Path):
     assert trace.unique_state_sequence() == ["MOVE", "LANDING"]
     assert abs(trace.duration_s - 0.2) < 1e-6
     assert trace.samples[1].north == 11.0
+
+
+def test_extended_sensor_evidence_roundtrip(tmp_path: Path):
+    sample = _sample(
+        obstacle="left",
+        obstacle_source="sensor_only",
+        sensor_fresh=True,
+        lidar_front_m=5.2,
+        lidar_left_m=2.1,
+        lidar_right_m=6.4,
+        mapped_clearance_m=1.25,
+        nominal_n=15.0,
+        nominal_e=-6.0,
+        nominal_d=-5.0,
+    )
+    path = tmp_path / "evidence.csv"
+    write_flight_log(path, [sample])
+    loaded = load_flight_log(path).samples[0]
+    assert loaded.obstacle_source == "sensor_only"
+    assert loaded.sensor_fresh
+    assert loaded.lidar_left_m == 2.1
+    assert loaded.mapped_clearance_m == 1.25
+    assert loaded.nominal_e == -6.0
 
 
 def test_nominal_trace_passes_vv():
@@ -152,3 +177,26 @@ def test_vv_replay_cli(tmp_path: Path):
     bad_path = tmp_path / "bad.csv"
     write_flight_log(bad_path, bad)
     assert main([str(bad_path)]) == 1
+
+
+def test_sensor_backed_avoidance_passes_with_matching_range():
+    sample = _sample(
+        obstacle="front",
+        obstacle_source="sensor_only",
+        sensor_fresh=True,
+        lidar_front_m=2.4,
+    )
+    trace = FlightTrace(samples=[sample], columns=("sensor_fresh",))
+    assert check_sensor_backed_avoidance(trace).passed
+
+
+def test_sensor_only_avoidance_fails_without_fresh_lidar():
+    sample = _sample(obstacle_source="sensor_only", sensor_fresh=False)
+    trace = FlightTrace(samples=[sample], columns=("sensor_fresh",))
+    assert not check_sensor_backed_avoidance(trace).passed
+
+
+def test_zero_mapped_clearance_fails_collision_requirement():
+    sample = _sample(mapped_clearance_m=0.0)
+    trace = FlightTrace(samples=[sample], columns=("mapped_clearance_m",))
+    assert not check_obstacle_clearance(trace).passed

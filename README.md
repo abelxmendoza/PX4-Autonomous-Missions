@@ -137,13 +137,13 @@ N (north)
        -10        0        10          meters
 ```
 
-| Name | Position (E, N) | Size | Height |
-|------|-----------------|------|--------|
-| OB1 | (-6m, 10m) | 3×3m | 4m |
-| OB2 | (10m, 10m) | 3×3m | 6m |
-| OB3 | (-8m, 24m) | 4×3m | 4m |
-| OB4 | (6m, 24m) | 2×2m | 5m |
-| OB5 | (0m, 38m) | 5×3m | 4m |
+| Name | Position (E, N) | Size | Height | Note |
+|------|-----------------|------|--------|------|
+| OB1 | (-6m, 10m) | 3×3m | 11.5m | Taller than the fence ceiling — climb is not an option |
+| OB2 | (10m, 10m) | 3×3m | 6m | Off to the side, rarely on the flight path |
+| OB3 | (-8m, 24m) | 5×3m | 4m | Widened — tighter corridor with OB4 |
+| OB4 | (6m, 24m) | 3×2m | 5m | Widened — tighter corridor with OB3 |
+| OB5 | (0m, 38m) | 5×3m | 11.5m | Taller than the fence ceiling — climb is not an option |
 
 ---
 
@@ -197,10 +197,14 @@ Default full-stack launch uses **`gz_x500_lidar_2d`** plus `lidar_sectors`, whic
 /px4_offboard/lidar_sector_mins # [front, left, right] metres
 ```
 
-`offboard_mission` prefers live LiDAR when fresh; AABB map geometry is only a fallback.
+Choose the evidence source with `obstacle_source:=hybrid|sensor_only|map_only`.
+`hybrid` preserves map fallback for development. `sensor_only` accepts only fresh
+LiDAR and enters FAILSAFE if the sensor times out; recruiter demo mode uses this
+setting so avoidance cannot be attributed to the known world map.
 
 ```bash
 ros2 launch px4_offboard full_stack.launch.py use_lidar:=true vehicle:=gz_x500_lidar_2d
+ros2 launch px4_offboard full_stack.launch.py obstacle_source:=sensor_only
 ros2 topic echo /px4_offboard/obstacle_dir
 ```
 
@@ -269,7 +273,7 @@ Tune via `config/offboard_mission.yaml` (`executive_enable`, thresholds, `scienc
 
 ### Flight-log replay + V&V
 
-Offline verification maps named requirements to checks against `flight_log_mission_*.csv` (no Gazebo required). Logs now include FAILSAFE/LANDING rows plus executive resource columns for evidence.
+Offline verification maps named requirements to checks against `flight_log_mission_*.csv` (no Gazebo required). Extended logs include raw sector minima, sensor freshness, obstacle-source mode, nominal versus commanded targets, mapped clearance, FAILSAFE/LANDING rows, and executive resources.
 
 | ID | Requirement |
 |----|-------------|
@@ -280,6 +284,8 @@ Offline verification maps named requirements to checks against `flight_log_missi
 | `REQ-ALT-01` | Altitude keep-in while geofence enabled |
 | `REQ-TERM-01` | No return to MOVE after LANDING/FAILSAFE |
 | `REQ-EXEC-01` | Executive ABORT followed by terminal state (SHOULD) |
+| `REQ-AVOID-SENSOR-01` | Direct avoidance decisions have fresh LiDAR evidence |
+| `REQ-CLEARANCE-01` | Vehicle never intersects a mapped obstacle volume |
 
 ```bash
 # After a sim flight:

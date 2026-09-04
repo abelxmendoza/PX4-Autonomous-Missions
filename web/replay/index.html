@@ -99,6 +99,19 @@
   input[type=range]{flex:1;min-width:80px;accent-color:var(--mint);}
   .time{font:10px var(--mono);color:var(--muted);min-width:116px;text-align:right;font-variant-numeric:tabular-nums;}
   .hint{position:fixed;bottom:83px;left:50%;transform:translateX(-50%);color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase;opacity:.72;}
+  .decision{position:fixed;top:88px;left:22px;width:min(390px,calc(100vw - 320px));padding:11px 14px;
+    border-left:3px solid var(--mint);background:rgba(6,17,18,.82);backdrop-filter:blur(12px);font:750 11px var(--mono);
+    letter-spacing:.04em;color:var(--muted);box-shadow:0 12px 36px rgba(0,0,0,.22);transition:.22s ease;}
+  .decision::before{content:"FLIGHT DIRECTOR";display:block;margin-bottom:5px;color:var(--mint);font-size:8px;letter-spacing:.18em;}
+  .decision.active{border-left-color:var(--amber);color:var(--text);background:rgba(35,25,8,.88);transform:translateX(4px);box-shadow:0 0 34px rgba(255,181,71,.12);}
+  .decision.active::before{color:var(--amber);}.decision strong{color:var(--text);}.decision.active strong{color:var(--amber);}
+  .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:3px;}
+  .result{padding:8px;background:rgba(105,247,205,.035);border:1px solid var(--line);}
+  .result span{display:block;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.08em;}
+  .result b{display:block;margin-top:3px;font:800 13px var(--mono);color:var(--text);}
+  .sensor-array{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px;}
+  .sensor-cell{padding:6px 4px;text-align:center;border:1px solid var(--line);background:rgba(105,247,205,.025);}
+  .sensor-cell span{display:block;color:var(--muted);font-size:8px;letter-spacing:.12em;}.sensor-cell b{display:block;margin-top:3px;font-size:10px;color:var(--mint);}
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;}
 
   .intro-backdrop{position:fixed;inset:0;background:rgba(2,7,8,.78);display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(10px);}
@@ -111,7 +124,7 @@
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(105,247,205,.65)}70%{box-shadow:0 0 0 7px rgba(105,247,205,0)}100%{box-shadow:0 0 0 0 rgba(105,247,205,0)}}
   @keyframes card-in{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
   @keyframes modal-in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
-  @media(max-width:760px){header{padding:12px}.live-pill,header a,.hint{display:none}.header-tools{max-width:50%}.header-tools select{width:100%}.hud{top:66px;right:10px;width:215px;max-height:calc(100vh - 150px)}.card{padding:10px}.transport{left:8px;right:8px;bottom:8px}.scrubwrap{gap:6px;overflow-x:auto}.scrubwrap button{white-space:nowrap}.time{display:none}}
+  @media(max-width:760px){header{padding:12px}.live-pill,header a,.hint{display:none}.header-tools{max-width:50%}.header-tools select{width:100%}.hud{top:108px;right:10px;width:215px;max-height:calc(100vh - 190px)}.decision{top:64px;left:10px;width:calc(100vw - 20px);padding:8px 10px}.decision::before{display:none}.card{padding:10px}.transport{left:8px;right:8px;bottom:8px}.scrubwrap{gap:6px;overflow-x:auto}.scrubwrap button{white-space:nowrap}.time{display:none}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
@@ -150,11 +163,13 @@
     </div>
   </header>
 
+  <div id="decision" class="decision">Tracking waypoint corridor <strong>— nominal flight</strong></div>
+
   <div class="hud">
     <div class="card">
       <h2>Active recording</h2>
       <div id="missionLabel" style="font:750 12px/1.35 var(--display);margin-bottom:8px;letter-spacing:-.01em">Mission</div>
-      <div class="row"><span class="k">Avoidance events</span><span id="hudEvents" class="v">–</span></div>
+      <div class="row"><span class="k">Avoidance maneuvers</span><span id="hudEvents" class="v">–</span></div>
       <div class="row"><span class="k">Duration</span><span id="hudDuration" class="v">–</span></div>
     </div>
     <div class="card">
@@ -179,6 +194,12 @@
         <span><span id="dotCage" class="dot off"></span><span id="hudCage" class="v">–</span></span></div>
       <div class="row"><span class="k">Geofence</span>
         <span><span id="dotFence" class="dot off"></span><span id="hudFence" class="v">–</span></span></div>
+      <div class="row"><span class="k">Evidence source</span><span id="hudSource" class="v">legacy log</span></div>
+      <div class="sensor-array" aria-label="LiDAR sector minimum ranges">
+        <div class="sensor-cell"><span>FRONT</span><b id="hudLidarFront">—</b></div>
+        <div class="sensor-cell"><span>LEFT</span><b id="hudLidarLeft">—</b></div>
+        <div class="sensor-cell"><span>RIGHT</span><b id="hudLidarRight">—</b></div>
+      </div>
     </div>
     <div class="card">
       <h2>Overlays</h2>
@@ -200,14 +221,27 @@
         <span class="label">LiDAR range</span>
         <span class="hint">4.0m</span>
       </label>
+      <div class="legend" style="margin-top:5px;padding-top:6px;border-top:1px solid var(--line)">
+        <div class="item"><span class="sw" style="background:#69f7cd"></span>actual flight path</div>
+        <div class="item"><span class="sw" style="background:#ffb547"></span>intended corridor</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Mission proof</h2>
+      <div class="result-grid">
+        <div class="result"><span>Maneuvers</span><b id="hudManeuvers">—</b></div>
+        <div class="result"><span>Mapped clearance</span><b id="hudClearance">—</b></div>
+        <div class="result"><span>Progress</span><b id="hudProgress">0%</b></div>
+        <div class="result"><span>Breaches</span><b id="hudBreaches">—</b></div>
+      </div>
     </div>
     <div class="card legend">
       <h2>Obstacle Course</h2>
-      <div class="item"><span class="sw" style="background:#d92626"></span>OB1 · red · 4m</div>
+      <div class="item"><span class="sw" style="background:#d92626"></span><span id="legendOb1">OB1 · red · 11.5m</span></div>
       <div class="item"><span class="sw" style="background:#e58010"></span>OB2 · orange · 6m</div>
       <div class="item"><span class="sw" style="background:#26a626"></span>OB3 · green · 4m</div>
       <div class="item"><span class="sw" style="background:#2626d9"></span>OB4 · blue · 5m</div>
-      <div class="item"><span class="sw" style="background:#a600bf"></span>OB5 · purple · 4m</div>
+      <div class="item"><span class="sw" style="background:#a600bf"></span><span id="legendOb5">OB5 · purple · 11.5m</span></div>
     </div>
   </div>
 
@@ -240,12 +274,20 @@
 // sdf local frame: x=east, y=north, z=up. size = (eastExtent, northExtent, height).
 // ---------------------------------------------------------------------------
 const OBSTACLES = [
+  { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:11.5, color:0xd92626 },
+  { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6, color:0xe58010 },
+  { name:'OB3', east:-8, north:24, sizeE:5, sizeN:3, h:4, color:0x26a626 },
+  { name:'OB4', east:6,  north:24, sizeE:3, sizeN:2, h:5, color:0x2626d9 },
+  { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:11.5, color:0xa600bf },
+];
+const LEGACY_OBSTACLES = [
   { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:4, color:0xd92626 },
   { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6, color:0xe58010 },
   { name:'OB3', east:-8, north:24, sizeE:4, sizeN:3, h:4, color:0x26a626 },
   { name:'OB4', east:6,  north:24, sizeE:2, sizeN:2, h:5, color:0x2626d9 },
   { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:4, color:0xa600bf },
 ];
+let activeObstacles = LEGACY_OBSTACLES;
 
 const AVOID_COLOR = {
   '':        0x69f7cd,
@@ -275,7 +317,21 @@ const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
 // the top of the screen when looking straight down.
 orthoCamera.up.set(0, 0, -1);
 
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias:true });
+} catch (err) {
+  // WebGLRenderer throws synchronously when no WebGL context can be
+  // created — without this, the failure was silent (console-only) and the
+  // page was left stuck on "Loading flight log…" forever with no
+  // explanation. Nothing past this point can run without a renderer, so
+  // show a clear message and stop here rather than continue into further
+  // errors.
+  const loading = document.getElementById('loading');
+  loading.style.display = 'flex';
+  loading.textContent = 'WebGL is not available in this browser — this viewer needs it to render the 3D flight replay. Try a different browser or enable hardware acceleration.';
+  throw new Error('WebGLRenderer unavailable: ' + err.message);
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
@@ -343,7 +399,9 @@ courseLine.rotation.x = -Math.PI / 2;
 courseLine.position.set(0, 0.025, -25);
 scene.add(courseLine);
 
-// Obstacles
+// Obstacles — rescaled per recording so old evidence is never shown against
+// geometry it did not fly through.
+const obstacleMeshes = [];
 for (const ob of OBSTACLES) {
   const geo = new THREE.BoxGeometry(ob.sizeE, ob.h, ob.sizeN);
   const mat = new THREE.MeshStandardMaterial({ color:ob.color, roughness:0.6, metalness:0.05 });
@@ -356,6 +414,20 @@ for (const ob of OBSTACLES) {
   );
   edges.position.copy(mesh.position);
   scene.add(edges);
+  obstacleMeshes.push({ mesh, edges, base:ob });
+}
+
+function setCourseGeometry(obstacles) {
+  activeObstacles = obstacles;
+  obstacleMeshes.forEach(({mesh, edges, base}, index) => {
+    const ob = obstacles[index];
+    const scale = [ob.sizeE / base.sizeE, ob.h / base.h, ob.sizeN / base.sizeN];
+    mesh.scale.set(...scale); edges.scale.set(...scale);
+    mesh.position.set(ob.east, ob.h / 2, -ob.north);
+    edges.position.copy(mesh.position);
+  });
+  document.getElementById('legendOb1').textContent = `OB1 · red · ${obstacles[0].h}m`;
+  document.getElementById('legendOb5').textContent = `OB5 · purple · ${obstacles[4].h}m`;
 }
 
 // ---------------------------------------------------------------------------
@@ -552,7 +624,7 @@ const MISSIONS = [
 
 let rows = [];
 let waypointObjects = []; // meshes + label sprites, cleared between missions
-let trailLine, trailGeo, trailColors, trailPositions;
+let trailLine, trailGeo, trailColors, trailPositions, nominalRoute;
 let frameIndex = 0;
 let playing = true;
 let speed = 1;
@@ -593,6 +665,29 @@ function clearMissionObjects() {
   for (const obj of waypointObjects) scene.remove(obj);
   waypointObjects = [];
   if (trailLine) scene.remove(trailLine);
+  if (nominalRoute) scene.remove(nominalRoute);
+}
+
+function countManeuvers(data) {
+  let count = 0, wasAvoiding = false;
+  for (const r of data) {
+    const avoiding = Boolean(r.obstacle);
+    if (avoiding && !wasAvoiding) count++;
+    wasAvoiding = avoiding;
+  }
+  return count;
+}
+
+function mappedClearance(r) {
+  let nearest = Infinity;
+  const altitude = -r.down;
+  for (const ob of activeObstacles) {
+    const dx = Math.max(Math.abs(r.east - ob.east) - ob.sizeE / 2, 0);
+    const dn = Math.max(Math.abs(r.north - ob.north) - ob.sizeN / 2, 0);
+    const dz = Math.max(altitude - ob.h, 0);
+    nearest = Math.min(nearest, Math.hypot(dx, dn, dz));
+  }
+  return nearest;
 }
 
 function loadMission(m) {
@@ -600,16 +695,33 @@ function loadMission(m) {
   document.getElementById('loading').textContent = 'Loading flight log…';
   playing = false;
   fetch(m.file)
-    .then(r => r.text())
+    .then(r => {
+      if (!r.ok) {
+        throw new Error(`Mission file not found (${r.status}): ${m.file}`);
+      }
+      return r.text();
+    })
     .then(text => {
       clearMissionObjects();
       rows = parseCsv(text);
+      setCourseGeometry(
+        rows.some(r => r.obstacle_source) ? OBSTACLES : LEGACY_OBSTACLES
+      );
       buildWaypoints();
       buildTrail();
+      buildNominalRoute();
       fitCamera();
       document.getElementById('missionLabel').textContent = m.label;
-      const events = rows.filter(r => r.obstacle).length;
-      document.getElementById('hudEvents').textContent = events;
+      const maneuvers = countManeuvers(rows);
+      const loggedClearances = rows.map(r => r.mapped_clearance_m).filter(Number.isFinite);
+      const minClearance = loggedClearances.length
+        ? Math.min(...loggedClearances)
+        : Math.min(...rows.map(mappedClearance));
+      const breaches = rows.filter(r => !r.geofence).length;
+      document.getElementById('hudEvents').textContent = maneuvers;
+      document.getElementById('hudManeuvers').textContent = maneuvers;
+      document.getElementById('hudClearance').textContent = minClearance.toFixed(1) + ' m';
+      document.getElementById('hudBreaches').textContent = breaches ? breaches : '0';
       document.getElementById('hudDuration').textContent = (rows.length * DT).toFixed(1) + ' s';
       const scrub = document.getElementById('scrub');
       scrub.max = rows.length - 1;
@@ -631,12 +743,20 @@ function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   const header = lines[0].split(',');
   const out = [];
+  let skipped = 0;
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(',');
-    if (cols.length < header.length) continue;
+    if (cols.length < header.length) { skipped++; continue; }
     const o = {};
     header.forEach((h, idx) => { o[h] = cols[idx]; });
     o.north = parseFloat(o.north); o.east = parseFloat(o.east); o.down = parseFloat(o.down);
+    // Core position fields must be real numbers — a malformed row here would
+    // otherwise inject NaN into the 3D scene (drone/trail silently render
+    // off-screen or frozen with no visible error). Skip it instead.
+    if (!Number.isFinite(o.north) || !Number.isFinite(o.east) || !Number.isFinite(o.down)) {
+      skipped++;
+      continue;
+    }
     o.tgt_n = parseFloat(o.tgt_n); o.tgt_e = parseFloat(o.tgt_e); o.tgt_d = parseFloat(o.tgt_d);
     o.wp_index = parseInt(o.wp_index, 10);
     o.geocage = o.geocage === '1'; o.geofence = o.geofence === '1';
@@ -645,7 +765,17 @@ function parseCsv(text) {
     o.roll_deg = parseFloat(o.roll_deg); o.pitch_deg = parseFloat(o.pitch_deg);
     o.yaw_deg = parseFloat(o.yaw_deg);
     o.vn = parseFloat(o.vn); o.ve = parseFloat(o.ve); o.vd = parseFloat(o.vd);
+    o.sensor_fresh = o.sensor_fresh === '1';
+    o.lidar_front_m = parseFloat(o.lidar_front_m);
+    o.lidar_left_m = parseFloat(o.lidar_left_m);
+    o.lidar_right_m = parseFloat(o.lidar_right_m);
+    o.mapped_clearance_m = parseFloat(o.mapped_clearance_m);
+    o.nominal_n = parseFloat(o.nominal_n); o.nominal_e = parseFloat(o.nominal_e);
+    o.nominal_d = parseFloat(o.nominal_d);
     out.push(o);
+  }
+  if (skipped > 0) {
+    console.warn(`parseCsv: skipped ${skipped} malformed row(s)`);
   }
   return out;
 }
@@ -687,10 +817,30 @@ function buildTrail() {
   scene.add(trailLine);
 }
 
+function buildNominalRoute() {
+  const points = [toWorld(rows[0].north, rows[0].east, rows[0].down)];
+  let previous = null;
+  for (const r of rows) {
+    const n = Number.isFinite(r.nominal_n) ? r.nominal_n : r.tgt_n;
+    const e = Number.isFinite(r.nominal_e) ? r.nominal_e : r.tgt_e;
+    const d = Number.isFinite(r.nominal_d) ? r.nominal_d : r.tgt_d;
+    const key = `${r.wp_index}:${n}:${e}:${d}`;
+    if (key !== previous) {
+      points.push(toWorld(n, e, d));
+      previous = key;
+    }
+  }
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineDashedMaterial({ color:0xffb547, dashSize:0.65, gapSize:0.38, transparent:true, opacity:0.72 });
+  nominalRoute = new THREE.Line(geometry, material);
+  nominalRoute.computeLineDistances();
+  scene.add(nominalRoute);
+}
+
 function fitCamera() {
   const box = new THREE.Box3();
   for (const r of rows) box.expandByPoint(toWorld(r.north, r.east, r.down));
-  for (const ob of OBSTACLES) {
+  for (const ob of activeObstacles) {
     box.expandByPoint(new THREE.Vector3(ob.east, 0, -ob.north));
   }
   const center = box.getCenter(new THREE.Vector3());
@@ -779,6 +929,25 @@ function updateFrame(idx, snapToo) {
   avoidEl.textContent = label;
   avoidEl.className = 'badge avoid-' + (r.obstacle || 'none');
 
+  const decisions = {
+    front: '<strong>FRONT SECTOR OCCUPIED</strong> → calculating clearance',
+    left: '<strong>LEFT SECTOR OCCUPIED</strong> → biasing route right',
+    right: '<strong>RIGHT SECTOR OCCUPIED</strong> → biasing route left',
+    bypass: '<strong>BYPASS LOCKED</strong> → tracking safe corridor',
+    obstacle: '<strong>OBSTACLE DETECTED</strong> → avoidance controller engaged',
+  };
+  const decisionEl = document.getElementById('decision');
+  decisionEl.innerHTML = decisions[r.obstacle] || 'Tracking waypoint corridor <strong>— nominal flight</strong>';
+  decisionEl.className = 'decision' + (r.obstacle ? ' active' : '');
+  document.getElementById('hudProgress').textContent = Math.round((frameIndex / (rows.length - 1)) * 100) + '%';
+  const formatRange = value => Number.isFinite(value) && value >= 0 ? value.toFixed(1) + 'm' : '—';
+  document.getElementById('hudLidarFront').textContent = formatRange(r.lidar_front_m);
+  document.getElementById('hudLidarLeft').textContent = formatRange(r.lidar_left_m);
+  document.getElementById('hudLidarRight').textContent = formatRange(r.lidar_right_m);
+  document.getElementById('hudSource').textContent = r.obstacle_source
+    ? `${r.obstacle_source.replace('_', ' ')} · ${r.sensor_fresh ? 'live' : 'stale'}`
+    : 'legacy log';
+
   // LiDAR sector wedges — colored to match whichever sector the real logged
   // avoidance controller reacted to this frame ('' / front / left / right /
   // bypass, see lidar_sectors.py's classification).
@@ -788,6 +957,7 @@ function updateFrame(idx, snapToo) {
     lidarSectors[key].material.color.setHex(isActive ? activeSectorColor : LIDAR_INACTIVE);
     lidarSectors[key].material.opacity = isActive ? 0.55 : 0.22;
   }
+  lidarGroup.visible = document.getElementById('toggleLidar').checked || Boolean(r.obstacle);
 
   document.getElementById('dotCage').className = 'dot ' + (r.geocage ? 'on' : 'off');
   document.getElementById('hudCage').textContent = r.geocage ? 'active' : 'off';
@@ -800,6 +970,9 @@ function updateFrame(idx, snapToo) {
 
 function animate() {
   requestAnimationFrame(animate);
+  const now = performance.now() * 0.001;
+  padRing.material.opacity = 0.55 + Math.sin(now * 2.4) * 0.22;
+  droneLight.intensity = 1.35 + Math.sin(now * 5) * 0.2;
   if (playing && rows.length) {
     acc += (1/60) * speed;
     if (acc >= DT) {

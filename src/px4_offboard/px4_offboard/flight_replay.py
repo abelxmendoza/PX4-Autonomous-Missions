@@ -44,6 +44,15 @@ class FlightSample:
     battery_frac: float | None = None
     link_quality: float | None = None
     propellant_s: float | None = None
+    obstacle_source: str | None = None
+    sensor_fresh: bool = False
+    lidar_front_m: float | None = None
+    lidar_left_m: float | None = None
+    lidar_right_m: float | None = None
+    mapped_clearance_m: float | None = None
+    nominal_n: float | None = None
+    nominal_e: float | None = None
+    nominal_d: float | None = None
 
     @property
     def altitude_m(self) -> float:
@@ -88,6 +97,11 @@ class FlightTrace:
         states = self.unique_state_sequence()
         avoid_rows = sum(1 for s in self.samples if s.obstacle)
         breach_rows = sum(1 for s in self.samples if not s.inside and s.geofence)
+        clearances = [
+            s.mapped_clearance_m
+            for s in self.samples
+            if s.mapped_clearance_m is not None
+        ]
         return {
             "source": self.source,
             "samples": len(self.samples),
@@ -100,6 +114,10 @@ class FlightTrace:
             "avoidance_samples": avoid_rows,
             "geofence_breach_samples": breach_rows,
             "has_executive": any(s.executive_mode for s in self.samples),
+            "sensor_evidence_samples": sum(1 for s in self.samples if s.sensor_fresh),
+            "minimum_mapped_clearance_m": (
+                round(min(clearances), 3) if clearances else None
+            ),
         }
 
 
@@ -189,6 +207,19 @@ def load_flight_log(path: str | Path) -> FlightTrace:
                 battery_frac=_as_optional_float(row.get("battery_frac")),
                 link_quality=_as_optional_float(row.get("link_quality")),
                 propellant_s=_as_optional_float(row.get("propellant_s")),
+                obstacle_source=(
+                    str(row["obstacle_source"]).strip().lower()
+                    if row.get("obstacle_source")
+                    else None
+                ),
+                sensor_fresh=_as_bool(row.get("sensor_fresh", 0)),
+                lidar_front_m=_as_optional_float(row.get("lidar_front_m")),
+                lidar_left_m=_as_optional_float(row.get("lidar_left_m")),
+                lidar_right_m=_as_optional_float(row.get("lidar_right_m")),
+                mapped_clearance_m=_as_optional_float(row.get("mapped_clearance_m")),
+                nominal_n=_as_optional_float(row.get("nominal_n")),
+                nominal_e=_as_optional_float(row.get("nominal_e")),
+                nominal_d=_as_optional_float(row.get("nominal_d")),
             )
         )
 
@@ -208,6 +239,15 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
         "tgt_e",
         "tgt_d",
         "obstacle",
+        "obstacle_source",
+        "sensor_fresh",
+        "lidar_front_m",
+        "lidar_left_m",
+        "lidar_right_m",
+        "mapped_clearance_m",
+        "nominal_n",
+        "nominal_e",
+        "nominal_d",
         "wp_index",
         "geocage",
         "geofence",
@@ -242,6 +282,15 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
                     "tgt_e": sample.tgt_e,
                     "tgt_d": sample.tgt_d,
                     "obstacle": sample.obstacle,
+                    "obstacle_source": sample.obstacle_source or "",
+                    "sensor_fresh": int(sample.sensor_fresh),
+                    "lidar_front_m": "" if sample.lidar_front_m is None else sample.lidar_front_m,
+                    "lidar_left_m": "" if sample.lidar_left_m is None else sample.lidar_left_m,
+                    "lidar_right_m": "" if sample.lidar_right_m is None else sample.lidar_right_m,
+                    "mapped_clearance_m": "" if sample.mapped_clearance_m is None else sample.mapped_clearance_m,
+                    "nominal_n": "" if sample.nominal_n is None else sample.nominal_n,
+                    "nominal_e": "" if sample.nominal_e is None else sample.nominal_e,
+                    "nominal_d": "" if sample.nominal_d is None else sample.nominal_d,
                     "wp_index": sample.wp_index,
                     "geocage": int(sample.geocage),
                     "geofence": int(sample.geofence),

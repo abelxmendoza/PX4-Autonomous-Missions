@@ -28,6 +28,7 @@
     mission_timeout_s: 180.0
     avoid_stuck_s: 12.0
     sensor_timeout_s: 0.5
+    obstacle_source: "hybrid"  # hybrid | sensor_only | map_only
 
     # Geo-cage (soft: clamps setpoints) / geofence (hard: breach → action)
     # Toggle at runtime:
@@ -43,6 +44,23 @@
     geocage_margin_m: 1.0
     geofence_action: "land"   # land | hold | rtl
     px4_fence_cmd: false      # also send VEHICLE_CMD_DO_FENCE_ENABLE to PX4
+
+    # Mission executive / resource manager — NOMINAL → DEGRADED → SAFE → ABORT
+    # as battery/link/propellant budgets are consumed. See mission_executive.py.
+    executive_enable: true
+    science_waypoints: [2, 4, 6]
+    initial_battery: 1.0
+    initial_propellant_s: 180.0
+    battery_degraded: 0.45
+    battery_safe: 0.25
+    battery_abort: 0.12
+    link_degraded: 0.55
+    link_safe: 0.30
+    link_abort: 0.10
+    link_loss_abort_s: 8.0
+    propellant_degraded_s: 90.0
+    propellant_safe_s: 45.0
+    propellant_abort_s: 20.0
 
     # CSV flight log directory (relative to cwd unless absolute)
     log_dir: "."

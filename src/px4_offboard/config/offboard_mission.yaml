@@ -28,6 +28,7 @@
     mission_timeout_s: 180.0
     avoid_stuck_s: 12.0
     sensor_timeout_s: 0.5
+    obstacle_source: "hybrid"  # hybrid | sensor_only | map_only
 
     # Geo-cage (soft: clamps setpoints) / geofence (hard: breach → action)
     # Toggle at runtime:
