@@ -4,6 +4,19 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>PX4 Autonomous Mission — Flight Replay</title>
+<meta name="description" content="Real recorded PX4 v1.15 + Gazebo Harmonic SITL flight replayed in the browser — reactive obstacle avoidance, geofencing, and failsafes, no backend required."/>
+<link rel="icon" href="favicon.png" type="image/png"/>
+<link rel="apple-touch-icon" href="apple-touch-icon.png"/>
+
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="PX4 Autonomous Mission — Flight Replay"/>
+<meta property="og:description" content="Real recorded PX4 + Gazebo Harmonic SITL flight, replayed in the browser. Reactive obstacle avoidance, geofencing, and failsafes — no backend required."/>
+<meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
+<meta property="og:url" content="https://replay-sepia-tau.vercel.app"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="PX4 Autonomous Mission — Flight Replay"/>
+<meta name="twitter:description" content="Real recorded PX4 + Gazebo Harmonic SITL flight, replayed in the browser."/>
+<meta name="twitter:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <style>
   :root{
     --bg:#0a0e14; --panel:#11161f; --panel-b:rgba(255,255,255,0.08);
@@ -72,12 +85,38 @@
 
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     color:var(--muted);font-size:13px;}
+
+  .intro-backdrop{position:fixed;inset:0;background:rgba(6,9,14,0.72);
+    display:flex;align-items:center;justify-content:center;z-index:50;
+    backdrop-filter:blur(3px);}
+  .intro-backdrop[hidden]{display:none;}
+  .intro-card{width:min(420px, 90vw);background:var(--panel);border:1px solid var(--panel-b);
+    border-radius:14px;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);}
+  .intro-card h3{margin:0 0 10px 0;font-size:15px;color:var(--text);}
+  .intro-card p{margin:0 0 8px 0;font-size:12.5px;line-height:1.55;color:var(--muted);}
+  .intro-card p b{color:var(--text);font-weight:600;}
+  .intro-card .actions{margin-top:16px;display:flex;justify-content:flex-end;}
 </style>
 </head>
 <body>
 
 <div id="scene"></div>
 <div id="loading" class="loading">Loading flight log…</div>
+
+<div id="introBackdrop" class="intro-backdrop" hidden>
+  <div class="intro-card">
+    <h3>What you're looking at</h3>
+    <p>This is a <b>real recorded flight</b> from PX4 SITL + Gazebo Harmonic —
+      not a live physics simulation. The drone, obstacle course, and avoidance
+      decisions are all pulled from an actual telemetry log.</p>
+    <p>Press <b>play</b>, switch missions in the top-right dropdown, or toggle
+      <b>Top-Down</b> for a map view. Trail color shows when the reactive
+      avoidance controller took over (front/left/right/bypass).</p>
+    <div class="actions">
+      <button id="introDismiss" class="primary">Got it</button>
+    </div>
+  </div>
+</div>
 
 <div class="overlay">
   <header>
@@ -337,6 +376,24 @@ let acc = 0;
 let dragging = false;
 let animating = false;
 
+// First-visit intro — if it's showing, missions load paused so nobody
+// misses the opening seconds while reading it. Dismiss is remembered
+// per-browser via localStorage.
+let introShowing = false;
+(function checkIntro() {
+  const SEEN_KEY = 'px4_replay_seen_intro';
+  try { if (localStorage.getItem(SEEN_KEY) === '1') return; } catch (e) {}
+  introShowing = true;
+  document.getElementById('introBackdrop').hidden = false;
+  document.getElementById('introDismiss').addEventListener('click', () => {
+    introShowing = false;
+    document.getElementById('introBackdrop').hidden = true;
+    try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
+    playing = true;
+    document.getElementById('btnPlay').textContent = '⏸ Pause';
+  });
+})();
+
 const missionSelect = document.getElementById('missionSelect');
 for (const m of MISSIONS) {
   const opt = document.createElement('option');
@@ -374,8 +431,8 @@ function loadMission(m) {
       scrub.max = rows.length - 1;
       document.getElementById('loading').style.display = 'none';
       updateFrame(0, true);
-      playing = true;
-      document.getElementById('btnPlay').textContent = '⏸ Pause';
+      playing = !introShowing;
+      document.getElementById('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play';
       if (!animating) { animating = true; animate(); }
     })
     .catch(err => {
