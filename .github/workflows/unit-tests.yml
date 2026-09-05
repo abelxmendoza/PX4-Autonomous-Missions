@@ -56,10 +56,20 @@ jobs:
       - run: git clone --depth 1 https://github.com/PX4/px4_msgs.git src/px4_msgs
       - name: Build px4_msgs
         run: |
-          source /opt/ros/humble/setup.bash
+          set +e; source /opt/ros/humble/setup.bash; set -e
           colcon build --symlink-install --packages-select px4_msgs
-      - run: |
+      - name: Run node-level tests
+        run: |
+          # ROS's generated setup.bash scripts can return non-zero from
+          # internal checks even on a normal, successful source — GitHub
+          # Actions' default `set -e` shell then aborts the whole step.
+          # scripts/run_full_stack.sh hit the equivalent issue with `set -u`;
+          # same fix here, just for `-e`.
+          set +e
           source /opt/ros/humble/setup.bash
           source install/setup.bash
+          set -e
           pip install pytest
-          PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py -v
+          # Extend PYTHONPATH, don't replace it — install/setup.bash already
+          # put px4_msgs's generated Python modules on it.
+          PYTHONPATH="src/px4_offboard:$PYTHONPATH" python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py -v
