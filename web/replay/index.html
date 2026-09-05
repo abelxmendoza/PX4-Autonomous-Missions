@@ -276,7 +276,7 @@
     <p>Press <b>play</b>, switch missions in the top-right dropdown, or toggle
       <b>Top-Down</b> for a map view. Trail color shows when the reactive
       avoidance controller took over (front/left/right/bypass).</p>
-    <p class="intro-mobile-note">On iPhone: pinch/drag the scene, open <b>Telemetry</b> for live HUD, use the bottom bar to scrub.</p>
+    <p class="intro-mobile-note">On iPhone: starts in Top-Down map view — pinch to zoom, open <b>Telemetry</b> for live HUD, swipe it down to close.</p>
     <div class="actions">
       <button id="introDismiss" class="primary">Got it</button>
     </div>
@@ -354,7 +354,7 @@
         <span class="hint">soft</span>
       </label>
       <label class="toggle-row">
-        <input type="checkbox" id="toggleLidar"/>
+        <input type="checkbox" id="toggleLidar" checked/>
         <span class="sw" style="background:transparent;border:1.5px solid #7CFC00;"></span>
         <span class="label">LiDAR range</span>
         <span class="hint">4.0m</span>
@@ -439,6 +439,11 @@ const AVOID_COLOR = {
 
 const DT = 0.1; // seconds/row — PX4 offboard setpoints stream at 10 Hz
 
+// Phone / coarse-pointer devices get a lighter GPU + DOM budget.
+const IS_MOBILE = window.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+const MAX_PIXEL_RATIO = IS_MOBILE ? 1.25 : 2;
+const HUD_MIN_INTERVAL_MS = IS_MOBILE ? 120 : 0;
+
 // toWorld() is defined in lib.js (shared with the test suite).
 
 // ---------------------------------------------------------------------------
@@ -447,7 +452,7 @@ const DT = 0.1; // seconds/row — PX4 offboard setpoints stream at 10 Hz
 const container = document.getElementById('scene');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050a0b);
-scene.fog = new THREE.Fog(0x050a0b, 55, 190);
+scene.fog = new THREE.Fog(0x050a0b, IS_MOBILE ? 40 : 55, IS_MOBILE ? 140 : 190);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
@@ -457,7 +462,11 @@ orthoCamera.up.set(0, 0, -1);
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer = new THREE.WebGLRenderer({
+    antialias: !IS_MOBILE,
+    powerPreference: IS_MOBILE ? 'low-power' : 'high-performance',
+    alpha: false,
+  });
 } catch (err) {
   // WebGLRenderer throws synchronously when no WebGL context can be
   // created — without this, the failure was silent (console-only) and the
@@ -470,28 +479,35 @@ try {
   loading.textContent = 'WebGL is not available in this browser — this viewer needs it to render the 3D flight replay. Try a different browser or enable hardware acceleration.';
   throw new Error('WebGLRenderer unavailable: ' + err.message);
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, MAX_PIXEL_RATIO));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+if (!IS_MOBILE) {
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+}
 container.appendChild(renderer.domElement);
 
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.08;
+controls.dampingFactor = IS_MOBILE ? 0.12 : 0.08;
 controls.minDistance = 5;
 controls.maxDistance = 150;
+controls.rotateSpeed = IS_MOBILE ? 0.55 : 1.0;
+controls.zoomSpeed = IS_MOBILE ? 0.7 : 1.0;
+controls.panSpeed = IS_MOBILE ? 0.6 : 1.0;
+controls.enablePan = !IS_MOBILE; // one-finger orbit is clearer on phones
 
 const orthoControls = new THREE.OrbitControls(orthoCamera, renderer.domElement);
 orthoControls.enableDamping = true;
-orthoControls.dampingFactor = 0.08;
+orthoControls.dampingFactor = IS_MOBILE ? 0.12 : 0.08;
 orthoControls.enableRotate = false; // pan + zoom only — stays a flat map view
 orthoControls.screenSpacePanning = true;
 orthoControls.minZoom = 0.2;
 orthoControls.maxZoom = 8;
+orthoControls.zoomSpeed = IS_MOBILE ? 0.7 : 1.0;
 
-let topDown = false;
+let topDown = IS_MOBILE; // map view is clearer on a phone-sized screen
 function activeCamera()  { return topDown ? orthoCamera  : camera;  }
 function activeControls(){ return topDown ? orthoControls : controls; }
 
@@ -646,7 +662,7 @@ function wedgeGeometry(r0, r1, startDeg, endDeg, segments) {
 
 const LIDAR_INACTIVE = 0x25443f;
 const lidarGroup = new THREE.Group();
-lidarGroup.visible = false;
+lidarGroup.visible = true;
 lidarGroup.position.y = 0.05; // just above drone origin — avoids z-fighting with ground
 
 const lidarSectors = {
@@ -733,7 +749,8 @@ const drone = new THREE.Group();
 drone.add(lidarGroup);
 scene.add(drone);
 
-const droneLight = new THREE.PointLight(0x69f7cd, 1.5, 5);
+const droneLight = new THREE.PointLight(0x69f7cd, IS_MOBILE ? 0 : 1.5, 5);
+droneLight.visible = !IS_MOBILE;
 drone.add(droneLight);
 
 // ---------------------------------------------------------------------------
@@ -763,6 +780,34 @@ const MISSIONS = [
 let rows = [];
 let waypointObjects = []; // meshes + label sprites, cleared between missions
 let trailLine, trailGeo, trailColors, trailPositions, nominalRoute;
+let trailBuiltTo = -1;
+let lastHudWriteMs = 0;
+let lastDecisionKey = null;
+let pageVisible = document.visibilityState !== 'hidden';
+
+const hud = {
+  state: document.getElementById('hudState'),
+  wp: document.getElementById('hudWp'),
+  time: document.getElementById('hudTime'),
+  n: document.getElementById('hudN'),
+  e: document.getElementById('hudE'),
+  alt: document.getElementById('hudAlt'),
+  dist: document.getElementById('hudDist'),
+  avoid: document.getElementById('hudAvoid'),
+  progress: document.getElementById('hudProgress'),
+  lidarFront: document.getElementById('hudLidarFront'),
+  lidarLeft: document.getElementById('hudLidarLeft'),
+  lidarRight: document.getElementById('hudLidarRight'),
+  source: document.getElementById('hudSource'),
+  cage: document.getElementById('hudCage'),
+  fence: document.getElementById('hudFence'),
+  range: document.getElementById('hudRange'),
+  decision: document.getElementById('decision'),
+  scrub: document.getElementById('scrub'),
+  toggleLidar: document.getElementById('toggleLidar'),
+  dotCage: document.getElementById('dotCage'),
+  dotFence: document.getElementById('dotFence'),
+};
 let frameIndex = 0;
 let playing = true;
 let speed = 1;
@@ -907,13 +952,37 @@ function buildWaypoints() {
 function buildTrail() {
   trailPositions = new Float32Array(rows.length * 3);
   trailColors = new Float32Array(rows.length * 3);
+  const tint = new THREE.Color();
+  // Precompute world positions + colors once so playback only changes
+  // drawRange instead of rewriting the buffer every frame.
+  for (let i = 0; i < rows.length; i++) {
+    const rr = rows[i];
+    const p = toWorld(rr.north, rr.east, rr.down);
+    trailPositions[i * 3] = p.x;
+    trailPositions[i * 3 + 1] = p.y;
+    trailPositions[i * 3 + 2] = p.z;
+    tint.setHex(AVOID_COLOR[rr.obstacle] ?? AVOID_COLOR['']);
+    trailColors[i * 3] = tint.r;
+    trailColors[i * 3 + 1] = tint.g;
+    trailColors[i * 3 + 2] = tint.b;
+  }
   trailGeo = new THREE.BufferGeometry();
   trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
   trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
   trailGeo.setDrawRange(0, 0);
+  trailBuiltTo = -1;
   const mat = new THREE.LineBasicMaterial({ vertexColors:true, linewidth:2 });
   trailLine = new THREE.Line(trailGeo, mat);
   scene.add(trailLine);
+}
+
+function syncTrail(idx) {
+  trailGeo.setDrawRange(0, idx + 1);
+  if (trailBuiltTo < 0) {
+    trailGeo.attributes.position.needsUpdate = true;
+    trailGeo.attributes.color.needsUpdate = true;
+  }
+  trailBuiltTo = idx;
 }
 
 function buildNominalRoute() {
@@ -964,6 +1033,19 @@ function fitCamera() {
 // Playback
 // ---------------------------------------------------------------------------
 const col = new THREE.Color();
+const DECISIONS = {
+  front: '<strong>FRONT SECTOR OCCUPIED</strong> → calculating clearance',
+  left: '<strong>LEFT SECTOR OCCUPIED</strong> → biasing route right',
+  right: '<strong>RIGHT SECTOR OCCUPIED</strong> → biasing route left',
+  bypass: '<strong>BYPASS LOCKED</strong> → tracking safe corridor',
+  obstacle: '<strong>OBSTACLE DETECTED</strong> → avoidance controller engaged',
+};
+const DECISION_NOMINAL = 'Tracking waypoint corridor <strong>— nominal flight</strong>';
+
+function setText(el, value) {
+  if (el.textContent !== value) el.textContent = value;
+}
+
 function updateFrame(idx, snapToo) {
   frameIndex = Math.max(0, Math.min(idx, rows.length - 1));
   const r = rows[frameIndex];
@@ -997,89 +1079,101 @@ function updateFrame(idx, snapToo) {
     }
   }
 
-  // rebuild trail up to current frame with per-vertex avoidance color
-  for (let i = 0; i <= frameIndex; i++) {
-    const rr = rows[i];
-    const p = toWorld(rr.north, rr.east, rr.down);
-    trailPositions[i*3] = p.x; trailPositions[i*3+1] = p.y; trailPositions[i*3+2] = p.z;
-    col.setHex(AVOID_COLOR[rr.obstacle] ?? AVOID_COLOR['']);
-    trailColors[i*3] = col.r; trailColors[i*3+1] = col.g; trailColors[i*3+2] = col.b;
-  }
-  trailGeo.setDrawRange(0, frameIndex + 1);
-  trailGeo.attributes.position.needsUpdate = true;
-  trailGeo.attributes.color.needsUpdate = true;
+  syncTrail(frameIndex);
 
-  // HUD
-  const stateEl = document.getElementById('hudState');
-  stateEl.textContent = r.state;
-  stateEl.className = 'badge state-' + r.state;
-
-  document.getElementById('hudWp').textContent = r.wp_index + ' / ' + totalWaypoints;
-  document.getElementById('hudTime').textContent = (frameIndex * DT).toFixed(1) + ' s';
-  document.getElementById('hudN').textContent = r.north.toFixed(2) + ' m';
-  document.getElementById('hudE').textContent = r.east.toFixed(2) + ' m';
-  document.getElementById('hudAlt').textContent = (-r.down).toFixed(2) + ' m';
-
-  const dist = Math.hypot(r.tgt_n - r.north, r.tgt_e - r.east, r.tgt_d - r.down);
-  document.getElementById('hudDist').textContent = dist.toFixed(2) + ' m';
-
-  const avoidEl = document.getElementById('hudAvoid');
-  const label = r.obstacle || 'nominal';
-  avoidEl.textContent = label;
-  avoidEl.className = 'badge avoid-' + (r.obstacle || 'none');
-
-  const decisions = {
-    front: '<strong>FRONT SECTOR OCCUPIED</strong> → calculating clearance',
-    left: '<strong>LEFT SECTOR OCCUPIED</strong> → biasing route right',
-    right: '<strong>RIGHT SECTOR OCCUPIED</strong> → biasing route left',
-    bypass: '<strong>BYPASS LOCKED</strong> → tracking safe corridor',
-    obstacle: '<strong>OBSTACLE DETECTED</strong> → avoidance controller engaged',
-  };
-  const decisionEl = document.getElementById('decision');
-  decisionEl.innerHTML = decisions[r.obstacle] || 'Tracking waypoint corridor <strong>— nominal flight</strong>';
-  decisionEl.className = 'decision' + (r.obstacle ? ' active' : '');
-  document.getElementById('hudProgress').textContent = Math.round((frameIndex / (rows.length - 1)) * 100) + '%';
-  const formatRange = value => Number.isFinite(value) && value >= 0 ? value.toFixed(1) + 'm' : '—';
-  document.getElementById('hudLidarFront').textContent = formatRange(r.lidar_front_m);
-  document.getElementById('hudLidarLeft').textContent = formatRange(r.lidar_left_m);
-  document.getElementById('hudLidarRight').textContent = formatRange(r.lidar_right_m);
-  document.getElementById('hudSource').textContent = r.obstacle_source
-    ? `${r.obstacle_source.replace('_', ' ')} · ${r.sensor_fresh ? 'live' : 'stale'}`
-    : 'legacy log';
-
-  // LiDAR sector wedges — colored to match whichever sector the real logged
-  // avoidance controller reacted to this frame ('' / front / left / right /
-  // bypass, see lidar_sectors.py's classification).
+  // LiDAR sector wedges — cheap material tweaks only when the active sector changes.
   const activeSectorColor = AVOID_COLOR[r.obstacle] ?? AVOID_COLOR[''];
   for (const key of ['front', 'left', 'right']) {
     const isActive = r.obstacle === key;
     lidarSectors[key].material.color.setHex(isActive ? activeSectorColor : LIDAR_INACTIVE);
     lidarSectors[key].material.opacity = isActive ? 0.55 : 0.22;
   }
-  lidarGroup.visible = document.getElementById('toggleLidar').checked || Boolean(r.obstacle);
+  lidarGroup.visible = hud.toggleLidar.checked;
 
-  document.getElementById('dotCage').className = 'dot ' + (r.geocage ? 'on' : 'off');
-  document.getElementById('hudCage').textContent = r.geocage ? 'active' : 'off';
-  document.getElementById('dotFence').className = 'dot ' + (r.geofence ? 'on' : 'off');
-  document.getElementById('hudFence').textContent = r.geofence ? 'active' : 'off';
+  const decisionKey = r.obstacle || '';
+  if (decisionKey !== lastDecisionKey) {
+    lastDecisionKey = decisionKey;
+    hud.decision.innerHTML = DECISIONS[r.obstacle] || DECISION_NOMINAL;
+    hud.decision.className = 'decision' + (r.obstacle ? ' active' : '');
+  }
 
-  document.getElementById('hudRange').textContent = `frame ${frameIndex} / ${rows.length - 1}`;
-  if (!dragging) document.getElementById('scrub').value = frameIndex;
+  const nowMs = performance.now();
+  const forceHud = snapToo || dragging || HUD_MIN_INTERVAL_MS === 0
+    || (nowMs - lastHudWriteMs) >= HUD_MIN_INTERVAL_MS;
+  if (!forceHud) {
+    if (!dragging) hud.scrub.value = frameIndex;
+    return;
+  }
+  lastHudWriteMs = nowMs;
+
+  hud.state.textContent = r.state;
+  hud.state.className = 'badge state-' + r.state;
+
+  setText(hud.wp, r.wp_index + ' / ' + totalWaypoints);
+  setText(hud.time, (frameIndex * DT).toFixed(1) + ' s');
+  setText(hud.n, r.north.toFixed(2) + ' m');
+  setText(hud.e, r.east.toFixed(2) + ' m');
+  setText(hud.alt, (-r.down).toFixed(2) + ' m');
+
+  const dist = Math.hypot(r.tgt_n - r.north, r.tgt_e - r.east, r.tgt_d - r.down);
+  setText(hud.dist, dist.toFixed(2) + ' m');
+
+  const label = r.obstacle || 'nominal';
+  hud.avoid.textContent = label;
+  hud.avoid.className = 'badge avoid-' + (r.obstacle || 'none');
+
+  setText(hud.progress, Math.round((frameIndex / (rows.length - 1)) * 100) + '%');
+  const formatRange = value => Number.isFinite(value) && value >= 0 ? value.toFixed(1) + 'm' : '—';
+  setText(hud.lidarFront, formatRange(r.lidar_front_m));
+  setText(hud.lidarLeft, formatRange(r.lidar_left_m));
+  setText(hud.lidarRight, formatRange(r.lidar_right_m));
+  setText(
+    hud.source,
+    r.obstacle_source
+      ? `${r.obstacle_source.replace('_', ' ')} · ${r.sensor_fresh ? 'live' : 'stale'}`
+      : 'legacy log'
+  );
+
+  hud.dotCage.className = 'dot ' + (r.geocage ? 'on' : 'off');
+  setText(hud.cage, r.geocage ? 'active' : 'off');
+  hud.dotFence.className = 'dot ' + (r.geofence ? 'on' : 'off');
+  setText(hud.fence, r.geofence ? 'active' : 'off');
+
+  setText(hud.range, `frame ${frameIndex} / ${rows.length - 1}`);
+  if (!dragging) hud.scrub.value = frameIndex;
 }
 
 function animate() {
   requestAnimationFrame(animate);
+  if (!pageVisible) return;
+
   const now = performance.now() * 0.001;
-  padRing.material.opacity = 0.55 + Math.sin(now * 2.4) * 0.22;
-  droneLight.intensity = 1.35 + Math.sin(now * 5) * 0.2;
+  if (!IS_MOBILE) {
+    padRing.material.opacity = 0.55 + Math.sin(now * 2.4) * 0.22;
+    droneLight.intensity = 1.35 + Math.sin(now * 5) * 0.2;
+  }
   if (playing && rows.length) {
-    acc += (1/60) * speed;
-    if (acc >= DT) {
-      acc = 0;
+    // Use real frame delta so playback stays correct when raf drops below 60fps.
+    if (!animate._last) animate._last = now;
+    const dt = Math.min(0.05, now - animate._last);
+    animate._last = now;
+    acc += dt * speed;
+    while (acc >= DT && playing) {
+      acc -= DT;
       let next = frameIndex + 1;
-      if (next >= rows.length) next = 0; // loop
+      if (next >= rows.length) {
+        next = 0;
+        trailBuiltTo = -1; // loop — redraw from start
+      }
       updateFrame(next);
+      // Cap catch-up after a jank spike / tab resume so we don't melt one frame.
+      if ((performance.now() * 0.001) - now > 0.012) {
+        acc = Math.min(acc, DT);
+        break;
+      }
     }
+  } else {
+    animate._last = now;
   }
   activeControls().update();
   renderer.render(scene, activeCamera());
@@ -1105,12 +1199,17 @@ document.getElementById('btnView').addEventListener('click', e => {
   topDown = !topDown;
   e.target.textContent = topDown ? '🎥 Orbit' : '🗺 Top-Down';
 });
+document.getElementById('btnView').textContent = topDown ? '🎥 Orbit' : '🗺 Top-Down';
 const scrub = document.getElementById('scrub');
 scrub.addEventListener('mousedown', () => dragging = true);
 scrub.addEventListener('touchstart', () => dragging = true, {passive:true});
-scrub.addEventListener('input', e => updateFrame(parseInt(e.target.value, 10)));
+scrub.addEventListener('input', e => updateFrame(parseInt(e.target.value, 10), true));
 window.addEventListener('mouseup', () => dragging = false);
 window.addEventListener('touchend', () => dragging = false);
+document.addEventListener('visibilitychange', () => {
+  pageVisible = document.visibilityState !== 'hidden';
+  if (pageVisible) animate._last = performance.now() * 0.001;
+});
 
 // Mobile HUD sheet — keeps the 3D scene full-bleed on iPhone; telemetry
 // opens as a bottom drawer instead of permanently covering the flight.
@@ -1134,8 +1233,17 @@ window.addEventListener('touchend', () => dragging = false);
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') setOpen(false);
   });
-  // If the user rotates to landscape / desktop width, leave the sheet open
-  // state behind so desktop CSS can show the side HUD normally.
+  // Swipe down on the sheet handle area to dismiss (iOS-familiar).
+  let touchStartY = 0;
+  let touchStartScroll = 0;
+  panel.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches[0].clientY;
+    touchStartScroll = panel.scrollTop;
+  }, {passive:true});
+  panel.addEventListener('touchend', (e) => {
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (dy > 70 && touchStartScroll <= 4) setOpen(false);
+  }, {passive:true});
   const mq = window.matchMedia('(max-width: 760px)');
   mq.addEventListener('change', (e) => {
     if (!e.matches) setOpen(false);
@@ -1151,6 +1259,7 @@ function resizeRenderer() {
   const halfSpan = (orthoCamera.top - orthoCamera.bottom) / 2;
   orthoCamera.left = -halfSpan * aspect; orthoCamera.right = halfSpan * aspect;
   orthoCamera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, MAX_PIXEL_RATIO));
   renderer.setSize(w, h);
 }
 window.addEventListener('resize', resizeRenderer);
