@@ -17,6 +17,7 @@ Resources (simulated):
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
@@ -33,6 +34,18 @@ class ExecutiveAction(Enum):
     SKIP_SCIENCE = auto()
     HOLD_SAFE = auto()
     ABORT_LAND = auto()
+
+
+def path_suffix_costs_m(waypoints: list[list[float]] | tuple) -> list[float]:
+    """Suffix path length (meters) on the waypoint graph: cost[i] = Σ_{j≥i} ‖wp[j+1]-wp[j]‖."""
+    n = len(waypoints)
+    costs = [0.0] * n
+    for i in range(n - 2, -1, -1):
+        a, b = waypoints[i], waypoints[i + 1]
+        costs[i] = costs[i + 1] + math.sqrt(
+            (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+        )
+    return costs
 
 
 @dataclass
@@ -100,6 +113,8 @@ class MissionExecutiveConfig:
     # Simulated link: decays when "stale", recovers when healthy
     link_recover_rate: float = 0.25
     link_decay_rate: float = 0.35
+    cruise_speed_mps: float = 2.0  # for path-budget vs propellant time
+    path_budget_margin: float = 0.85  # skip science when path > margin * range
     budgets: ResourceBudgets = field(default_factory=ResourceBudgets)
 
 
@@ -172,8 +187,15 @@ class MissionExecutive:
         *,
         current_wp_index: int,
         remaining_waypoints: int,
+        remaining_path_m: float | None = None,
     ) -> ExecutiveDecision:
-        """Select mission mode + action from current resources."""
+        """Select mission mode + action from current resources.
+
+        ``remaining_path_m`` is the waypoint-graph suffix cost from the current
+        index (see ``path_suffix_costs_m``). When path length exceeds the
+        propellant range budget, science waypoints are skipped even before a
+        full DEGRADED resource trip — a greedy path-cost heuristic.
+        """
         if not self.config.enable:
             return ExecutiveDecision(
                 mode=MissionMode.NOMINAL,
@@ -192,13 +214,20 @@ class MissionExecutive:
 
         action = ExecutiveAction.CONTINUE
         skipped: list[int] = []
+        path_tight = False
+        if remaining_path_m is not None:
+            reachable = (
+                self.resources.propellant_time_s
+                * self.config.cruise_speed_mps
+                * self.config.path_budget_margin
+            )
+            path_tight = remaining_path_m > reachable
 
         if desired is MissionMode.ABORT:
             action = ExecutiveAction.ABORT_LAND
         elif desired is MissionMode.SAFE:
             action = ExecutiveAction.HOLD_SAFE
-        elif desired is MissionMode.DEGRADED:
-            # Skip upcoming science waypoints to save energy / time
+        elif desired is MissionMode.DEGRADED or path_tight:
             if (
                 remaining_waypoints > 0
                 and current_wp_index in self.config.science_waypoints
@@ -206,6 +235,12 @@ class MissionExecutive:
             ):
                 action = ExecutiveAction.SKIP_SCIENCE
                 skipped = [current_wp_index]
+                if path_tight and desired is MissionMode.NOMINAL:
+                    reason = (
+                        f"path budget tight ({remaining_path_m:.0f}m > "
+                        f"{reachable:.0f}m range) — skip science"
+                    )
+                    self.last_reason = reason
 
         return ExecutiveDecision(
             mode=desired,

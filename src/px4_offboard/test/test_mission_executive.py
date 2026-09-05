@@ -1,11 +1,14 @@
 """Unit tests for the resource-aware mission executive."""
 
+import pytest
+
 from px4_offboard.mission_executive import (
     ExecutiveAction,
     MissionExecutive,
     MissionExecutiveConfig,
     MissionMode,
     ResourceBudgets,
+    path_suffix_costs_m,
 )
 
 
@@ -131,3 +134,24 @@ def test_custom_budgets():
     d = ex.evaluate(current_wp_index=0, remaining_waypoints=1)
     assert d.mode is MissionMode.DEGRADED
     assert d.action is ExecutiveAction.SKIP_SCIENCE
+
+
+def test_path_suffix_costs_are_monotonic():
+    wps = [[0.0, 0.0, -5.0], [10.0, 0.0, -5.0], [10.0, 10.0, -5.0]]
+    costs = path_suffix_costs_m(wps)
+    assert costs[-1] == 0.0
+    assert costs[0] == pytest.approx(20.0)
+    assert costs[1] == pytest.approx(10.0)
+
+
+def test_path_budget_skips_science_while_nominal():
+    ex = _exec(cruise_speed_mps=1.0, path_budget_margin=0.5)
+    # Remaining path 100m, propellant 50s * 1m/s * 0.5 = 25m reachable → tight
+    d = ex.evaluate(
+        current_wp_index=2,
+        remaining_waypoints=5,
+        remaining_path_m=100.0,
+    )
+    assert d.mode is MissionMode.NOMINAL
+    assert d.action is ExecutiveAction.SKIP_SCIENCE
+    assert "path budget" in d.reason

@@ -25,7 +25,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan as RosLaserScan
 from std_msgs.msg import Float32MultiArray, String
 
-from .sensor_logic import sector_from_scan
+from .sensor_logic import SectorEma, sector_from_scan
 
 try:
     from gz.msgs10.laserscan_pb2 import LaserScan as GzLaserScan
@@ -71,6 +71,7 @@ class LidarSectors(Node):
         self.declare_parameter("publish_hz", 20.0)
         self.declare_parameter("fallback_none", True)
         self.declare_parameter("confirm_ticks", 2)
+        self.declare_parameter("range_ema_alpha", 0.4)
 
         self.gz_topic = str(self.get_parameter("gz_topic").value)
         self.trigger_m = float(self.get_parameter("trigger_m").value)
@@ -81,6 +82,9 @@ class LidarSectors(Node):
         self.publish_hz = float(self.get_parameter("publish_hz").value)
         self.fallback_none = bool(self.get_parameter("fallback_none").value)
         self.confirm_ticks = max(1, int(self.get_parameter("confirm_ticks").value))
+        self._range_ema = SectorEma(
+            alpha=float(self.get_parameter("range_ema_alpha").value)
+        )
 
         self._lock = threading.Lock()
         self._latest: GzLaserScan | None = None
@@ -111,7 +115,8 @@ class LidarSectors(Node):
         self.get_logger().info(
             f"LidarSectors ready — front={self.trigger_m}m "
             f"sides={self.side_trigger_m}m "
-            f"front±{self.front_deg}° sides±{self.side_deg}°"
+            f"front±{self.front_deg}° sides±{self.side_deg}° "
+            f"emaα={self._range_ema.alpha}"
         )
 
     def _gz_cb(self, msg: GzLaserScan):
@@ -145,6 +150,8 @@ class LidarSectors(Node):
             self.side_deg,
             self.side_trigger_m,
         )
+        # Labels use raw triggers (crisp); published ranges use EMA (stable geometry).
+        smooth = self._range_ema.update(mins)
 
         candidate = label if label else "none"
         if candidate == self._pending_label:
@@ -161,9 +168,9 @@ class LidarSectors(Node):
 
         mins_msg = Float32MultiArray()
         mins_msg.data = [
-            mins["front"] if mins["front"] < 1e8 else -1.0,
-            mins["left"] if mins["left"] < 1e8 else -1.0,
-            mins["right"] if mins["right"] < 1e8 else -1.0,
+            smooth["front"] if smooth["front"] < 1e8 else -1.0,
+            smooth["left"] if smooth["left"] < 1e8 else -1.0,
+            smooth["right"] if smooth["right"] < 1e8 else -1.0,
         ]
         self._pub_mins.publish(mins_msg)
 

@@ -266,17 +266,52 @@ def check_geofence_response(
     trace: FlightTrace,
     response_window_s: float = 1.5,
 ) -> CheckResult:
+    """O(N) rising-edge check: only evaluate each breach onset once."""
     req = _req("REQ-GEOFENCE-01")
-    breaches: list[tuple[float, int]] = []
-    for index, sample in enumerate(trace.samples):
-        if (
+    samples = trace.samples
+    if not samples:
+        return CheckResult(
+            req.id, req.title, req.severity, True, "empty log"
+        )
+
+    unresolved: list[str] = []
+    breach_events = 0
+    previously_breaching = False
+    cursor = 0
+
+    for index, sample in enumerate(samples):
+        breaching = (
             sample.geofence
             and sample.state in AIRBORNE_STATES
             and not sample.inside
-        ):
-            breaches.append((sample.t_s, index))
+        )
+        rising = breaching and not previously_breaching
+        previously_breaching = breaching
+        if not rising:
+            continue
 
-    if not breaches:
+        breach_events += 1
+        t_breach = sample.t_s
+        window_end = t_breach + response_window_s
+        if cursor < index:
+            cursor = index
+        resolved = False
+        while cursor < len(samples) and samples[cursor].t_s <= window_end:
+            later = samples[cursor]
+            if later.state == "FAILSAFE":
+                resolved = True
+                break
+            if later.inside and later.state in AIRBORNE_STATES:
+                resolved = True
+                break
+            cursor += 1
+        if not resolved:
+            unresolved.append(
+                f"t={t_breach:.2f}s breach without FAILSAFE/"
+                f"recovery within {response_window_s:.1f}s"
+            )
+
+    if breach_events == 0:
         return CheckResult(
             req.id,
             req.title,
@@ -285,40 +320,18 @@ def check_geofence_response(
             "no airborne geofence breaches observed",
         )
 
-    unresolved: list[str] = []
-    for t_breach, index in breaches:
-        window_end = t_breach + response_window_s
-        resolved = False
-        for later in trace.samples[index:]:
-            if later.t_s > window_end:
-                break
-            if later.state == "FAILSAFE":
-                resolved = True
-                break
-            # Recovered inside before timeout also acceptable
-            if later.inside and later.state in AIRBORNE_STATES:
-                resolved = True
-                break
-        if not resolved:
-            unresolved.append(
-                f"t={t_breach:.2f}s breach without FAILSAFE/"
-                f"recovery within {response_window_s:.1f}s"
-            )
-
-    # Deduplicate burst evidence
-    unique = list(dict.fromkeys(unresolved))
-    passed = not unique
+    passed = not unresolved
     return CheckResult(
         req.id,
         req.title,
         req.severity,
         passed,
         (
-            f"{len(breaches)} breach sample(s); all resolved"
+            f"{breach_events} breach event(s); all resolved"
             if passed
-            else f"{len(unique)} unresolved breach event(s)"
+            else f"{len(unresolved)} unresolved breach event(s)"
         ),
-        evidence=unique,
+        evidence=unresolved,
     )
 
 
@@ -374,11 +387,18 @@ def check_terminal_finality(trace: FlightTrace) -> CheckResult:
 
 
 def check_executive_abort(trace: FlightTrace, response_window_s: float = 2.0) -> CheckResult:
+    """O(N) rising-edge ABORT → terminal-state window check."""
     req = _req("REQ-EXEC-01")
-    abort_times = [
-        s.t_s for s in trace.samples if s.executive_mode == "ABORT"
-    ]
-    if not abort_times:
+    samples = trace.samples
+    abort_events: list[tuple[float, int]] = []
+    previously_abort = False
+    for index, sample in enumerate(samples):
+        is_abort = sample.executive_mode == "ABORT"
+        if is_abort and not previously_abort:
+            abort_events.append((sample.t_s, index))
+        previously_abort = bool(is_abort)
+
+    if not abort_events:
         return CheckResult(
             req.id,
             req.title,
@@ -389,26 +409,31 @@ def check_executive_abort(trace: FlightTrace, response_window_s: float = 2.0) ->
         )
 
     unresolved: list[str] = []
-    for t_abort in abort_times:
-        ok = any(
-            s.state in TERMINAL_STATES
-            and t_abort <= s.t_s <= t_abort + response_window_s
-            for s in trace.samples
-        )
+    cursor = 0
+    for t_abort, index in abort_events:
+        window_end = t_abort + response_window_s
+        if cursor < index:
+            cursor = index
+        ok = False
+        while cursor < len(samples) and samples[cursor].t_s <= window_end:
+            if samples[cursor].state in TERMINAL_STATES:
+                ok = True
+                break
+            cursor += 1
         if not ok:
             unresolved.append(
                 f"t={t_abort:.2f}s ABORT without FAILSAFE/LANDING "
                 f"within {response_window_s:.1f}s"
             )
-    unique = list(dict.fromkeys(unresolved))
-    passed = not unique
+
+    passed = not unresolved
     return CheckResult(
         req.id,
         req.title,
         req.severity,
         passed,
         "ABORT followed by terminal state" if passed else "ABORT not closed out",
-        evidence=unique,
+        evidence=unresolved,
     )
 
 

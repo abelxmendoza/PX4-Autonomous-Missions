@@ -229,6 +229,70 @@ def yaw_toward(position: Vector3, target: Vector3, deadband_m: float = 0.1) -> f
     return math.atan2(delta_east, delta_north)
 
 
+def point_to_aabb_distance_2d(
+    north: float,
+    east: float,
+    obstacle: Obstacle,
+    margin_m: float = 0.0,
+) -> float:
+    """Euclidean distance from a point to an expanded axis-aligned box (2D)."""
+    half_n = obstacle.size_north / 2.0 + margin_m
+    half_e = obstacle.size_east / 2.0 + margin_m
+    dn = max(abs(north - obstacle.north) - half_n, 0.0)
+    de = max(abs(east - obstacle.east) - half_e, 0.0)
+    return math.hypot(dn, de)
+
+
+def segment_hits_expanded_aabb(
+    start: Vector3,
+    end: Vector3,
+    obstacle: Obstacle,
+    margin_m: float,
+) -> tuple[bool, float, float, float]:
+    """Liang-Barsky style slab test of a horizontal segment vs expanded AABB.
+
+    Returns (hits, closest_distance_from_start, closest_n, closest_e).
+    """
+    half_n = obstacle.size_north / 2.0 + margin_m
+    half_e = obstacle.size_east / 2.0 + margin_m
+    n0, e0 = start[0], start[1]
+    n1, e1 = end[0], end[1]
+    dn, de = n1 - n0, e1 - e0
+
+    t0, t1 = 0.0, 1.0
+    for dist, p0, minimum, maximum in (
+        (dn, n0, obstacle.north - half_n, obstacle.north + half_n),
+        (de, e0, obstacle.east - half_e, obstacle.east + half_e),
+    ):
+        if abs(dist) < 1e-12:
+            if p0 < minimum or p0 > maximum:
+                # Parallel and outside — still may be near the box; fall through
+                # to point distance from start.
+                break
+            continue
+        inv = 1.0 / dist
+        ta = (minimum - p0) * inv
+        tb = (maximum - p0) * inv
+        if ta > tb:
+            ta, tb = tb, ta
+        t0 = max(t0, ta)
+        t1 = min(t1, tb)
+        if t0 > t1:
+            # No overlap with slab interval — use start-to-AABB distance only.
+            dist_start = point_to_aabb_distance_2d(n0, e0, obstacle, margin_m)
+            return False, dist_start, n0, e0
+
+    # Segment overlaps expanded AABB in parameter [t0, t1].
+    t_hit = max(0.0, min(1.0, t0))
+    hit_n = n0 + dn * t_hit
+    hit_e = e0 + de * t_hit
+    # Clamp representation of closest surface point for bearing.
+    clamp_n = min(max(hit_n, obstacle.north - half_n), obstacle.north + half_n)
+    clamp_e = min(max(hit_e, obstacle.east - half_e), obstacle.east + half_e)
+    dist = math.hypot(clamp_n - n0, clamp_e - e0)
+    return True, dist, clamp_n, clamp_e
+
+
 def detect_obstacle(
     position: Vector3,
     target: Vector3,
@@ -238,7 +302,11 @@ def detect_obstacle(
     side_angle_deg: float,
     detect_when_above: bool = False,
 ) -> str | None:
-    """Classify the nearest relevant obstacle relative to direction of travel."""
+    """Classify the nearest relevant obstacle relative to direction of travel.
+
+    Uses segment ∩ expanded-AABB (computational geometry) so corridor sides
+    of tall thin boxes are not missed by center-bearing heuristics alone.
+    """
     delta_north = target[0] - position[0]
     delta_east = target[1] - position[1]
     if abs(delta_north) < 1e-3 and abs(delta_east) < 1e-3:
@@ -252,27 +320,37 @@ def detect_obstacle(
         if not detect_when_above and altitude_agl > obstacle.height + 0.5:
             continue
 
-        half_north = obstacle.size_north / 2.0
-        half_east = obstacle.size_east / 2.0
-        nearest_north = min(
-            max(position[0], obstacle.north - half_north),
-            obstacle.north + half_north,
+        hits, distance, near_n, near_e = segment_hits_expanded_aabb(
+            position, target, obstacle, detection_margin_m
         )
-        nearest_east = min(
-            max(position[1], obstacle.east - half_east),
-            obstacle.east + half_east,
+        # Also accept obstacles near the vehicle even if the remaining
+        # setpoint segment is short / already past the box.
+        near_start = point_to_aabb_distance_2d(
+            position[0], position[1], obstacle, detection_margin_m
         )
-        distance = math.hypot(
-            nearest_north - position[0], nearest_east - position[1]
-        )
-        bearing_north = obstacle.north - position[0]
-        bearing_east = obstacle.east - position[1]
-        center_distance = math.hypot(bearing_north, bearing_east)
-        trigger_distance = max(half_north, half_east) + detection_margin_m
-        if distance > trigger_distance and center_distance > trigger_distance:
+        if not hits and near_start > 0.05:
             continue
+        if not hits:
+            distance = near_start
+            near_n = min(
+                max(position[0], obstacle.north - obstacle.size_north / 2.0),
+                obstacle.north + obstacle.size_north / 2.0,
+            )
+            near_e = min(
+                max(position[1], obstacle.east - obstacle.size_east / 2.0),
+                obstacle.east + obstacle.size_east / 2.0,
+            )
 
-        bearing = math.degrees(math.atan2(bearing_east, bearing_north))
+        # Bearing for left/right/front: prefer vector to obstacle center when
+        # the vehicle is already inside the expanded keep-out (closest-point
+        # bearing collapses to ~0 and falsely looks like "front").
+        if near_start <= 0.05 or distance < 0.15:
+            bn = obstacle.north - position[0]
+            be = obstacle.east - position[1]
+        else:
+            bn = near_n - position[0]
+            be = near_e - position[1]
+        bearing = math.degrees(math.atan2(be, bn))
         relative_angle = (bearing - travel_yaw + 180.0) % 360.0 - 180.0
         if abs(relative_angle) < front_angle_deg:
             label = "front"
@@ -296,23 +374,15 @@ def blocking_height(
     detection_margin_m: float,
     side_angle_deg: float,
 ) -> float:
-    """Return the tallest obstacle near the current travel corridor."""
-    delta_north = target[0] - position[0]
-    delta_east = target[1] - position[1]
-    travel_yaw = (
-        math.degrees(math.atan2(delta_east, delta_north))
-        if abs(delta_north) + abs(delta_east) > 1e-3
-        else 0.0
-    )
+    """Return the tallest obstacle whose expanded AABB meets the travel leg."""
     tallest = 0.0
     for obstacle in obstacles:
-        bearing_north = obstacle.north - position[0]
-        bearing_east = obstacle.east - position[1]
-        distance = math.hypot(bearing_north, bearing_east)
-        if distance > max(obstacle.size_north, obstacle.size_east) + detection_margin_m + 1.0:
-            continue
-        bearing = math.degrees(math.atan2(bearing_east, bearing_north))
-        relative_angle = (bearing - travel_yaw + 180.0) % 360.0 - 180.0
-        if abs(relative_angle) < side_angle_deg:
+        hits, _, _, _ = segment_hits_expanded_aabb(
+            position, target, obstacle, detection_margin_m + 1.0
+        )
+        near = point_to_aabb_distance_2d(
+            position[0], position[1], obstacle, detection_margin_m + 1.0
+        )
+        if hits or near <= 0.05:
             tallest = max(tallest, obstacle.height)
     return tallest

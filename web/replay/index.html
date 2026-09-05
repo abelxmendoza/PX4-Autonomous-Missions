@@ -781,9 +781,18 @@ let rows = [];
 let waypointObjects = []; // meshes + label sprites, cleared between missions
 let trailLine, trailGeo, trailColors, trailPositions, nominalRoute;
 let trailBuiltTo = -1;
+let trailFrameToVert = null;
 let lastHudWriteMs = 0;
 let lastDecisionKey = null;
+let lastLidarObstacle = null;
 let pageVisible = document.visibilityState !== 'hidden';
+const _tmpPos = new THREE.Vector3();
+const _tmpPrev = new THREE.Vector3();
+const _tmpDir = new THREE.Vector3();
+const _tmpBox = new THREE.Box3();
+const _tmpCenter = new THREE.Vector3();
+const _tmpSize = new THREE.Vector3();
+const _tmpExpand = new THREE.Vector3();
 
 const hud = {
   state: document.getElementById('hudState'),
@@ -873,6 +882,29 @@ function mappedClearance(r) {
   return nearest;
 }
 
+/** Single O(N) pass: maneuvers, min clearance, geofence breach count. */
+function summarizeMission(data) {
+  let maneuvers = 0;
+  let wasAvoiding = false;
+  let minClearance = Infinity;
+  let breaches = 0;
+  let hasLoggedClearance = false;
+  for (const r of data) {
+    const avoiding = Boolean(r.obstacle);
+    if (avoiding && !wasAvoiding) maneuvers++;
+    wasAvoiding = avoiding;
+    if (!r.geofence) breaches++;
+    if (Number.isFinite(r.mapped_clearance_m)) {
+      hasLoggedClearance = true;
+      minClearance = Math.min(minClearance, r.mapped_clearance_m);
+    } else if (!hasLoggedClearance) {
+      minClearance = Math.min(minClearance, mappedClearance(r));
+    }
+  }
+  if (!Number.isFinite(minClearance)) minClearance = 0;
+  return { maneuvers, minClearance, breaches };
+}
+
 function loadMission(m) {
   document.getElementById('loading').style.display = 'flex';
   document.getElementById('loading').textContent = 'Loading flight log…';
@@ -895,12 +927,7 @@ function loadMission(m) {
       buildNominalRoute();
       fitCamera();
       document.getElementById('missionLabel').textContent = m.label;
-      const maneuvers = countManeuvers(rows);
-      const loggedClearances = rows.map(r => r.mapped_clearance_m).filter(Number.isFinite);
-      const minClearance = loggedClearances.length
-        ? Math.min(...loggedClearances)
-        : Math.min(...rows.map(mappedClearance));
-      const breaches = rows.filter(r => !r.geofence).length;
+      const { maneuvers, minClearance, breaches } = summarizeMission(rows);
       document.getElementById('hudEvents').textContent = maneuvers;
       document.getElementById('hudManeuvers').textContent = maneuvers;
       document.getElementById('hudClearance').textContent = minClearance.toFixed(1) + ' m';
@@ -950,21 +977,30 @@ function buildWaypoints() {
 }
 
 function buildTrail() {
-  trailPositions = new Float32Array(rows.length * 3);
-  trailColors = new Float32Array(rows.length * 3);
+  const stride = IS_MOBILE ? 2 : 1; // LOD: fewer line verts on phone GPUs
+  const vertCount = Math.ceil(rows.length / stride);
+  trailPositions = new Float32Array(vertCount * 3);
+  trailColors = new Float32Array(vertCount * 3);
+  trailFrameToVert = new Int32Array(rows.length);
   const tint = new THREE.Color();
-  // Precompute world positions + colors once so playback only changes
-  // drawRange instead of rewriting the buffer every frame.
+  let v = 0;
   for (let i = 0; i < rows.length; i++) {
-    const rr = rows[i];
-    const p = toWorld(rr.north, rr.east, rr.down);
-    trailPositions[i * 3] = p.x;
-    trailPositions[i * 3 + 1] = p.y;
-    trailPositions[i * 3 + 2] = p.z;
-    tint.setHex(AVOID_COLOR[rr.obstacle] ?? AVOID_COLOR['']);
-    trailColors[i * 3] = tint.r;
-    trailColors[i * 3 + 1] = tint.g;
-    trailColors[i * 3 + 2] = tint.b;
+    const use = (i % stride === 0) || i === rows.length - 1;
+    if (use) {
+      const rr = rows[i];
+      const p = toWorld(rr.north, rr.east, rr.down);
+      trailPositions[v * 3] = p.x;
+      trailPositions[v * 3 + 1] = p.y;
+      trailPositions[v * 3 + 2] = p.z;
+      tint.setHex(AVOID_COLOR[rr.obstacle] ?? AVOID_COLOR['']);
+      trailColors[v * 3] = tint.r;
+      trailColors[v * 3 + 1] = tint.g;
+      trailColors[v * 3 + 2] = tint.b;
+      trailFrameToVert[i] = v;
+      v++;
+    } else {
+      trailFrameToVert[i] = v - 1;
+    }
   }
   trailGeo = new THREE.BufferGeometry();
   trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
@@ -977,7 +1013,8 @@ function buildTrail() {
 }
 
 function syncTrail(idx) {
-  trailGeo.setDrawRange(0, idx + 1);
+  const vert = trailFrameToVert ? trailFrameToVert[idx] : idx;
+  trailGeo.setDrawRange(0, vert + 1);
   if (trailBuiltTo < 0) {
     trailGeo.attributes.position.needsUpdate = true;
     trailGeo.attributes.color.needsUpdate = true;
@@ -1006,13 +1043,21 @@ function buildNominalRoute() {
 }
 
 function fitCamera() {
-  const box = new THREE.Box3();
-  for (const r of rows) box.expandByPoint(toWorld(r.north, r.east, r.down));
-  for (const ob of activeObstacles) {
-    box.expandByPoint(new THREE.Vector3(ob.east, 0, -ob.north));
+  _tmpBox.makeEmpty();
+  if (trailPositions && trailPositions.length >= 3) {
+    for (let i = 0; i < trailPositions.length; i += 3) {
+      _tmpExpand.set(trailPositions[i], trailPositions[i + 1], trailPositions[i + 2]);
+      _tmpBox.expandByPoint(_tmpExpand);
+    }
+  } else {
+    for (const r of rows) _tmpBox.expandByPoint(toWorld(r.north, r.east, r.down));
   }
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
+  for (const ob of activeObstacles) {
+    _tmpExpand.set(ob.east, 0, -ob.north);
+    _tmpBox.expandByPoint(_tmpExpand);
+  }
+  const center = _tmpBox.getCenter(_tmpCenter);
+  const size = _tmpBox.getSize(_tmpSize);
 
   controls.target.copy(center);
   camera.position.set(center.x + 22, 18, center.z + 26);
@@ -1052,18 +1097,6 @@ function updateFrame(idx, snapToo) {
   const pos = toWorld(r.north, r.east, r.down);
   drone.position.copy(pos);
 
-  // Orientation. Prefer real PX4 attitude (roll/pitch/yaw from the
-  // vehicle_attitude quaternion, logged since the attitude-instrumentation
-  // pass) so the drone actually banks/pitches; older recordings without
-  // those columns fall back to inferring heading from travel direction only.
-  //
-  // yaw_deg is compass heading (0=North, clockwise+, NED convention). This
-  // frame maps x=east, y=alt, z=-north with local forward=+Z, so facing
-  // world -Z means facing North — which works out to rotation.y = PI - yaw.
-  // Pitch/roll are negated to match PX4's "+pitch=nose up, +roll=right wing
-  // down" against this frame's axes — check a banked turn visually and
-  // flip the sign here if it looks inverted (can't render pixels to verify
-  // this myself in the current sandbox).
   if (Number.isFinite(r.yaw_deg)) {
     const yawRad = THREE.MathUtils.degToRad(r.yaw_deg);
     const pitchRad = THREE.MathUtils.degToRad(r.pitch_deg);
@@ -1071,22 +1104,23 @@ function updateFrame(idx, snapToo) {
     drone.rotation.set(-pitchRad, Math.PI - yawRad, -rollRad, 'YXZ');
   } else {
     const prev = rows[Math.max(0, frameIndex - 1)];
-    const prevPos = toWorld(prev.north, prev.east, prev.down);
-    const dir = pos.clone().sub(prevPos);
-    if (dir.lengthSq() > 1e-6) {
-      const yaw = Math.atan2(dir.x, dir.z);
-      drone.rotation.set(0, yaw, 0, 'XYZ');
+    _tmpPrev.copy(toWorld(prev.north, prev.east, prev.down));
+    _tmpDir.copy(pos).sub(_tmpPrev);
+    if (_tmpDir.lengthSq() > 1e-6) {
+      drone.rotation.set(0, Math.atan2(_tmpDir.x, _tmpDir.z), 0, 'XYZ');
     }
   }
 
   syncTrail(frameIndex);
 
-  // LiDAR sector wedges — cheap material tweaks only when the active sector changes.
-  const activeSectorColor = AVOID_COLOR[r.obstacle] ?? AVOID_COLOR[''];
-  for (const key of ['front', 'left', 'right']) {
-    const isActive = r.obstacle === key;
-    lidarSectors[key].material.color.setHex(isActive ? activeSectorColor : LIDAR_INACTIVE);
-    lidarSectors[key].material.opacity = isActive ? 0.55 : 0.22;
+  if (r.obstacle !== lastLidarObstacle) {
+    lastLidarObstacle = r.obstacle;
+    const activeSectorColor = AVOID_COLOR[r.obstacle] ?? AVOID_COLOR[''];
+    for (const key of ['front', 'left', 'right']) {
+      const isActive = r.obstacle === key;
+      lidarSectors[key].material.color.setHex(isActive ? activeSectorColor : LIDAR_INACTIVE);
+      lidarSectors[key].material.opacity = isActive ? 0.55 : 0.22;
+    }
   }
   lidarGroup.visible = hud.toggleLidar.checked;
 

@@ -1,6 +1,6 @@
 import math
 
-from px4_offboard.sensor_logic import sector_from_scan
+from px4_offboard.sensor_logic import SectorEma, get_sector_bands, sector_from_scan
 
 
 def _scan(front: float, left: float, right: float):
@@ -31,3 +31,18 @@ def test_close_side_return_remains_an_emergency_trigger():
 def test_forward_sector_keeps_long_detection_range():
     label, _ = _scan(front=5.8, left=20.0, right=20.0)
     assert label == "front"
+
+
+def test_sector_bands_are_cached_and_partition_indices():
+    a = get_sector_bands(720, -math.pi, 2 * math.pi / 720, 35.0, 90.0)
+    b = get_sector_bands(720, -math.pi, 2 * math.pi / 720, 35.0, 90.0)
+    assert a is b
+    assert len(a.front) + len(a.left) + len(a.right) <= 720
+    assert len(a.front) > 0 and len(a.left) > 0 and len(a.right) > 0
+
+
+def test_sector_ema_low_passes_spikes():
+    ema = SectorEma(alpha=0.5)
+    ema.update({"front": 4.0, "left": 10.0, "right": 10.0})
+    smoothed = ema.update({"front": 1.0, "left": 10.0, "right": 10.0})
+    assert 1.0 < smoothed["front"] < 4.0

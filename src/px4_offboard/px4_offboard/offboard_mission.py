@@ -53,6 +53,7 @@ from px4_offboard.mission_executive import (
     MissionExecutive,
     MissionExecutiveConfig,
     ResourceBudgets,
+    path_suffix_costs_m,
 )
 from px4_offboard.mission_logic import (
     Fence,
@@ -266,6 +267,7 @@ class OffboardMission(Node):
         self._last_loop_t = time.monotonic()
 
         self._executive = MissionExecutive(self._executive_config)
+        self._path_suffix_m = path_suffix_costs_m(self.waypoints)
 
         self._log_file = None
         self._log_writer = None
@@ -810,9 +812,15 @@ class OffboardMission(Node):
     def _apply_executive_decision(self) -> bool:
         """Evaluate executive; return True if MOVE loop should stop advancing."""
         remaining = max(0, len(self.waypoints) - self._wp_index)
+        remaining_path = (
+            self._path_suffix_m[self._wp_index]
+            if 0 <= self._wp_index < len(self._path_suffix_m)
+            else 0.0
+        )
         decision = self._executive.evaluate(
             current_wp_index=self._wp_index,
             remaining_waypoints=remaining,
+            remaining_path_m=remaining_path,
         )
         if decision.mode is not self._last_exec_mode:
             self.get_logger().warn(
