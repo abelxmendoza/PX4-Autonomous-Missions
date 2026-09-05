@@ -15,6 +15,7 @@ from px4_offboard.flight_replay import (
     FlightTrace,
     iter_transitions,
 )
+from px4_offboard.localization_logic import DEFAULT_GPS_DENIED_ZONE, GpsDeniedZone
 from px4_offboard.mission_logic import Fence
 from px4_offboard.mission_state import LEGAL_TRANSITIONS, State
 
@@ -103,6 +104,32 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         title="No mapped-obstacle intersection",
         severity=Severity.MUST,
         description="The vehicle must retain positive clearance from every mapped obstacle.",
+    ),
+    Requirement(
+        id="REQ-GPS-ZONE-01",
+        title="GPS-denied zone flag consistency",
+        severity=Severity.SHOULD,
+        description=(
+            "When GPS-denied columns are present, in_gps_denied_zone must match "
+            "whether the sample position lies inside the configured denied AABB."
+        ),
+    ),
+    Requirement(
+        id="REQ-GPS-INJECT-01",
+        title="Injected deny does not claim healthy GPS",
+        severity=Severity.MUST,
+        description=(
+            "While gps_injected_deny is set, loc_source must not claim healthy GPS."
+        ),
+    ),
+    Requirement(
+        id="REQ-GPS-POLICY-01",
+        title="Localization failsafe reaches terminal/hold",
+        severity=Severity.MUST,
+        description=(
+            "If loc_event records LOC_FAILSAFE, FAILSAFE or LANDING must appear "
+            "within the response window (Pass-1 hold/land policy)."
+        ),
     ),
 )
 
@@ -483,6 +510,127 @@ def check_sensor_backed_avoidance(trace: FlightTrace) -> CheckResult:
     )
 
 
+def check_gps_denied_zone(
+    trace: FlightTrace,
+    zone: GpsDeniedZone | None = None,
+) -> CheckResult:
+    """REQ-GPS-ZONE-01: in_gps_denied_zone flag matches default/config AABB."""
+    req = _req("REQ-GPS-ZONE-01")
+    if "in_gps_denied_zone" not in trace.columns:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            "legacy log has no GPS-denied zone column", skipped=True,
+        )
+    zone = zone or DEFAULT_GPS_DENIED_ZONE
+    mismatches: list[str] = []
+    inside_count = 0
+    for sample in trace.samples:
+        expected = zone.contains(sample.north, sample.east, sample.down)
+        if expected:
+            inside_count += 1
+        if bool(sample.in_gps_denied_zone) != expected:
+            mismatches.append(
+                f"t={sample.t_s:.2f}s N={sample.north:.1f} E={sample.east:.1f} "
+                f"flag={int(sample.in_gps_denied_zone)} expected={int(expected)}"
+            )
+    return CheckResult(
+        req.id,
+        req.title,
+        req.severity,
+        not mismatches,
+        (
+            f"{inside_count} in-zone sample(s); flag matches AABB"
+            if not mismatches
+            else f"{len(mismatches)} zone-flag mismatch(es)"
+        ),
+        evidence=mismatches[:8],
+    )
+
+
+def check_gps_inject_source(trace: FlightTrace) -> CheckResult:
+    """REQ-GPS-INJECT-01: injected deny must not claim healthy GPS source."""
+    req = _req("REQ-GPS-INJECT-01")
+    if "gps_injected_deny" not in trace.columns or "loc_source" not in trace.columns:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            "legacy log has no GPS-inject columns", skipped=True,
+        )
+    violations: list[str] = []
+    injected = 0
+    for sample in trace.samples:
+        if not sample.gps_injected_deny:
+            continue
+        injected += 1
+        source = (sample.loc_source or "").upper()
+        if source in ("", "GPS"):
+            violations.append(
+                f"t={sample.t_s:.2f}s inject=1 loc_source={source or '∅'}"
+            )
+    return CheckResult(
+        req.id,
+        req.title,
+        req.severity,
+        not violations,
+        (
+            f"{injected} injected-deny sample(s); sources healthy"
+            if not violations
+            else f"{len(violations)} inject/source violation(s)"
+        ),
+        evidence=violations[:8],
+    )
+
+
+def check_gps_policy_response(
+    trace: FlightTrace,
+    response_window_s: float = 2.0,
+) -> CheckResult:
+    """REQ-GPS-POLICY-01: LOC_FAILSAFE → FAILSAFE/LANDING within window."""
+    req = _req("REQ-GPS-POLICY-01")
+    if "loc_event" not in trace.columns:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            "legacy log has no loc_event column", skipped=True,
+        )
+    samples = trace.samples
+    events = [
+        (i, s)
+        for i, s in enumerate(samples)
+        if (s.loc_event or "").upper() == "LOC_FAILSAFE"
+    ]
+    if not events:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            "no LOC_FAILSAFE events in log",
+        )
+    unresolved: list[str] = []
+    for index, sample in events:
+        deadline = sample.t_s + response_window_s
+        resolved = False
+        for later in samples[index:]:
+            if later.t_s > deadline:
+                break
+            if later.state in ("FAILSAFE", "LANDING"):
+                resolved = True
+                break
+        if not resolved:
+            unresolved.append(
+                f"t={sample.t_s:.2f}s LOC_FAILSAFE without FAILSAFE/LANDING "
+                f"within {response_window_s:.1f}s"
+            )
+    return CheckResult(
+        req.id,
+        req.title,
+        req.severity,
+        not unresolved,
+        (
+            f"{len(events)} LOC_FAILSAFE event(s) resolved"
+            if not unresolved
+            else f"{len(unresolved)} policy response miss(es)"
+        ),
+        evidence=unresolved[:8],
+    )
+
+
 def check_obstacle_clearance(trace: FlightTrace) -> CheckResult:
     req = _req("REQ-CLEARANCE-01")
     if "mapped_clearance_m" not in trace.columns:
@@ -529,5 +677,8 @@ def run_vv(
         check_executive_abort(trace),
         check_sensor_backed_avoidance(trace),
         check_obstacle_clearance(trace),
+        check_gps_denied_zone(trace),
+        check_gps_inject_source(trace),
+        check_gps_policy_response(trace),
     ]
     return VvReport(source=trace.source, results=results, summary=trace.summary())

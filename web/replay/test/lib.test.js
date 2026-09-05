@@ -5,7 +5,8 @@ const FULL_HEADER =
   'time,state,north,east,down,tgt_n,tgt_e,tgt_d,obstacle,obstacle_source,sensor_fresh,' +
   'lidar_front_m,lidar_left_m,lidar_right_m,mapped_clearance_m,nominal_n,nominal_e,nominal_d,' +
   'wp_index,geocage,geofence,inside,caged,roll_deg,pitch_deg,yaw_deg,vn,ve,vd,' +
-  'executive_mode,battery_frac,link_quality,propellant_s';
+  'executive_mode,battery_frac,link_quality,propellant_s,' +
+  'in_gps_denied_zone,gps_xy_valid,gps_injected_deny,loc_source,loc_event,dead_reckoning,eph_m';
 
 function fullRow(overrides = {}) {
   const base = {
@@ -18,6 +19,8 @@ function fullRow(overrides = {}) {
     roll_deg: '1.2', pitch_deg: '3.4', yaw_deg: '-56.7',
     vn: '0.5', ve: '-0.2', vd: '0.1',
     executive_mode: 'NOMINAL', battery_frac: '0.9', link_quality: '1.0', propellant_s: '150.0',
+    in_gps_denied_zone: '0', gps_xy_valid: '1', gps_injected_deny: '0',
+    loc_source: 'GPS', loc_event: '', dead_reckoning: '0', eph_m: '0.8',
   };
   return Object.assign(base, overrides);
 }
@@ -70,6 +73,23 @@ describe('parseCsv — well-formed input', () => {
     expect(rows[0].battery_frac).toBeCloseTo(0.42);
     expect(rows[0].link_quality).toBeCloseTo(0.87);
     expect(rows[0].propellant_s).toBeCloseTo(63.5);
+  });
+
+  it('parses GPS-denied Pass 1 scaffolding columns', () => {
+    const rows = parseCsv(csv([fullRow({
+      in_gps_denied_zone: '1',
+      gps_injected_deny: '1',
+      gps_xy_valid: '0',
+      loc_source: 'GPS_DENIED_INJECTED',
+      loc_event: 'LOC_FAILSAFE',
+      eph_m: '3.2',
+    })]));
+    expect(rows[0].in_gps_denied_zone).toBe(true);
+    expect(rows[0].gps_injected_deny).toBe(true);
+    expect(rows[0].gps_xy_valid).toBe(false);
+    expect(rows[0].loc_source).toBe('GPS_DENIED_INJECTED');
+    expect(rows[0].loc_event).toBe('LOC_FAILSAFE');
+    expect(rows[0].eph_m).toBeCloseTo(3.2);
   });
 
   it('parses geocage/geofence booleans strictly from "1"', () => {

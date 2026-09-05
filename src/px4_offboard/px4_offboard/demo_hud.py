@@ -16,6 +16,8 @@ class DemoHud(Node):
         self._last_state = None
         self._last_obstacle = "none"
         self._last_exec_mode = None
+        self._last_loc_source = None
+        self._last_in_denied = None
         self._last_summary = 0.0
         self.create_subscription(
             String, "/px4_offboard/mission_status", self._status_callback, 10
@@ -64,9 +66,25 @@ class DemoHud(Node):
                 f"SAFETY        | {status['failsafe']}"
             )
 
+        in_denied = bool(status.get("in_gps_denied_zone", False))
+        loc_source = status.get("loc_source", "UNKNOWN")
+        loc_event = status.get("loc_event") or ""
+        if in_denied != self._last_in_denied or loc_source != self._last_loc_source:
+            zone = "IN DENIED ZONE" if in_denied else "GPS zone clear"
+            inject = " inject" if status.get("gps_injected_deny") else ""
+            event = f" event={loc_event}" if loc_event else ""
+            level = self.get_logger().warning if in_denied else self.get_logger().info
+            level(f"LOCALIZATION  | {zone} | source={loc_source}{inject}{event}")
+            self._last_in_denied = in_denied
+            self._last_loc_source = loc_source
+
         if now - self._last_summary >= 2.0:
             skipped = status.get("skipped_waypoints") or []
             skip_txt = f"  skip={skipped}" if skipped else ""
+            loc_txt = (
+                f"  LOC {status.get('loc_source', '?')}"
+                f"{'/ZONE' if status.get('in_gps_denied_zone') else ''}"
+            )
             self.get_logger().info(
                 "FLIGHT        | "
                 f"N {status.get('north_m', 0):>6.1f} m  "
@@ -77,7 +95,7 @@ class DemoHud(Node):
                 f"BATT {float(status.get('battery_frac', 1.0)):.0%}  "
                 f"LINK {float(status.get('link_quality', 1.0)):.0%}  "
                 f"PROP {float(status.get('propellant_time_s', 0)):.0f}s"
-                f"{skip_txt}"
+                f"{loc_txt}{skip_txt}"
             )
             self._last_summary = now
 

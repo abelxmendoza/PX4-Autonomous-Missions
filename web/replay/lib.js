@@ -52,6 +52,16 @@ function parseCsv(text) {
     o.battery_frac = parseFloat(o.battery_frac);
     o.link_quality = parseFloat(o.link_quality);
     o.propellant_s = parseFloat(o.propellant_s);
+    // GPS-denied Pass 1 scaffolding columns (absent on legacy logs).
+    o.in_gps_denied_zone = o.in_gps_denied_zone === '1';
+    o.gps_injected_deny = o.gps_injected_deny === '1';
+    o.gps_xy_valid = o.gps_xy_valid === undefined || o.gps_xy_valid === ''
+      ? null
+      : o.gps_xy_valid === '1';
+    o.dead_reckoning = o.dead_reckoning === '1';
+    o.eph_m = parseFloat(o.eph_m);
+    o.loc_source = o.loc_source || '';
+    o.loc_event = o.loc_event || '';
     out.push(o);
   }
   if (skipped > 0) {

@@ -216,3 +216,105 @@ def test_zero_mapped_clearance_fails_collision_requirement():
     sample = _sample(mapped_clearance_m=0.0)
     trace = FlightTrace(samples=[sample], columns=("mapped_clearance_m",))
     assert not check_obstacle_clearance(trace).passed
+
+
+def test_gps_columns_skipped_on_legacy_logs():
+    from px4_offboard.vv_harness import (
+        check_gps_denied_zone,
+        check_gps_inject_source,
+        check_gps_policy_response,
+    )
+
+    trace = FlightTrace(samples=[_sample()], source="legacy", columns=())
+    assert check_gps_denied_zone(trace).skipped
+    assert check_gps_inject_source(trace).skipped
+    assert check_gps_policy_response(trace).skipped
+
+
+def test_gps_zone_flag_matches_default_aabb():
+    from px4_offboard.vv_harness import check_gps_denied_zone
+
+    cols = ("in_gps_denied_zone",)
+    inside = _sample(
+        t_s=0.0, north=23.0, east=0.0, down=-5.0, in_gps_denied_zone=True
+    )
+    outside = _sample(
+        t_s=0.1, north=5.0, east=-13.0, down=-5.0, in_gps_denied_zone=False
+    )
+    ok = FlightTrace(samples=[inside, outside], columns=cols, source="gps-zone-ok")
+    assert check_gps_denied_zone(ok).passed
+
+    bad = FlightTrace(
+        samples=[
+            _sample(north=23.0, east=0.0, down=-5.0, in_gps_denied_zone=False)
+        ],
+        columns=cols,
+        source="gps-zone-bad",
+    )
+    assert not check_gps_denied_zone(bad).passed
+
+
+def test_gps_inject_rejects_healthy_gps_claim():
+    from px4_offboard.vv_harness import check_gps_inject_source
+
+    cols = ("gps_injected_deny", "loc_source")
+    ok = FlightTrace(
+        samples=[
+            _sample(
+                gps_injected_deny=True,
+                loc_source="GPS_DENIED_INJECTED",
+                in_gps_denied_zone=True,
+            )
+        ],
+        columns=cols,
+    )
+    assert check_gps_inject_source(ok).passed
+
+    bad = FlightTrace(
+        samples=[_sample(gps_injected_deny=True, loc_source="GPS")],
+        columns=cols,
+    )
+    assert not check_gps_inject_source(bad).passed
+
+
+def test_gps_policy_requires_failsafe_after_loc_failsafe_event():
+    from px4_offboard.vv_harness import check_gps_policy_response
+
+    cols = ("loc_event",)
+    ok = FlightTrace(
+        samples=[
+            _sample(t_s=0.0, loc_event="LOC_FAILSAFE", state="MOVE"),
+            _sample(t_s=0.5, loc_event="", state="FAILSAFE"),
+        ],
+        columns=cols,
+    )
+    assert check_gps_policy_response(ok).passed
+
+    bad = FlightTrace(
+        samples=[
+            _sample(t_s=0.0, loc_event="LOC_FAILSAFE", state="MOVE"),
+            _sample(t_s=3.0, loc_event="", state="MOVE"),
+        ],
+        columns=cols,
+    )
+    assert not check_gps_policy_response(bad, response_window_s=2.0).passed
+
+
+def test_gps_fields_roundtrip_csv(tmp_path: Path):
+    sample = _sample(
+        in_gps_denied_zone=True,
+        gps_xy_valid=False,
+        gps_injected_deny=True,
+        loc_source="GPS_DENIED_INJECTED",
+        loc_event="GPS_INVALID",
+        dead_reckoning=False,
+        eph_m=2.5,
+    )
+    path = tmp_path / "gps.csv"
+    write_flight_log(path, [sample])
+    loaded = load_flight_log(path).samples[0]
+    assert loaded.in_gps_denied_zone
+    assert loaded.gps_injected_deny
+    assert loaded.gps_xy_valid is False
+    assert loaded.loc_source == "GPS_DENIED_INJECTED"
+    assert loaded.eph_m == 2.5

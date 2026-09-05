@@ -62,5 +62,18 @@
     propellant_safe_s: 45.0
     propellant_abort_s: 20.0
 
+    # GPS-denied Pass 1 (scaffolding). Zone matches worlds/obstacle_world.sdf prism.
+    # gps_deny_inject:=true falsifies GPS at the autonomy layer only — PX4 EKF
+    # still uses GPS until Pass 2. action: hold | continue | land
+    gps_denied_enable: true
+    gps_deny_inject: false
+    gps_denied_action: "hold"
+    gps_denied_north_min_m: 18.0
+    gps_denied_north_max_m: 28.0
+    gps_denied_east_min_m: -5.0
+    gps_denied_east_max_m: 5.0
+    gps_denied_down_min_m: -12.0
+    gps_denied_down_max_m: 0.5
+
     # CSV flight log directory (relative to cwd unless absolute)
     log_dir: "."

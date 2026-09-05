@@ -68,6 +68,13 @@ from px4_offboard.mission_logic import (
     segment_endpoint_passed,
     yaw_toward,
 )
+from px4_offboard.localization_logic import (
+    DEFAULT_GPS_DENIED_ZONE,
+    GpsDeniedZone,
+    LocalizationInputs,
+    LocalizationSnapshot,
+    LocalizationStateMachine,
+)
 from px4_offboard.mission_state import (
     FailsafeInputs,
     MissionStateMachine,
@@ -268,6 +275,12 @@ class OffboardMission(Node):
 
         self._executive = MissionExecutive(self._executive_config)
         self._path_suffix_m = path_suffix_costs_m(self.waypoints)
+        self._loc_sm = LocalizationStateMachine(self._gps_denied_zone)
+        self._loc_snap: LocalizationSnapshot | None = None
+        self._gps_xy_valid = True
+        self._gps_z_valid = True
+        self._gps_dead_reckoning = False
+        self._gps_eph_m: float | None = None
 
         self._log_file = None
         self._log_writer = None
@@ -281,6 +294,8 @@ class OffboardMission(Node):
             f"geofence={'ON' if self.geofence_enable else 'OFF'} "
             f"obstacles={self.obstacle_source} "
             f"executive={'ON' if self._executive.config.enable else 'OFF'} "
+            f"gps_denied={'ON' if self.gps_denied_enable else 'OFF'} "
+            f"gps_inject={'ON' if self.gps_deny_inject else 'OFF'} "
             f"box N[{self.fence_n_min},{self.fence_n_max}] "
             f"E[{self.fence_e_min},{self.fence_e_max}] "
             f"alt≤{self.fence_alt_max}m"
@@ -340,6 +355,17 @@ class OffboardMission(Node):
         self.declare_parameter("propellant_degraded_s", 90.0)
         self.declare_parameter("propellant_safe_s", 45.0)
         self.declare_parameter("propellant_abort_s", 20.0)
+
+        # GPS-denied Pass 1 (scaffolding — ROS-level inject only; not PX4/EKF deny)
+        self.declare_parameter("gps_denied_enable", True)
+        self.declare_parameter("gps_deny_inject", False)
+        self.declare_parameter("gps_denied_action", "hold")  # hold | continue | land
+        self.declare_parameter("gps_denied_north_min_m", DEFAULT_GPS_DENIED_ZONE.north_min)
+        self.declare_parameter("gps_denied_north_max_m", DEFAULT_GPS_DENIED_ZONE.north_max)
+        self.declare_parameter("gps_denied_east_min_m", DEFAULT_GPS_DENIED_ZONE.east_min)
+        self.declare_parameter("gps_denied_east_max_m", DEFAULT_GPS_DENIED_ZONE.east_max)
+        self.declare_parameter("gps_denied_down_min_m", DEFAULT_GPS_DENIED_ZONE.down_min)
+        self.declare_parameter("gps_denied_down_max_m", DEFAULT_GPS_DENIED_ZONE.down_max)
 
     def _load_params(self):
         mode = self.get_parameter("trajectory_mode").value.lower()
@@ -440,6 +466,21 @@ class OffboardMission(Node):
             ),
         )
 
+        self.gps_denied_enable = bool(self.get_parameter("gps_denied_enable").value)
+        self.gps_deny_inject = bool(self.get_parameter("gps_deny_inject").value)
+        gps_action = str(self.get_parameter("gps_denied_action").value).lower()
+        self.gps_denied_action = (
+            gps_action if gps_action in ("hold", "continue", "land") else "hold"
+        )
+        self._gps_denied_zone = GpsDeniedZone(
+            north_min=float(self.get_parameter("gps_denied_north_min_m").value),
+            north_max=float(self.get_parameter("gps_denied_north_max_m").value),
+            east_min=float(self.get_parameter("gps_denied_east_min_m").value),
+            east_max=float(self.get_parameter("gps_denied_east_max_m").value),
+            down_min=float(self.get_parameter("gps_denied_down_min_m").value),
+            down_max=float(self.get_parameter("gps_denied_down_max_m").value),
+        )
+
     # ── Telemetry log ─────────────────────────────────────────────────────────
 
     def _open_log(self):
@@ -493,6 +534,13 @@ class OffboardMission(Node):
                 "battery_frac",
                 "link_quality",
                 "propellant_s",
+                "in_gps_denied_zone",
+                "gps_xy_valid",
+                "gps_injected_deny",
+                "loc_source",
+                "loc_event",
+                "dead_reckoning",
+                "eph_m",
             ]
         )
         self.get_logger().info(f"Logging to {path}")
@@ -505,6 +553,7 @@ class OffboardMission(Node):
     ):
         if self._log_writer is None:
             return
+        snap = self._loc_snap
         inside = self._inside_fence(self.current_x, self.current_y, self.current_z)
         nominal = nominal_target if nominal_target is not None else target
         sensor_fresh = self._sensor_data_fresh()
@@ -549,6 +598,17 @@ class OffboardMission(Node):
             round(self._executive.resources.battery_frac, 4),
             round(self._executive.resources.link_quality, 4),
             round(self._executive.resources.propellant_time_s, 2),
+            int(bool(snap and snap.in_zone)),
+            int(bool(snap.gps_xy_valid) if snap else self._gps_xy_valid),
+            int(bool(snap and snap.gps_injected_deny)),
+            (snap.source.value if snap else "UNKNOWN"),
+            (snap.event.value if snap and snap.event else ""),
+            int(bool(snap.dead_reckoning) if snap else self._gps_dead_reckoning),
+            (
+                ""
+                if (snap.eph_m if snap else self._gps_eph_m) is None
+                else round(float(snap.eph_m if snap else self._gps_eph_m), 3)
+            ),
         ]
         try:
             self._log_writer.writerow(row)
@@ -577,8 +637,38 @@ class OffboardMission(Node):
         self.current_vx = msg.vx
         self.current_vy = msg.vy
         self.current_vz = msg.vz
+        self._gps_xy_valid = bool(msg.xy_valid)
+        self._gps_z_valid = bool(msg.z_valid)
+        self._gps_dead_reckoning = bool(msg.dead_reckoning)
+        eph = float(msg.eph)
+        self._gps_eph_m = eph if math.isfinite(eph) else None
         self._pos_stamp = time.monotonic()
         self._have_position = True
+
+    def _update_localization(self) -> LocalizationSnapshot:
+        """Advance Pass-1 localization SM from VLP + inject params."""
+        snap = self._loc_sm.update(
+            LocalizationInputs(
+                north_m=self.current_x,
+                east_m=self.current_y,
+                down_m=self.current_z,
+                gps_xy_valid=self._gps_xy_valid,
+                dead_reckoning=self._gps_dead_reckoning,
+                eph_m=self._gps_eph_m,
+                inject_deny=self.gps_deny_inject,
+                non_gps_healthy=False,  # Pass 1: no VO/mocap yet
+                action=self.gps_denied_action,
+                enabled=self.gps_denied_enable,
+            )
+        )
+        self._loc_snap = snap
+        if snap.event is not None:
+            self.get_logger().info(
+                f"LOC | {snap.event.value} source={snap.source.value} "
+                f"in_zone={int(snap.in_zone)} inject={int(snap.gps_injected_deny)}",
+                throttle_duration_sec=0.0,
+            )
+        return snap
 
     def _attitude_callback(self, msg: VehicleAttitude):
         # q is [w, x, y, z], Hamilton convention, FRD body → NED earth frame.
@@ -656,8 +746,12 @@ class OffboardMission(Node):
     def _control_loop(self):
         self._publish_offboard_control_mode()
         self._tick_executive()
+        loc = self._update_localization()
 
         if self._state not in (State.PREFLIGHT, State.FAILSAFE, State.LANDING):
+            if loc.failsafe and loc.failsafe_reason:
+                self._enter_failsafe(loc.failsafe_reason)
+                return
             if self._check_failsafes():
                 return
 
@@ -751,7 +845,13 @@ class OffboardMission(Node):
                     )
 
         elif self._state == State.FAILSAFE:
-            if self.geofence_action == "hold" and "geofence" in self._failsafe_reason:
+            loc_hold = (
+                self.gps_denied_action == "hold"
+                and "localization" in self._failsafe_reason
+            )
+            if (
+                self.geofence_action == "hold" and "geofence" in self._failsafe_reason
+            ) or loc_hold:
                 # Soft hold: clamp inside cage and keep streaming setpoints
                 hold = [
                     min(max(self.current_x, self.fence_n_min + self.geocage_margin),
@@ -1225,6 +1325,7 @@ class OffboardMission(Node):
 
     def _publish_mission_status(self):
         """Publish a stable, presentation-friendly snapshot for demo tooling."""
+        snap = self._loc_snap
         inside = (
             self._inside_fence(self.current_x, self.current_y, self.current_z)
             if self._have_position
@@ -1253,6 +1354,18 @@ class OffboardMission(Node):
             "link_quality": self._executive.resources.link_quality,
             "propellant_time_s": self._executive.resources.propellant_time_s,
             "skipped_waypoints": list(self._executive.skipped_waypoints),
+            "in_gps_denied_zone": bool(snap.in_zone) if snap else False,
+            "gps_xy_valid": bool(snap.gps_xy_valid) if snap else self._gps_xy_valid,
+            "gps_injected_deny": bool(snap.gps_injected_deny) if snap else False,
+            "loc_source": snap.source.value if snap else "UNKNOWN",
+            "loc_event": snap.event.value if snap and snap.event else "",
+            "loc_phase": snap.phase.name if snap else "GPS_OK",
+            "dead_reckoning": (
+                bool(snap.dead_reckoning) if snap else self._gps_dead_reckoning
+            ),
+            "eph_m": snap.eph_m if snap else self._gps_eph_m,
+            "gps_deny_inject": self.gps_deny_inject,
+            "gps_denied_enable": self.gps_denied_enable,
         }
         self._pub_mission_status.publish(String(data=json.dumps(payload)))
 

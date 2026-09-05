@@ -53,6 +53,13 @@ class FlightSample:
     nominal_n: float | None = None
     nominal_e: float | None = None
     nominal_d: float | None = None
+    in_gps_denied_zone: bool = False
+    gps_xy_valid: bool | None = None
+    gps_injected_deny: bool = False
+    loc_source: str | None = None
+    loc_event: str | None = None
+    dead_reckoning: bool = False
+    eph_m: float | None = None
 
     @property
     def altitude_m(self) -> float:
@@ -220,6 +227,25 @@ def load_flight_log(path: str | Path) -> FlightTrace:
                 nominal_n=_as_optional_float(row.get("nominal_n")),
                 nominal_e=_as_optional_float(row.get("nominal_e")),
                 nominal_d=_as_optional_float(row.get("nominal_d")),
+                in_gps_denied_zone=_as_bool(row.get("in_gps_denied_zone", 0)),
+                gps_xy_valid=(
+                    _as_bool(row["gps_xy_valid"])
+                    if row.get("gps_xy_valid") not in (None, "")
+                    else None
+                ),
+                gps_injected_deny=_as_bool(row.get("gps_injected_deny", 0)),
+                loc_source=(
+                    str(row["loc_source"]).strip().upper()
+                    if row.get("loc_source")
+                    else None
+                ),
+                loc_event=(
+                    str(row["loc_event"]).strip().upper()
+                    if row.get("loc_event")
+                    else None
+                ),
+                dead_reckoning=_as_bool(row.get("dead_reckoning", 0)),
+                eph_m=_as_optional_float(row.get("eph_m")),
             )
         )
 
@@ -263,6 +289,13 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
         "battery_frac",
         "link_quality",
         "propellant_s",
+        "in_gps_denied_zone",
+        "gps_xy_valid",
+        "gps_injected_deny",
+        "loc_source",
+        "loc_event",
+        "dead_reckoning",
+        "eph_m",
     ]
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -312,6 +345,17 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
                     "propellant_s": (
                         "" if sample.propellant_s is None else sample.propellant_s
                     ),
+                    "in_gps_denied_zone": int(sample.in_gps_denied_zone),
+                    "gps_xy_valid": (
+                        ""
+                        if sample.gps_xy_valid is None
+                        else int(sample.gps_xy_valid)
+                    ),
+                    "gps_injected_deny": int(sample.gps_injected_deny),
+                    "loc_source": sample.loc_source or "",
+                    "loc_event": sample.loc_event or "",
+                    "dead_reckoning": int(sample.dead_reckoning),
+                    "eph_m": "" if sample.eph_m is None else sample.eph_m,
                 }
             )
 

@@ -288,6 +288,32 @@
       </link>
     </model>
 
+    <!-- ── GPS-denied Pass 1 visualization (NED N[18,28] E[-5,5]).
+         Gazebo pose is ENU: x=east, y=north, z=up. Translucent prism only —
+         does not disable NavSat/EKF GPS (that is Pass 2). ── -->
+    <model name="gps_denied_zone">
+      <static>true</static>
+      <pose>0 23 6 0 0 0</pose>
+      <link name="link">
+        <visual name="volume">
+          <geometry><box><size>10 10 12</size></box></geometry>
+          <material>
+            <ambient>0.85 0.15 0.95 0.22</ambient>
+            <diffuse>0.85 0.15 0.95 0.22</diffuse>
+            <specular>0.2 0.05 0.25 0.1</specular>
+          </material>
+        </visual>
+        <visual name="outline">
+          <geometry><box><size>10.05 10.05 12.05</size></box></geometry>
+          <material>
+            <ambient>0.2 0.95 0.95 0.35</ambient>
+            <diffuse>0.2 0.95 0.95 0.35</diffuse>
+            <specular>0.1 0.3 0.3 0.1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
     <!-- ── Distant visual landmarks add depth and orientation cues. ── -->
     <model name="landscape_landmarks">
       <static>true</static>

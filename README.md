@@ -286,6 +286,34 @@ Offline verification maps named requirements to checks against `flight_log_missi
 | `REQ-EXEC-01` | Executive ABORT followed by terminal state (SHOULD) |
 | `REQ-AVOID-SENSOR-01` | Direct avoidance decisions have fresh LiDAR evidence |
 | `REQ-CLEARANCE-01` | Vehicle never intersects a mapped obstacle volume |
+| `REQ-GPS-ZONE-01` | `in_gps_denied_zone` matches the denied AABB (SHOULD; skip legacy) |
+| `REQ-GPS-INJECT-01` | Injected deny never claims healthy `loc_source=GPS` (skip legacy) |
+| `REQ-GPS-POLICY-01` | `LOC_FAILSAFE` → FAILSAFE/LANDING within 2 s (skip legacy) |
+
+### GPS-denied Pass 1 (scaffolding)
+
+Honest Pass-1 scaffolding for a GPS-denied demo — **not** operational GPS-denied navigation.
+
+**What it does**
+- Visible magenta/cyan prism in `worlds/obstacle_world.sdf` (NED N\[18,28\] E\[−5,5\])
+- `localization_logic.py`: zone AABB, source/events, ROS-level inject, hold/land/continue policy
+- `offboard_mission` logs + `/px4_offboard/mission_status`: `in_gps_denied_zone`, `gps_xy_valid`, `gps_injected_deny`, `loc_source`, `loc_event`, `dead_reckoning`, `eph_m`
+- With `gps_deny_inject:=true` and `gps_denied_action:=hold|land`, autonomy treats GPS as invalid inside the zone and can enter FAILSAFE
+
+**What it does *not* prove**
+- PX4 EKF still uses GPS until Pass 2 (Gazebo/PX4 GPS deny + VO/mocap)
+- `gps_deny_inject` falsifies GPS **at the autonomy layer only** for policy/telemetry demos
+
+```bash
+# Telemetry + zone visualization (default inject off)
+ros2 run px4_offboard offboard_mission --ros-args \
+  --params-file config/offboard_mission.yaml
+
+# Pass-1 policy demo: ROS-level inject → HOLD failsafe in the prism
+ros2 run px4_offboard offboard_mission --ros-args \
+  --params-file config/offboard_mission.yaml \
+  -p gps_deny_inject:=true -p gps_denied_action:=hold
+```
 
 ```bash
 # After a sim flight:
