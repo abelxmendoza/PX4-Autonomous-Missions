@@ -29,6 +29,14 @@
     --amber:#ffb547; --acid:#d7ff62; --danger:#ff625f;
     --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+    /* Real height of .transport, measured at runtime (see syncTransportHeight()
+       in the main script) — the fallback here is a rough guess only used
+       before first measurement / with JS disabled. Anything anchored above
+       the transport bar (.decision, .hud-toggle) should derive its
+       clearance from this variable rather than its own hardcoded guess, so
+       a future transport-bar layout change can't silently reintroduce an
+       overlap the way a fixed 118px offset just did. */
+    --transport-h: 128px;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{
@@ -174,7 +182,7 @@
     .decision{
       top:auto;left:max(10px, env(safe-area-inset-left));
       right:calc(108px + env(safe-area-inset-right));
-      bottom:calc(118px + env(safe-area-inset-bottom));width:auto;padding:9px 11px;font-size:11px;
+      bottom:calc(var(--transport-h) + 10px + env(safe-area-inset-bottom));width:auto;padding:9px 11px;font-size:11px;
       transform:none;border-left-width:3px;max-height:4.2em;overflow:hidden;
     }
     .decision.active{transform:none;}
@@ -184,7 +192,7 @@
       display:inline-flex;align-items:center;justify-content:center;gap:6px;
       position:fixed;z-index:8;
       right:max(12px, env(safe-area-inset-right));
-      bottom:calc(118px + env(safe-area-inset-bottom));
+      bottom:calc(var(--transport-h) + 10px + env(safe-area-inset-bottom));
       min-width:44px;min-height:44px;padding:0 14px;
       border-radius:999px;border:1px solid rgba(105,247,205,.45);
       background:rgba(8,20,21,.94);color:var(--mint);
@@ -255,8 +263,10 @@
     header h1{font-size:12px;}
     .scrubwrap{grid-template-columns:1fr 1fr 1fr;grid-template-areas:"play restart view" "speed speed speed" "scrub scrub scrub" "time time time";}
     #speed{width:100%;}
-    .decision{bottom:calc(148px + env(safe-area-inset-bottom));right:calc(108px + env(safe-area-inset-right));}
-    .hud-toggle{bottom:calc(148px + env(safe-area-inset-bottom));}
+    /* .decision / .hud-toggle clearance already tracks --transport-h
+       dynamically (see base mobile rule above) — this breakpoint's taller
+       4-row grid is picked up automatically, no separate override needed. */
+    .decision{right:calc(108px + env(safe-area-inset-right));}
   }
 
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition:none!important}}
@@ -1299,6 +1309,28 @@ function resizeRenderer() {
 window.addEventListener('resize', resizeRenderer);
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', resizeRenderer);
+}
+
+// Keep --transport-h (see :root) in sync with the transport bar's actual
+// rendered height, so anything anchored above it (.decision, .hud-toggle)
+// can't silently start overlapping it again after a future layout change —
+// this replaced a hardcoded clearance guess that drifted out of sync with
+// the real height once the transport bar became a multi-row mobile grid.
+const transportEl = document.querySelector('.transport');
+function syncTransportHeight() {
+  if (!transportEl) return;
+  const h = transportEl.getBoundingClientRect().height;
+  if (h > 0) {
+    document.documentElement.style.setProperty('--transport-h', h + 'px');
+  }
+}
+syncTransportHeight();
+window.addEventListener('resize', syncTransportHeight);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncTransportHeight);
+}
+if (window.ResizeObserver && transportEl) {
+  new ResizeObserver(syncTransportHeight).observe(transportEl);
 }
 </script>
 </body>
