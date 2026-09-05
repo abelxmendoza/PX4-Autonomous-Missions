@@ -1,8 +1,34 @@
-# PX4 Autonomous Missions — Gazebo Harmonic + ROS 2 + MAVSDK
+# PX4 Autonomous Missions
 
 ![PX4 Autonomous Mission Overview](PX4ProjectImage2.png)
 
-Autonomous UAV control stack using **PX4 v1.15+**, **Gazebo Harmonic**, **ROS 2 Humble**, **px4_msgs + Micro XRCE-DDS**, and **MAVSDK-Python**. Includes a custom obstacle world, reactive AABB obstacle avoidance with climb/sidestep, failsafes, CSV telemetry, a one-shot full-stack launch, and QGroundControl integration.
+**Built an autonomous UAV simulation stack with PX4 + ROS 2 + Gazebo.** The vehicle executes missions, reacts to LiDAR-detected obstacles, handles geofence/failsafe conditions, logs telemetry, and automatically verifies flight requirements after landing.
+
+| What you get | Proof |
+|--------------|--------|
+| Reactive mission through an obstacle field | `./scripts/run_demo.sh` — Gazebo + HUD |
+| Sensor → decision → setpoint → PX4 loop | LiDAR sectors, avoidance, state machine |
+| Geofence / failsafe / resource executive | CSV + `/px4_offboard/mission_status` |
+| Offline requirement checks (V&V) | `vv_replay` on the flight log |
+| Browser flight replay | [Live demo](https://replay-sepia-tau.vercel.app) |
+
+> **Portfolio clip (do this next):** record 60–90 s of Gazebo + HUD — takeoff → obstacle → avoidance → land → paste the V&V report at the end. Drop the GIF/MP4 here when you have it.
+
+Stack: **PX4 v1.15+** · **Gazebo Harmonic** · **ROS 2 Humble** · **Micro XRCE-DDS** · **MAVSDK-Python**
+
+---
+
+## Recruiter Demo Mode
+
+```bash
+./scripts/run_demo.sh          # reactive avoidance (best live demo)
+./scripts/run_demo.sh course   # pre-planned clearance route
+./scripts/run_demo.sh circle   # orbit demonstration
+```
+
+Starts PX4 SITL, Gazebo, Micro XRCE-DDS, the autonomous mission, in-world flight trail, and a console HUD (phase, avoidance, geofence, resources). Default avoidance is `climb` (vertical clearance); `sidestep` is opt-in / beta.
+
+After landing, **Ctrl+C** — the runner saves a recruiter-ready flight report under `demo_artifacts/` and leaves the telemetry CSV in the repo root.
 
 ---
 
@@ -71,42 +97,6 @@ MAVSDK scripts (mission.py / offboard_avoidance.py)
 | `config/offboard_mission.yaml` | Mission / avoidance / failsafe parameters |
 | `config/mavros_params.yaml` | MAVROS2 FCU URL, plugin allowlist, TF |
 | `scripts/run_full_stack.sh` | Build-if-needed + launch helper |
-
----
-
-## Recruiter Demo Mode
-
-Launch the visible Gazebo mission with a concise presentation feed:
-
-```bash
-./scripts/run_demo.sh
-```
-
-The demo starts PX4 SITL, Gazebo, Micro XRCE-DDS, the autonomous mission,
-the in-world flight trail, and a readable console HUD. The HUD highlights
-mission-phase transitions, obstacle-avoidance events, position, altitude,
-waypoint progress, and geofence health. Both the demo and normal
-`full_stack.launch.py` launches default to `avoidance_strategy:=climb`
-(vertical clearance). `avoidance_strategy:=sidestep` (lateral bypass) is
-available as an opt-in / beta strategy — it only reasons about the nearest
-obstacle, so in dense clusters it can route around one obstacle and into
-another; use it with caution outside sparse obstacle layouts.
-
-After the vehicle lands, press **Ctrl+C**. The runner closes the stack and
-automatically saves a recruiter-ready flight report under `demo_artifacts/`.
-The source telemetry CSV remains in the repository root.
-
-Available mission variants:
-
-```bash
-./scripts/run_demo.sh waypoints  # reactive avoidance (best live demo)
-./scripts/run_demo.sh course     # pre-planned clearance route
-./scripts/run_demo.sh circle     # orbit demonstration
-```
-
-For a recorded portfolio clip, capture Gazebo and QGroundControl side by side
-while this command runs. Keep the video to 60–90 seconds and finish on the
-generated flight report.
 
 ---
 
