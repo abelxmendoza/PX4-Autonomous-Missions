@@ -266,9 +266,15 @@ def segment_hits_expanded_aabb(
     ):
         if abs(dist) < 1e-12:
             if p0 < minimum or p0 > maximum:
-                # Parallel and outside — still may be near the box; fall through
-                # to point distance from start.
-                break
+                # Parallel to this axis and outside the slab — the segment
+                # can never enter the box on this axis, so it cannot hit it
+                # at all (e.g. a straight path running alongside an obstacle,
+                # always N metres clear). Must return here: falling through
+                # to the "segment overlaps" code below would compute a
+                # bogus "hit" from whatever t0/t1 the other axis alone left
+                # behind, ignoring that this axis rules the box out entirely.
+                dist_start = point_to_aabb_distance_2d(n0, e0, obstacle, margin_m)
+                return False, dist_start, n0, e0
             continue
         inv = 1.0 / dist
         ta = (minimum - p0) * inv

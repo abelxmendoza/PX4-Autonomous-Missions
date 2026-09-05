@@ -10,6 +10,7 @@ from px4_offboard.mission_logic import (
     detect_obstacle,
     distance_3d,
     obstacle_clearance,
+    segment_hits_expanded_aabb,
     sensor_bypass_target,
     sensor_bypass_plan,
     sensor_hit_within_segment,
@@ -145,6 +146,51 @@ def test_detects_obstacle_to_the_right_of_travel():
     )
 
     assert result == "right"
+
+
+def test_segment_parallel_and_clear_of_obstacle_does_not_hit():
+    # Regression test: a straight path running parallel to an obstacle,
+    # staying a full metre clear of its (expanded) edge the entire time,
+    # must never report a hit. The Liang-Barsky slab loop used to `break`
+    # out on this exact case (parallel to an axis, outside its range)
+    # without returning — falling through into the "segment overlaps"
+    # code below with whatever t0/t1 the *other* axis alone had left
+    # behind, and reporting a bogus hit near the box's edge (near_e
+    # clamped to 1.0) despite the path never entering the box's range on
+    # this axis at all.
+    obstacle = Obstacle(east=5.0, north=10.0, size_east=8.0, size_north=2.0, height=4.0)
+    hits, distance, near_n, near_e = segment_hits_expanded_aabb(
+        start=[0.0, 0.0, -3.0], end=[20.0, 0.0, -3.0], obstacle=obstacle, margin_m=0.0,
+    )
+    assert hits is False
+    assert (near_n, near_e) == (0.0, 0.0)  # start-to-AABB distance, from the start point
+
+
+def test_detect_obstacle_uses_real_segment_geometry_not_obstacle_center():
+    # Exercises the segment ∩ expanded-AABB hit path itself (hits=True,
+    # near_start > 0.05, distance > 0.15m — the "hits" branch of
+    # detect_obstacle, not the near-start/center-bearing fallback the
+    # existing left/right tests above happen to take). The obstacle's own
+    # center sits at north=10, well past where the segment actually
+    # crosses into its expanded bounds (north=8) — if this were still
+    # using center-bearing (the pre-rewrite heuristic) the classification
+    # math would be identical here since the path is dead-ahead either
+    # way, but the *geometry* backing the decision is now genuinely the
+    # segment intersection, confirmed directly below.
+    obstacle = Obstacle(east=1.0, north=10.0, size_east=2.0, size_north=2.0, height=4.0)
+    position, target = [0.0, 0.0, -3.0], [20.0, 0.0, -3.0]
+    margin = 1.0
+
+    hits, distance, near_n, near_e = segment_hits_expanded_aabb(position, target, obstacle, margin)
+    assert hits is True
+    assert (near_n, near_e) == pytest.approx((8.0, 0.0))  # segment-crossing point, not (10, 1) center
+    assert distance == pytest.approx(8.0)
+
+    label = detect_obstacle(
+        position, target, [obstacle],
+        detection_margin_m=margin, front_angle_deg=35.0, side_angle_deg=70.0,
+    )
+    assert label == "front"
 
 
 def test_blocking_height_uses_tallest_obstacle_in_corridor():
