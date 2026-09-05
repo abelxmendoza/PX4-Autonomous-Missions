@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#050a0b"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <title>PX4 Autonomous Mission — Flight Replay</title>
 <meta name="description" content="Real recorded PX4 v1.15 + Gazebo Harmonic SITL flight replayed in the browser — reactive obstacle avoidance, geofencing, and failsafes, no backend required."/>
 <link rel="icon" href="favicon.png" type="image/png"/>
@@ -26,37 +30,49 @@
     --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
   }
-  *{box-sizing:border-box;}
-  html,body{margin:0;height:100%;background:var(--ink);color:var(--text);font-family:var(--display);overflow:hidden;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;height:100%;height:100dvh;background:var(--ink);color:var(--text);
+    font-family:var(--display);overflow:hidden;
+    /* Stop iOS rubber-band from yanking the WebGL canvas around */
+    overscroll-behavior:none;touch-action:manipulation;
+  }
   body::before{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.18;
     background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(157,255,226,.025) 4px);}
   body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;
     background:radial-gradient(circle at 42% 42%,transparent 0,transparent 35%,rgba(1,7,8,.62) 100%);}
   #scene{position:fixed;inset:0;}
-  #scene canvas{display:block;}
+  #scene canvas{display:block;width:100%;height:100%;touch-action:none;}
 
   .overlay{position:fixed;inset:0;z-index:3;pointer-events:none;}
   .overlay > *{pointer-events:auto;}
   .eyebrow{font:700 9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);}
 
-  header{position:fixed;top:0;left:0;right:0;padding:18px 22px;display:flex;align-items:center;
-    justify-content:space-between;gap:18px;background:linear-gradient(180deg,rgba(5,10,11,.94),rgba(5,10,11,.55) 62%,transparent);}
-  .brand{display:flex;align-items:center;gap:12px;}
-  .brand-mark{position:relative;width:34px;height:34px;border:1px solid var(--mint);display:grid;place-items:center;
+  header{position:fixed;top:0;left:0;right:0;
+    padding:max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    background:linear-gradient(180deg,rgba(5,10,11,.94),rgba(5,10,11,.55) 62%,transparent);z-index:5;}
+  .brand{display:flex;align-items:center;gap:12px;min-width:0;}
+  .brand-mark{position:relative;width:34px;height:34px;flex:none;border:1px solid var(--mint);display:grid;place-items:center;
     color:var(--ink);background:var(--mint);font:900 12px var(--mono);box-shadow:0 0 26px rgba(105,247,205,.17);}
   .brand-mark::after{content:"";position:absolute;inset:4px;border:1px solid rgba(5,10,11,.34);}
-  header h1{font-size:15px;line-height:1;margin:4px 0 0;font-weight:720;letter-spacing:-.02em;}
+  header h1{font-size:15px;line-height:1;margin:4px 0 0;font-weight:720;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   header h1 .dim{color:var(--muted);font-weight:450;}
-  .header-tools{display:flex;align-items:center;gap:10px;}
+  .header-tools{display:flex;align-items:center;gap:10px;min-width:0;flex:1;justify-content:flex-end;}
   .live-pill{display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--panel-b);background:rgba(6,16,17,.72);
-    font:700 9px var(--mono);letter-spacing:.12em;color:var(--muted);text-transform:uppercase;}
+    font:700 9px var(--mono);letter-spacing:.12em;color:var(--muted);text-transform:uppercase;white-space:nowrap;}
   .live-pill i{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);animation:pulse 1.8s ease-out infinite;}
   header a{color:var(--text);text-decoration:none;font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;
-    border-bottom:1px solid var(--amber);padding:8px 0 5px;transition:.2s ease;}
+    border-bottom:1px solid var(--amber);padding:8px 0 5px;transition:.2s ease;white-space:nowrap;}
   header a:hover{color:var(--amber);}
+  #missionSelect{max-width:min(280px,42vw);min-width:0;}
 
-  .hud{position:fixed;top:76px;right:18px;width:260px;max-height:calc(100vh - 170px);overflow-y:auto;
-    display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--mint-2) transparent;}
+  .hud-toggle{display:none;}
+  .hud-scrim{display:none;}
+
+  .hud{position:fixed;top:76px;right:18px;width:260px;max-height:calc(100dvh - 170px);overflow-y:auto;
+    display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--mint-2) transparent;
+    -webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .card{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--panel-b);border-radius:2px;
     padding:13px 14px;font:11px/1.45 var(--mono);backdrop-filter:blur(14px);box-shadow:0 14px 40px rgba(0,0,0,.18);
     animation:card-in .55s both cubic-bezier(.2,.8,.2,1);}
@@ -83,25 +99,31 @@
   .badge.avoid-obstacle{color:var(--danger);background:rgba(255,98,95,.1);}
   .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;}.dot.on{background:var(--mint);box-shadow:0 0 8px var(--mint);}.dot.off{background:#38504b;}
   .legend .item{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--muted);}.legend .sw{width:12px;height:3px;flex:none;}
-  .toggle-row{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;user-select:none;}
-  .toggle-row input{accent-color:var(--mint);width:13px;height:13px;flex:none;cursor:pointer;}.toggle-row .sw{width:11px;height:4px;flex:none;}
+  .toggle-row{display:flex;align-items:center;gap:8px;padding:4px 0;min-height:36px;cursor:pointer;user-select:none;}
+  .toggle-row input{accent-color:var(--mint);width:18px;height:18px;flex:none;cursor:pointer;}.toggle-row .sw{width:11px;height:4px;flex:none;}
   .toggle-row span.label{flex:1;color:var(--text);}.toggle-row span.hint{color:var(--muted);font-size:9px;}
 
-  .transport{position:fixed;left:18px;right:18px;bottom:16px;max-width:940px;margin:0 auto;}
-  .scrubwrap{position:relative;background:rgba(8,20,21,.9);border:1px solid var(--panel-b);border-radius:2px;
-    padding:11px 13px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(16px);box-shadow:0 18px 60px rgba(0,0,0,.4);}
+  .transport{position:fixed;left:max(12px, env(safe-area-inset-left));right:max(12px, env(safe-area-inset-right));
+    bottom:max(12px, env(safe-area-inset-bottom));max-width:940px;margin:0 auto;z-index:6;}
+  .scrubwrap{position:relative;background:rgba(8,20,21,.92);border:1px solid var(--panel-b);border-radius:2px;
+    padding:11px 13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    backdrop-filter:blur(16px);box-shadow:0 18px 60px rgba(0,0,0,.4);}
   .scrubwrap::before{content:"PLAYBACK / FLIGHT LOG";position:absolute;bottom:calc(100% + 7px);left:0;color:var(--muted);font:700 8px var(--mono);letter-spacing:.16em;}
   button,select{background:#0d1c1d;border:1px solid var(--panel-b);color:var(--text);border-radius:1px;padding:8px 11px;
-    font:700 10px var(--mono);letter-spacing:.02em;cursor:pointer;transition:border-color .18s,background .18s,transform .18s;}
+    font:700 10px var(--mono);letter-spacing:.02em;cursor:pointer;transition:border-color .18s,background .18s,transform .18s;
+    min-height:40px;}
   button:hover,select:hover{background:#122728;border-color:rgba(105,247,205,.5);transform:translateY(-1px);}
+  button:active,select:active{transform:none;}
   button.primary{background:var(--mint);color:var(--ink);border-color:var(--mint);box-shadow:0 0 22px rgba(105,247,205,.14);}
   button.primary:hover{background:#91ffdf;}
-  input[type=range]{flex:1;min-width:80px;accent-color:var(--mint);}
+  input[type=range]{flex:1;min-width:80px;height:28px;accent-color:var(--mint);}
   .time{font:10px var(--mono);color:var(--muted);min-width:116px;text-align:right;font-variant-numeric:tabular-nums;}
-  .hint{position:fixed;bottom:83px;left:50%;transform:translateX(-50%);color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase;opacity:.72;}
-  .decision{position:fixed;top:88px;left:22px;width:min(390px,calc(100vw - 320px));padding:11px 14px;
+  .hint{position:fixed;bottom:calc(83px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase;opacity:.72;
+    max-width:min(90vw,520px);text-align:center;padding:0 12px;pointer-events:none;}
+  .decision{position:fixed;top:88px;left:max(16px, env(safe-area-inset-left));width:min(390px,calc(100vw - 320px));padding:11px 14px;
     border-left:3px solid var(--mint);background:rgba(6,17,18,.82);backdrop-filter:blur(12px);font:750 11px var(--mono);
-    letter-spacing:.04em;color:var(--muted);box-shadow:0 12px 36px rgba(0,0,0,.22);transition:.22s ease;}
+    letter-spacing:.04em;color:var(--muted);box-shadow:0 12px 36px rgba(0,0,0,.22);transition:.22s ease;z-index:4;}
   .decision::before{content:"FLIGHT DIRECTOR";display:block;margin-bottom:5px;color:var(--mint);font-size:8px;letter-spacing:.18em;}
   .decision.active{border-left-color:var(--amber);color:var(--text);background:rgba(35,25,8,.88);transform:translateX(4px);box-shadow:0 0 34px rgba(255,181,71,.12);}
   .decision.active::before{color:var(--amber);}.decision strong{color:var(--text);}.decision.active strong{color:var(--amber);}
@@ -112,19 +134,126 @@
   .sensor-array{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px;}
   .sensor-cell{padding:6px 4px;text-align:center;border:1px solid var(--line);background:rgba(105,247,205,.025);}
   .sensor-cell span{display:block;color:var(--muted);font-size:8px;letter-spacing:.12em;}.sensor-cell b{display:block;margin-top:3px;font-size:10px;color:var(--mint);}
-  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;}
+  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;padding:24px;text-align:center;z-index:40;}
 
-  .intro-backdrop{position:fixed;inset:0;background:rgba(2,7,8,.78);display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(10px);}
-  .intro-backdrop[hidden]{display:none;}.intro-card{position:relative;width:min(520px,90vw);background:linear-gradient(145deg,rgba(17,39,39,.96),rgba(6,16,17,.98));
+  .intro-backdrop{position:fixed;inset:0;background:rgba(2,7,8,.78);display:flex;align-items:flex-end;justify-content:center;z-index:50;backdrop-filter:blur(10px);
+    padding:max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));}
+  .intro-backdrop[hidden]{display:none;}
+  .intro-card{position:relative;width:min(520px,100%);max-height:min(88dvh,720px);overflow-y:auto;-webkit-overflow-scrolling:touch;
+    background:linear-gradient(145deg,rgba(17,39,39,.96),rgba(6,16,17,.98));
     border:1px solid rgba(105,247,205,.3);border-top:3px solid var(--mint);border-radius:2px;padding:30px 32px;box-shadow:0 35px 100px rgba(0,0,0,.7);animation:modal-in .45s both;}
   .intro-card::before{content:"MISSION REPLAY / 01";display:block;margin-bottom:18px;color:var(--amber);font:800 9px var(--mono);letter-spacing:.2em;}
-  .intro-card h3{margin:0 0 14px;font-size:28px;line-height:1.05;letter-spacing:-.045em;}.intro-card h3 span{color:var(--mint);}
+  .intro-card h3{margin:0 0 14px;font-size:clamp(22px,6vw,28px);line-height:1.05;letter-spacing:-.045em;}.intro-card h3 span{color:var(--mint);}
   .intro-card p{margin:0 0 9px;font:12px/1.65 var(--mono);color:var(--muted);}.intro-card p b{color:var(--text);font-weight:700;}
-  .intro-card .actions{margin-top:22px;display:flex;justify-content:flex-end;}
+  .intro-card .actions{margin-top:22px;display:flex;justify-content:stretch;}
+  .intro-card .actions button{width:100%;min-height:48px;font-size:12px;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(105,247,205,.65)}70%{box-shadow:0 0 0 7px rgba(105,247,205,0)}100%{box-shadow:0 0 0 0 rgba(105,247,205,0)}}
   @keyframes card-in{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
   @keyframes modal-in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
-  @media(max-width:760px){header{padding:12px}.live-pill,header a,.hint{display:none}.header-tools{max-width:50%}.header-tools select{width:100%}.hud{top:108px;right:10px;width:215px;max-height:calc(100vh - 190px)}.decision{top:64px;left:10px;width:calc(100vw - 20px);padding:8px 10px}.decision::before{display:none}.card{padding:10px}.transport{left:8px;right:8px;bottom:8px}.scrubwrap{gap:6px;overflow-x:auto}.scrubwrap button{white-space:nowrap}.time{display:none}}
+  @keyframes sheet-in{from{transform:translateY(110%)}to{transform:none}}
+
+  /* Tablet / narrow laptop */
+  @media(max-width:900px){
+    .live-pill{display:none;}
+    .decision{width:min(340px,calc(100vw - 250px));}
+    .hud{width:230px;right:12px;}
+  }
+
+  /* Phone / iPhone */
+  @media(max-width:760px){
+    header{padding-top:max(10px, env(safe-area-inset-top));padding-bottom:10px;gap:8px;}
+    .brand-mark{width:30px;height:30px;}
+    header h1{font-size:13px;}
+    header h1 .dim{display:none;}
+    .eyebrow{font-size:8px;letter-spacing:.14em;}
+    .live-pill,header a,.hint,.scrubwrap::before{display:none;}
+    .header-tools{flex:1;max-width:none;}
+    #missionSelect{flex:1;max-width:none;width:100%;min-height:40px;font-size:11px;}
+
+    .decision{
+      top:auto;left:max(10px, env(safe-area-inset-left));
+      right:calc(108px + env(safe-area-inset-right));
+      bottom:calc(118px + env(safe-area-inset-bottom));width:auto;padding:9px 11px;font-size:11px;
+      transform:none;border-left-width:3px;max-height:4.2em;overflow:hidden;
+    }
+    .decision.active{transform:none;}
+    .decision::before{display:none;}
+
+    .hud-toggle{
+      display:inline-flex;align-items:center;justify-content:center;gap:6px;
+      position:fixed;z-index:8;
+      right:max(12px, env(safe-area-inset-right));
+      bottom:calc(118px + env(safe-area-inset-bottom));
+      min-width:44px;min-height:44px;padding:0 14px;
+      border-radius:999px;border:1px solid rgba(105,247,205,.45);
+      background:rgba(8,20,21,.94);color:var(--mint);
+      font:800 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+    }
+    .hud-toggle[aria-expanded="true"]{background:var(--mint);color:var(--ink);border-color:var(--mint);}
+
+    .hud-scrim{
+      display:block;position:fixed;inset:0;z-index:7;background:rgba(2,7,8,.55);
+      opacity:0;pointer-events:none;transition:opacity .2s ease;
+    }
+    body.hud-open .hud-scrim{opacity:1;pointer-events:auto;}
+
+    .hud{
+      top:auto;right:0;left:0;width:100%;
+      max-height:min(62dvh, 520px);
+      padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+      gap:8px;
+      background:rgba(7,16,17,.97);
+      border-top:1px solid rgba(105,247,205,.28);
+      border-radius:14px 14px 0 0;
+      box-shadow:0 -18px 50px rgba(0,0,0,.45);
+      transform:translateY(110%);
+      transition:transform .28s cubic-bezier(.2,.8,.2,1);
+      z-index:9;
+      padding-bottom:calc(130px + env(safe-area-inset-bottom));
+    }
+    .hud::before{
+      content:"";display:block;width:42px;height:4px;border-radius:99px;
+      background:rgba(134,255,222,.35);margin:2px auto 8px;flex:none;
+    }
+    body.hud-open .hud{transform:none;}
+    .card{animation:none;padding:12px;font-size:12px;}
+    .card::after{display:none;}
+    .toggle-row{min-height:44px;}
+
+    .transport{left:max(8px, env(safe-area-inset-left));right:max(8px, env(safe-area-inset-right));bottom:max(8px, env(safe-area-inset-bottom));}
+    .scrubwrap{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr auto;
+      grid-template-areas:
+        "play restart view speed"
+        "scrub scrub scrub scrub"
+        "time time time time";
+      gap:8px;padding:10px;
+    }
+    #btnPlay{grid-area:play;}
+    #btnRestart{grid-area:restart;}
+    #btnView{grid-area:view;}
+    #speed{grid-area:speed;min-width:0;}
+    #scrub{grid-area:scrub;width:100%;min-width:0;height:32px;}
+    .time{grid-area:time;display:block;min-width:0;text-align:center;font-size:11px;}
+    .scrubwrap button,.scrubwrap select{width:100%;white-space:nowrap;padding:8px 6px;font-size:10px;}
+
+    .intro-backdrop{align-items:flex-end;}
+    .intro-card{padding:22px 18px 18px;border-radius:14px 14px 2px 2px;}
+    .intro-mobile-note{display:block;margin-top:10px;color:var(--amber);font:700 11px/1.45 var(--mono);}
+  }
+
+  .intro-mobile-note{display:none;}
+
+  @media(max-width:380px){
+    header h1{font-size:12px;}
+    .scrubwrap{grid-template-columns:1fr 1fr 1fr;grid-template-areas:"play restart view" "speed speed speed" "scrub scrub scrub" "time time time";}
+    #speed{width:100%;}
+    .decision{bottom:calc(148px + env(safe-area-inset-bottom));right:calc(108px + env(safe-area-inset-right));}
+    .hud-toggle{bottom:calc(148px + env(safe-area-inset-bottom));}
+  }
+
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
@@ -142,6 +271,7 @@
     <p>Press <b>play</b>, switch missions in the top-right dropdown, or toggle
       <b>Top-Down</b> for a map view. Trail color shows when the reactive
       avoidance controller took over (front/left/right/bypass).</p>
+    <p class="intro-mobile-note">On iPhone: pinch/drag the scene, open <b>Telemetry</b> for live HUD, use the bottom bar to scrub.</p>
     <div class="actions">
       <button id="introDismiss" class="primary">Got it</button>
     </div>
@@ -156,7 +286,7 @@
     </div>
     <div class="header-tools">
       <div class="live-pill"><i></i> recorded telemetry</div>
-      <select id="missionSelect"></select>
+      <select id="missionSelect" aria-label="Select mission recording"></select>
       <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">
         source ↗
       </a>
@@ -165,7 +295,10 @@
 
   <div id="decision" class="decision">Tracking waypoint corridor <strong>— nominal flight</strong></div>
 
-  <div class="hud">
+  <button type="button" id="hudToggle" class="hud-toggle" aria-expanded="false" aria-controls="hudPanel">Telemetry</button>
+  <div id="hudScrim" class="hud-scrim" hidden></div>
+
+  <div id="hudPanel" class="hud" role="region" aria-label="Flight telemetry">
     <div class="card">
       <h2>Active recording</h2>
       <div id="missionLabel" style="font:750 12px/1.35 var(--display);margin-bottom:8px;letter-spacing:-.01em">Mission</div>
@@ -969,20 +1102,56 @@ document.getElementById('btnView').addEventListener('click', e => {
 });
 const scrub = document.getElementById('scrub');
 scrub.addEventListener('mousedown', () => dragging = true);
-scrub.addEventListener('touchstart', () => dragging = true);
+scrub.addEventListener('touchstart', () => dragging = true, {passive:true});
 scrub.addEventListener('input', e => updateFrame(parseInt(e.target.value, 10)));
 window.addEventListener('mouseup', () => dragging = false);
 window.addEventListener('touchend', () => dragging = false);
 
-window.addEventListener('resize', () => {
-  camera.aspect = innerWidth/innerHeight;
+// Mobile HUD sheet — keeps the 3D scene full-bleed on iPhone; telemetry
+// opens as a bottom drawer instead of permanently covering the flight.
+(function wireHudSheet() {
+  const toggle = document.getElementById('hudToggle');
+  const scrim = document.getElementById('hudScrim');
+  const panel = document.getElementById('hudPanel');
+  if (!toggle || !scrim || !panel) return;
+
+  function setOpen(open) {
+    document.body.classList.toggle('hud-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.textContent = open ? 'Close' : 'Telemetry';
+    scrim.hidden = !open;
+  }
+
+  toggle.addEventListener('click', () => {
+    setOpen(!document.body.classList.contains('hud-open'));
+  });
+  scrim.addEventListener('click', () => setOpen(false));
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setOpen(false);
+  });
+  // If the user rotates to landscape / desktop width, leave the sheet open
+  // state behind so desktop CSS can show the side HUD normally.
+  const mq = window.matchMedia('(max-width: 760px)');
+  mq.addEventListener('change', (e) => {
+    if (!e.matches) setOpen(false);
+  });
+})();
+
+function resizeRenderer() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  const aspect = innerWidth/innerHeight;
+  const aspect = w / h;
   const halfSpan = (orthoCamera.top - orthoCamera.bottom) / 2;
   orthoCamera.left = -halfSpan * aspect; orthoCamera.right = halfSpan * aspect;
   orthoCamera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', resizeRenderer);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resizeRenderer);
+}
 </script>
 </body>
 </html>

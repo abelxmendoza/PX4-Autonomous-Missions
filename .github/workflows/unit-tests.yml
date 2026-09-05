@@ -41,3 +41,25 @@ jobs:
             PYTHONPATH=src/px4_offboard python3 -m px4_offboard.vv_replay "$log"
             echo "::endgroup::"
           done
+
+  ros-node-tests:
+    # Node-level tests for offboard_mission.py (test_offboard_mission_node.py)
+    # need a real rclpy + built px4_msgs, unlike the pure-Python job above.
+    # px4_msgs isn't vendored in this repo (see README "ROS 2 workspace") —
+    # cloned fresh here, matching the documented local setup exactly.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - run: git clone --depth 1 https://github.com/PX4/px4_msgs.git src/px4_msgs
+      - name: Build px4_msgs
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --symlink-install --packages-select px4_msgs
+      - run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          pip install pytest
+          PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py -v
