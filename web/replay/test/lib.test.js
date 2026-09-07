@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toWorld, parseCsv } from '../lib.js';
+import { toWorld, parseCsv, COURSE_PADS } from '../lib.js';
 
 const FULL_HEADER =
   'time,state,north,east,down,tgt_n,tgt_e,tgt_d,obstacle,obstacle_source,sensor_fresh,' +
@@ -52,6 +52,16 @@ describe('toWorld', () => {
     expect(rows[0].vio_stream_healthy).toBe(true);
     expect(rows[0].ev_pos_fused).toBe(true);
     expect(rows[0].gnss_pos_fused).toBe(false);
+  });
+
+  it('places the landing pad 50 m north of the launch pad', () => {
+    expect(COURSE_PADS.launch.north).toBe(0);
+    expect(COURSE_PADS.landing.north).toBe(50);
+    const launch = toWorld(COURSE_PADS.launch.north, COURSE_PADS.launch.east, 0);
+    const land = toWorld(COURSE_PADS.landing.north, COURSE_PADS.landing.east, 0);
+    expect(launch.z).toBeCloseTo(0);
+    expect(land.z).toBeCloseTo(-50);
+    expect(land.x).toBeCloseTo(0);
   });
 
   it('places the origin at the world origin', () => {

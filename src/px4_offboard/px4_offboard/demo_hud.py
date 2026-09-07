@@ -17,6 +17,7 @@ class DemoHud(Node):
         self._last_obstacle = "none"
         self._last_exec_mode = None
         self._last_loc_source = None
+        self._last_route_event = None
         self._last_in_denied = None
         self._last_summary = 0.0
         self.create_subscription(
@@ -88,6 +89,14 @@ class DemoHud(Node):
                 self.get_logger().info(message)
             self._last_in_denied = in_denied
             self._last_loc_source = loc_source
+
+        route_event = status.get("route_event")
+        if route_event and route_event != self._last_route_event:
+            if route_event.startswith("TURNING") or route_event == "GOAL REACHED":
+                self.get_logger().warning(f"ROUTE         | {route_event}")
+            elif route_event == "PLANNED":
+                self.get_logger().info("ROUTE         | A* path ready")
+            self._last_route_event = route_event
 
         if now - self._last_summary >= 2.0:
             skipped = status.get("skipped_waypoints") or []

@@ -105,7 +105,7 @@ MAVSDK scripts (mission.py / offboard_avoidance.py)
 Five static obstacles in `worlds/obstacle_world.sdf` (GPS origin `47.397742°N, 8.545594°E`):
 
 The training area includes a 30×60 m high-contrast course surface, 5 m reference
-grid, marked launch pad, illuminated perimeter beacons, obstacle roof markers,
+grid, marked launch and landing pads, illuminated perimeter beacons, obstacle roof markers,
 and visual landmarks outside the flight corridor. Decorative scenery is
 visual-only and does not introduce collision geometry that is missing from the
 avoidance map.
@@ -113,7 +113,7 @@ avoidance map.
 ```
 N (north)
 ^
-50 |                          ★ WP8 destination
+50 |                          ★ landing pad / WP8
 46 |              ● WP7
 38 |                  [OB5 purple wall  0m east]
 36 |                   ● WP6 (east of OB5)
@@ -191,6 +191,17 @@ Choose the evidence source with `obstacle_source:=hybrid|sensor_only|map_only`.
 `hybrid` preserves map fallback for development. `sensor_only` accepts only fresh
 LiDAR and enters FAILSAFE if the sensor times out; recruiter demo mode uses this
 setting so avoidance cannot be attributed to the known world map.
+
+In `course` mode, the controller now runs an eight-connected A* planner over the
+known obstacle map. Obstacles are inflated by `planner_clearance_m`, grid turns
+are simplified into smooth line-of-sight legs, and only a forward LiDAR blockage
+can override the route. A new forward return is inserted into the map and causes
+a route replan; side returns are expected while passing safely beside obstacles.
+Sensor replanning is available with `planner_sensor_replan_enable:=true` and an
+emergency threshold that defaults to 1.5 m. It is disabled for the known-world
+demo because short body/ground returns during vehicle tilt can otherwise disturb
+an already verified map route. Use `waypoints` mode for the LiDAR-only avoidance
+demo and `course` mode for deterministic global planning.
 
 ```bash
 ros2 launch px4_offboard full_stack.launch.py use_lidar:=true vehicle:=gz_x500_lidar_2d

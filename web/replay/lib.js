@@ -13,6 +13,13 @@ function toWorld(n, e, d) {
   return new THREE.Vector3(e, -d, -n);
 }
 
+// Visual-only pads in worlds/obstacle_world.sdf. Launch is at spawn;
+// landing is the far end of the course (NED north = 50 m).
+const COURSE_PADS = {
+  launch:  { east: 0, north: 0,  radius: 2.5 },
+  landing: { east: 0, north: 50, radius: 2.5 },
+};
+
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   const header = lines[0].split(',');
@@ -75,5 +82,5 @@ function parseCsv(text) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { toWorld, parseCsv };
+  module.exports = { toWorld, parseCsv, COURSE_PADS };
 }

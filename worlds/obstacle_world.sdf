@@ -143,7 +143,7 @@
         <visual name="grid_n_45"><pose>0 45 0.028 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>30 0.055 0.022</size></box></geometry><material><ambient>0.55 0.61 0.63 1</ambient><diffuse>0.55 0.61 0.63 1</diffuse></material></visual>
         <visual name="grid_n_50"><pose>0 50 0.028 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>30 0.055 0.022</size></box></geometry><material><ambient>0.55 0.61 0.63 1</ambient><diffuse>0.55 0.61 0.63 1</diffuse></material></visual>
 
-        <!-- High-contrast launch pad and north-pointing chevron. -->
+        <!-- High-contrast launch pad (N=0) and landing pad (N=50). -->
         <visual name="launch_pad">
           <pose>0 0 0.045 0 0 0</pose><cast_shadows>false</cast_shadows>
           <geometry><cylinder><radius>2.5</radius><length>0.035</length></cylinder></geometry>
@@ -152,6 +152,24 @@
         <visual name="launch_h_crossbar"><pose>0 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>1.7 0.28 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
         <visual name="launch_h_left"><pose>-0.7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
         <visual name="launch_h_right"><pose>0.7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+
+        <visual name="landing_pad">
+          <pose>0 50 0.045 0 0 0</pose><cast_shadows>false</cast_shadows>
+          <geometry><cylinder><radius>2.5</radius><length>0.035</length></cylinder></geometry>
+          <material><ambient>0.08 0.10 0.12 1</ambient><diffuse>0.08 0.10 0.12 1</diffuse></material>
+        </visual>
+        <visual name="landing_ring">
+          <pose>0 50 0.055 0 0 0</pose><cast_shadows>false</cast_shadows>
+          <geometry><cylinder><radius>2.72</radius><length>0.012</length></cylinder></geometry>
+          <material>
+            <ambient>0.95 0.72 0.08 1</ambient>
+            <diffuse>0.95 0.72 0.08 1</diffuse>
+            <emissive>0.35 0.22 0.02 1</emissive>
+          </material>
+        </visual>
+        <visual name="landing_h_crossbar"><pose>0 50 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>1.7 0.28 0.025</size></box></geometry><material><ambient>0.95 0.82 0.10 1</ambient><diffuse>0.95 0.82 0.10 1</diffuse></material></visual>
+        <visual name="landing_h_left"><pose>-0.7 50 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.82 0.10 1</ambient><diffuse>0.95 0.82 0.10 1</diffuse></material></visual>
+        <visual name="landing_h_right"><pose>0.7 50 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.82 0.10 1</ambient><diffuse>0.95 0.82 0.10 1</diffuse></material></visual>
       </link>
     </model>
 
@@ -288,26 +306,30 @@
       </link>
     </model>
 
-    <!-- ── GPS-denied Pass 1 visualization (NED N[18,28] E[-5,5]).
+    <!-- ── GPS-denied visualization (NED N[15.5,31.5] E[-8,8]).
          Gazebo pose is ENU: x=east, y=north, z=up. Translucent prism only —
          does not disable NavSat/EKF GPS (that is Pass 2). ── -->
     <model name="gps_denied_zone">
       <static>true</static>
-      <pose>0 23 6 0 0 0</pose>
+      <pose>0 23.5 6 0 0 0</pose>
       <link name="link">
         <visual name="volume">
-          <geometry><box><size>10 10 12</size></box></geometry>
+          <transparency>0.82</transparency>
+          <geometry><box><size>16 16 12</size></box></geometry>
           <material>
-            <ambient>0.85 0.15 0.95 0.22</ambient>
-            <diffuse>0.85 0.15 0.95 0.22</diffuse>
+            <ambient>0.15 0.85 1 0.18</ambient>
+            <diffuse>0.15 0.85 1 0.18</diffuse>
+            <emissive>0.03 0.16 0.20 1</emissive>
             <specular>0.2 0.05 0.25 0.1</specular>
           </material>
         </visual>
         <visual name="outline">
-          <geometry><box><size>10.05 10.05 12.05</size></box></geometry>
+          <transparency>0.62</transparency>
+          <geometry><box><size>16.18 16.18 12.18</size></box></geometry>
           <material>
-            <ambient>0.2 0.95 0.95 0.35</ambient>
-            <diffuse>0.2 0.95 0.95 0.35</diffuse>
+            <ambient>0.10 0.95 1 0.38</ambient>
+            <diffuse>0.10 0.95 1 0.38</diffuse>
+            <emissive>0.04 0.22 0.24 1</emissive>
             <specular>0.1 0.3 0.3 0.1</specular>
           </material>
         </visual>

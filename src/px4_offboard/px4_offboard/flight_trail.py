@@ -5,8 +5,10 @@ Spawns small emissive spheres along the flight path (Gazebo ENU) so you can
 see where the vehicle came from and how it threaded obstacles.
 
 Colors:
-  cyan  — normal flight
+  cyan  — actual flight trail
   orange — actively avoiding
+  green — A* preflight route
+  gold  — planned turn / goal markers
 
 Also publishes:
   /px4_offboard/flight_path   (nav_msgs/Path)
@@ -24,6 +26,7 @@ import os
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
 import math
+import threading
 from collections import deque
 
 import rclpy
@@ -74,7 +77,10 @@ class FlightTrail(Node):
         self._avoiding = False
         self._last_enu: tuple[float, float, float] | None = None
         self._points_enu: list[tuple[float, float, float]] = []
+        self._planned_enu: list[tuple[float, float, float]] = []
         self._crumb_names: deque[str] = deque()
+        self._planned_model_names: list[str] = []
+        self._planned_lock = threading.Lock()
         self._crumb_id = 0
 
         self._gz = None
@@ -106,6 +112,9 @@ class FlightTrail(Node):
         )
         self.create_subscription(Bool, "/px4_offboard/avoiding", self._avoid_cb, 10)
         self.create_subscription(Bool, "/px4_offboard/trail_clear", self._clear_cb, 10)
+        self.create_subscription(
+            Path, "/px4_offboard/planned_path", self._planned_path_cb, qos_sub
+        )
 
         self._pub_path = self.create_publisher(Path, "/px4_offboard/flight_path", 10)
         self._pub_marker = self.create_publisher(
@@ -150,6 +159,192 @@ class FlightTrail(Node):
         if self.use_gz_markers:
             self._publish_gz_line()
         self._publish_ros_viz()
+
+    def _planned_path_cb(self, msg: Path):
+        planned = [
+            (pose.pose.position.x, pose.pose.position.y, pose.pose.position.z)
+            for pose in msg.poses
+        ]
+        if planned == self._planned_enu:
+            return
+        self._planned_enu = planned
+        self.get_logger().info(
+            f"PLANNED ROUTE | {max(0, len(planned) - 1)} legs rendered in green"
+        )
+        self._publish_planned_ros()
+        # GZ model spawn uses blocking service calls; keep it off the ROS
+        # executor or crumbs/setpoints stall and the route never appears.
+        threading.Thread(target=self._render_planned_gz, daemon=True).start()
+
+    def _publish_planned_gz(self):
+        if self._gz_marker_pub is None or len(self._planned_enu) < 2:
+            return
+        line = GzMarker()
+        line.action = GzMarker.ADD_MODIFY
+        line.type = GzMarker.LINE_STRIP
+        line.id = 2
+        line.ns = "planned_route"
+        line.scale.x = self.line_width * 2.0
+        line.material.ambient.r = 0.15
+        line.material.ambient.g = 1.0
+        line.material.ambient.b = 0.35
+        line.material.ambient.a = 0.85
+        line.material.diffuse.r = 0.15
+        line.material.diffuse.g = 1.0
+        line.material.diffuse.b = 0.35
+        line.material.diffuse.a = 0.85
+        if hasattr(line, "visibility"):
+            line.visibility = 0xFFFFFFFF
+        for east, north, up in self._planned_enu:
+            point = line.point.add()
+            point.x, point.y, point.z = east, north, up
+        try:
+            self._gz_marker_pub.publish(line)
+            for index, (east, north, up) in enumerate(self._planned_enu[1:], start=1):
+                marker = GzMarker()
+                marker.action = GzMarker.ADD_MODIFY
+                marker.type = GzMarker.SPHERE
+                marker.id = 100 + index
+                marker.ns = "planned_waypoints"
+                marker.pose.position.x = east
+                marker.pose.position.y = north
+                marker.pose.position.z = up
+                marker.scale.x = marker.scale.y = marker.scale.z = 0.42
+                marker.material.ambient.r = 1.0
+                marker.material.ambient.g = 0.7
+                marker.material.ambient.b = 0.05
+                marker.material.ambient.a = 0.95
+                marker.material.diffuse.r = 1.0
+                marker.material.diffuse.g = 0.7
+                marker.material.diffuse.b = 0.05
+                marker.material.diffuse.a = 0.95
+                if hasattr(marker, "visibility"):
+                    marker.visibility = 0xFFFFFFFF
+                self._gz_marker_pub.publish(marker)
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().warn(
+                f"planned-route marker failed: {exc}", throttle_duration_sec=2.0
+            )
+
+    def _render_planned_gz(self):
+        with self._planned_lock:
+            self._spawn_planned_models()
+
+    def _spawn_planned_models(self):
+        """Spawn the A* route as static Gazebo models (markers are easy to miss)."""
+        if self._gz is None or len(self._planned_enu) < 2:
+            return
+        self._clear_planned_models()
+        for index, (east, north, up) in enumerate(self._planned_enu):
+            name = f"planned_wp_{index}"
+            sdf = f"""<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="{name}">
+    <static>true</static>
+    <link name="link">
+      <visual name="v">
+        <geometry><sphere><radius>0.38</radius></sphere></geometry>
+        <material>
+          <ambient>1.0 0.72 0.05 1</ambient>
+          <diffuse>1.0 0.72 0.05 1</diffuse>
+          <emissive>0.55 0.32 0.0 1</emissive>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>"""
+            if self._spawn_static(name, sdf, east, north, up):
+                self._planned_model_names.append(name)
+        for index, ((e1, n1, u1), (e2, n2, u2)) in enumerate(
+            zip(self._planned_enu, self._planned_enu[1:])
+        ):
+            length = math.sqrt((e2 - e1) ** 2 + (n2 - n1) ** 2 + (u2 - u1) ** 2)
+            if length < 0.25:
+                continue
+            name = f"planned_leg_{index}"
+            sdf = f"""<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="{name}">
+    <static>true</static>
+    <link name="link">
+      <visual name="v">
+        <geometry><box><size>{length:.3f} 0.16 0.16</size></box></geometry>
+        <material>
+          <ambient>0.15 1.0 0.35 1</ambient>
+          <diffuse>0.15 1.0 0.35 1</diffuse>
+          <emissive>0.05 0.40 0.10 1</emissive>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>"""
+            yaw = math.atan2(n2 - n1, e2 - e1)
+            if self._spawn_static(
+                name, sdf, (e1 + e2) / 2.0, (n1 + n2) / 2.0, (u1 + u2) / 2.0, yaw
+            ):
+                self._planned_model_names.append(name)
+        self.get_logger().info(
+            f"PLANNED ROUTE | spawned {len(self._planned_model_names)} Gazebo models"
+        )
+
+    def _spawn_static(
+        self,
+        name: str,
+        sdf: str,
+        x: float,
+        y: float,
+        z: float,
+        yaw: float = 0.0,
+    ) -> bool:
+        req = EntityFactory()
+        req.name = name
+        req.allow_renaming = True
+        req.sdf = sdf
+        req.pose.position.x = float(x)
+        req.pose.position.y = float(y)
+        req.pose.position.z = float(z)
+        req.pose.orientation.z = math.sin(yaw / 2.0)
+        req.pose.orientation.w = math.cos(yaw / 2.0)
+        try:
+            ok, _ = self._gz.request(
+                f"/world/{self.world}/create",
+                req,
+                EntityFactory,
+                Boolean,
+                800,
+            )
+            return bool(ok)
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().warn(
+                f"planned model spawn failed ({name}): {exc}",
+                throttle_duration_sec=2.0,
+            )
+            return False
+
+    def _clear_planned_models(self):
+        while self._planned_model_names:
+            self._remove_crumb(self._planned_model_names.pop())
+
+    def _publish_planned_ros(self):
+        if len(self._planned_enu) < 2:
+            return
+        marker = Marker()
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.header.frame_id = "map"
+        marker.ns = "planned_route"
+        marker.id = 2
+        marker.type = Marker.LINE_STRIP
+        marker.action = Marker.ADD
+        marker.scale.x = self.line_width * 2.0
+        marker.color = ColorRGBA(r=0.15, g=1.0, b=0.35, a=0.85)
+        marker.pose.orientation.w = 1.0
+        from geometry_msgs.msg import Point
+
+        for east, north, up in self._planned_enu:
+            point = Point()
+            point.x, point.y, point.z = east, north, up
+            marker.points.append(point)
+        self._pub_marker.publish(marker)
 
     def _crumb_color(self) -> tuple[float, float, float, float]:
         if self._avoiding:

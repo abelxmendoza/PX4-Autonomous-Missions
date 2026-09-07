@@ -29,6 +29,12 @@
     avoid_stuck_s: 12.0
     sensor_timeout_s: 0.5
     obstacle_source: "hybrid"  # hybrid | sensor_only | map_only
+    global_planner_enable: true
+    planner_resolution_m: 1.0
+    planner_clearance_m: 2.0
+    planner_replan_cooldown_s: 5.0
+    planner_emergency_range_m: 1.5
+    planner_sensor_replan_enable: false
 
     # Geo-cage (soft: clamps setpoints) / geofence (hard: breach → action)
     # Toggle at runtime:

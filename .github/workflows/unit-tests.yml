@@ -22,6 +22,7 @@ jobs:
           test/test_mission_state.py
           test/test_mission_executive.py
           test/test_flight_vv.py
+          test/test_path_planner.py
 
   vv-regression:
     # Offline end-to-end check: replays the real recorded flight logs

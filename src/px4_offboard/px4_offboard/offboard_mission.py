@@ -37,6 +37,8 @@ from pathlib import Path
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path as NavPath
 from std_msgs.msg import Bool, Float32MultiArray, String
 
 from px4_msgs.msg import (
@@ -77,6 +79,7 @@ from px4_offboard.localization_logic import (
     LocalizationSnapshot,
     LocalizationStateMachine,
 )
+from px4_offboard.path_planner import plan_path, plan_path_via
 from px4_offboard.mission_state import (
     FailsafeInputs,
     MissionStateMachine,
@@ -132,6 +135,11 @@ DEFAULT_COURSE = [
     (0.0, 50.0),
 ]
 
+# Mission objectives deliberately placed behind the two tall obstacles. A*
+# decides how to reach each objective; preserving them makes avoidance turns
+# visible instead of allowing a mathematically valid near-straight shortcut.
+PLANNER_CHECKPOINTS = ((15.0, -6.0), (31.0, 0.0), (50.0, 0.0))
+
 
 class OffboardMission(Node):
 
@@ -172,6 +180,9 @@ class OffboardMission(Node):
         )
         self._pub_executive_status = self.create_publisher(
             String, "/px4_offboard/executive_status", 10
+        )
+        self._pub_planned_path = self.create_publisher(
+            NavPath, "/px4_offboard/planned_path", qos_pub
         )
 
         self.create_subscription(
@@ -284,6 +295,10 @@ class OffboardMission(Node):
         self._executive = MissionExecutive(self._executive_config)
         self._path_suffix_m = path_suffix_costs_m(self.waypoints)
         self._loc_sm = LocalizationStateMachine(self._gps_denied_zone)
+        self._dynamic_obstacles: list[Obstacle] = []
+        self._last_replan_t = 0.0
+        self._route_event = "PLANNED"
+        self._route_event_t = time.monotonic()
         self._loc_snap: LocalizationSnapshot | None = None
         self._gps_xy_valid = False
         self._raw_gps_fix_valid = False
@@ -303,6 +318,7 @@ class OffboardMission(Node):
         self._open_log()
 
         self.create_timer(0.1, self._control_loop)
+        self.create_timer(1.0, self._publish_planned_path)
         self.get_logger().info(
             f"OffboardMission ready — mode={self.trajectory_mode.value} "
             f"alt={self.hover_alt}m waypoints={len(self.waypoints)} "
@@ -343,6 +359,12 @@ class OffboardMission(Node):
         self.declare_parameter("avoid_stuck_s", 12.0)
         self.declare_parameter("sensor_timeout_s", 0.5)
         self.declare_parameter("obstacle_source", "hybrid")
+        self.declare_parameter("global_planner_enable", True)
+        self.declare_parameter("planner_resolution_m", 1.0)
+        self.declare_parameter("planner_clearance_m", 2.0)
+        self.declare_parameter("planner_replan_cooldown_s", 5.0)
+        self.declare_parameter("planner_emergency_range_m", 1.5)
+        self.declare_parameter("planner_sensor_replan_enable", False)
         self.declare_parameter("log_dir", ".")
 
         # Geo-cage (soft keep-in: clamp setpoints) / geofence (hard: breach → action)
@@ -423,6 +445,24 @@ class OffboardMission(Node):
             if obstacle_source in ("hybrid", "sensor_only", "map_only")
             else "hybrid"
         )
+        self.global_planner_enable = bool(
+            self.get_parameter("global_planner_enable").value
+        )
+        self.planner_resolution = float(
+            self.get_parameter("planner_resolution_m").value
+        )
+        self.planner_clearance = float(
+            self.get_parameter("planner_clearance_m").value
+        )
+        self.planner_replan_cooldown = float(
+            self.get_parameter("planner_replan_cooldown_s").value
+        )
+        self.planner_emergency_range = float(
+            self.get_parameter("planner_emergency_range_m").value
+        )
+        self.planner_sensor_replan_enable = bool(
+            self.get_parameter("planner_sensor_replan_enable").value
+        )
         self.log_dir = Path(self.get_parameter("log_dir").value)
 
         self.geocage_enable = bool(self.get_parameter("geocage_enable").value)
@@ -445,10 +485,25 @@ class OffboardMission(Node):
         )
 
         if self.trajectory_mode == TrajectoryMode.COURSE:
-            # Clearance path flies above tallest obstacle (OB2 = 6 m)
             self.hover_alt = max(self.hover_alt, 8.0)
             z = -self.hover_alt
-            self.waypoints = [[n, e, z] for e, n in DEFAULT_COURSE]
+            if self.global_planner_enable:
+                route = plan_path_via(
+                    (0.0, 0.0),
+                    PLANNER_CHECKPOINTS,
+                    OBSTACLE_BOXES,
+                    self.fence,
+                    resolution_m=self.planner_resolution,
+                    clearance_m=self.planner_clearance,
+                    fence_margin_m=self.geocage_margin,
+                )
+                self.waypoints = [[north, east, z] for north, east in route]
+                self.get_logger().info(
+                    f"GLOBAL PLAN | A* generated {len(self.waypoints)} flyable waypoints "
+                    f"via {len(PLANNER_CHECKPOINTS)} mission objectives"
+                )
+            else:
+                self.waypoints = [[n, e, z] for e, n in DEFAULT_COURSE]
         else:
             self.waypoints = [
                 [wp[0], wp[1], -self.hover_alt] for wp in DEFAULT_WAYPOINTS
@@ -1109,6 +1164,12 @@ class OffboardMission(Node):
         if self._distance_to_wp(target) < self.wp_accept:
             self.get_logger().info(f"WP {self._wp_index} reached  {target}")
             self._wp_index += 1
+            self._route_event = (
+                "GOAL REACHED"
+                if self._wp_index >= len(self.waypoints)
+                else f"TURNING AT WP {self._wp_index}"
+            )
+            self._route_event_t = time.monotonic()
             self._last_wp_progress_t = time.monotonic()
             self._avoid_active_t = 0.0
             if self._wp_index >= len(self.waypoints):
@@ -1128,7 +1189,71 @@ class OffboardMission(Node):
     def _distance_to_wp(self, target: list) -> float:
         return distance_3d([self.current_x, self.current_y, self.current_z], target)
 
+    def _publish_planned_path(self):
+        """Publish the full A* route in ROS ENU for RViz/Gazebo visualization."""
+        if self.trajectory_mode != TrajectoryMode.COURSE or not self.waypoints:
+            return
+        path = NavPath()
+        path.header.stamp = self.get_clock().now().to_msg()
+        path.header.frame_id = "map"
+        points = [[0.0, 0.0, -self.hover_alt], *self.waypoints]
+        for north, east, down in points:
+            pose = PoseStamped()
+            pose.header = path.header
+            pose.pose.position.x = float(east)
+            pose.pose.position.y = float(north)
+            pose.pose.position.z = float(-down)
+            pose.pose.orientation.w = 1.0
+            path.poses.append(pose)
+        self._pub_planned_path.publish(path)
+
     # ── Obstacle detection (AABB + optional sensor) ───────────────────────────
+
+    def _replan_for_sensor_hit(self, target: list) -> bool:
+        """Add a conservative obstacle ahead and replace the remaining route."""
+        if (
+            not self.global_planner_enable
+            or self.trajectory_mode != TrajectoryMode.COURSE
+            or time.monotonic() - self._last_replan_t < self.planner_replan_cooldown
+        ):
+            return False
+        dn, de = target[0] - self.current_x, target[1] - self.current_y
+        distance = math.hypot(dn, de)
+        if distance < 1e-6:
+            return False
+        front_range = (self._sensor_mins or (self.detection_margin, -1.0, -1.0))[0]
+        projection = min(max(front_range, 1.5), distance)
+        obstacle = Obstacle(
+            east=self.current_y + de / distance * projection,
+            north=self.current_x + dn / distance * projection,
+            size_east=2.5,
+            size_north=2.5,
+            height=self.max_alt,
+        )
+        goal = self.waypoints[-1]
+        try:
+            route = plan_path(
+                (self.current_x, self.current_y),
+                (goal[0], goal[1]),
+                (*OBSTACLE_BOXES, *self._dynamic_obstacles, obstacle),
+                self.fence,
+                resolution_m=self.planner_resolution,
+                clearance_m=self.planner_clearance,
+                fence_margin_m=self.geocage_margin,
+            )
+        except (ValueError, RuntimeError) as exc:
+            self.get_logger().warning(f"GLOBAL REPLAN unavailable: {exc}")
+            return False
+        self._dynamic_obstacles.append(obstacle)
+        self.waypoints = [[north, east, goal[2]] for north, east in route]
+        self._wp_index = 0
+        self._path_suffix_m = path_suffix_costs_m(self.waypoints)
+        self._last_wp_progress_t = time.monotonic()
+        self._last_replan_t = self._last_wp_progress_t
+        self.get_logger().warning(
+            f"GLOBAL REPLAN | LiDAR blockage -> {len(self.waypoints)} new waypoints"
+        )
+        return True
 
     def _detect_obstacle(self, target: list) -> str | None:
         """
@@ -1153,6 +1278,21 @@ class OffboardMission(Node):
                     endpoint_margin_m=max(0.5, self.wp_accept),
                 ):
                     return None
+            if self.trajectory_mode == TrajectoryMode.COURSE and self.global_planner_enable:
+                if not self.planner_sensor_replan_enable:
+                    return None
+                if self._sensor_dir in ("left", "right"):
+                    return None
+                if self._sensor_dir == "front":
+                    front_range = (self._sensor_mins or (-1.0, -1.0, -1.0))[0]
+                    if front_range < 0.0 or front_range > self.planner_emergency_range:
+                        return None
+                    replanned = self._replan_for_sensor_hit(target)
+                    if replanned or (
+                        time.monotonic() - self._last_replan_t
+                        < self.planner_replan_cooldown
+                    ):
+                        return None
             return self._sensor_dir
 
         if self.obstacle_source == "sensor_only":
@@ -1449,6 +1589,11 @@ class OffboardMission(Node):
             "altitude_m": round(-self.current_z, 2),
             "waypoint": min(self._wp_index + 1, len(self.waypoints)),
             "waypoints_total": len(self.waypoints),
+            "route_event": (
+                self._route_event
+                if time.monotonic() - self._route_event_t < 2.5
+                else "TRACKING"
+            ),
             "obstacle": self._last_obstacle or "none",
             "armed": self._flag_armed,
             "offboard": self._flag_offboard,
