@@ -295,16 +295,16 @@ Offline verification maps named requirements to checks against `flight_log_missi
 
 ### Operational GPS-denied demo
 
-The `gps-denied` scenario disables the PX4 SITL GPS sensor inside the visible
-denied prism and keeps the mission flying with external-vision odometry.
+The `gps-denied` scenario denies GNSS to the EKF inside the visible prism and
+keeps the mission flying on external-vision odometry.
 
 **What it does**
-- Visible magenta/cyan prism in `worlds/obstacle_world.sdf` (NED N\[18,28\] E\[−5,5\])
-- PX4 `VEHICLE_CMD_INJECT_FAILURE` turns the simulated GPS off on entry and restores it on exit
-- `vio_bridge` converts Gazebo LiDAR world pose from ENU to local NED and publishes PX4 external vision at 20 Hz
-- PX4 EKF2 fuses external-vision position/velocity (`EKF2_EV_CTRL=5`)
+- Visible cyan prism in `worlds/obstacle_world.sdf` (NED N\[15.5, 31.5\] E\[−8, 8\])
+- On entry, `EKF2_GPS_CTRL=0` stops GNSS aiding (Gazebo's GPS plugin ignores `INJECT_FAILURE`); GNSS is restored only after 1.5 s continuously north of the prism so a south-face flicker or EKF snap toward home cannot re-enable it
+- `vio_bridge` reads the x500 model pose from Gazebo `pose/info` (ENU→NED) and publishes PX4 external vision at 20 Hz. LiDAR `world_pose` is body-frame and is not used.
+- PX4 EKF2 fuses external-vision position (`EKF2_EV_CTRL=3`)
 - CSV/HUD evidence records GPS failure state, VIO stream health, and GNSS/EV fusion flags
-- V&V independently checks actual GNSS loss and continuous external-vision fusion
+- V&V independently checks GNSS fusion drop and continuous external-vision fusion
 
 Simulator ground truth is used only as a synthetic VIO sensor input. Guidance
 continues to consume PX4's estimated local position, not Gazebo truth directly.

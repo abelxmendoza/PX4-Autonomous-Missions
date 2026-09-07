@@ -1,7 +1,8 @@
 """Gazebo pose-backed visual odometry for PX4 GPS-denied SITL demos.
 
-The simulated LiDAR scan contains its Gazebo world pose.  This node converts
-that independent simulator truth from ENU to a local NED frame and publishes
+Gazebo's LiDAR ``LaserScan.world_pose`` is the sensor pose in the vehicle
+frame (≈ origin), not the world.  This node reads the x500 model pose from
+``/world/obstacle_world/pose/info``, converts ENU to local NED, and publishes
 PX4 ``VehicleOdometry``.  PX4's EKF consumes it as external vision; the
 mission controller never uses this truth topic directly for guidance.
 """
@@ -20,10 +21,10 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool
 
-from .frame_transforms import enu_to_ned
+from .frame_transforms import named_enu_pose_to_ned
 
 try:
-    from gz.msgs10.laserscan_pb2 import LaserScan as GzLaserScan
+    from gz.msgs10.pose_v_pb2 import Pose_V as GzPoseV
     from gz.transport13 import Node as GzNode
 
     _GZ_OK = True
@@ -35,17 +36,15 @@ except Exception as exc:  # noqa: BLE001
 class VioBridge(Node):
     def __init__(self):
         super().__init__("vio_bridge")
-        self.declare_parameter(
-            "gz_topic",
-            "/world/obstacle_world/model/x500_lidar_2d_0/link/link/"
-            "sensor/lidar_2d_v2/scan",
-        )
+        self.declare_parameter("gz_topic", "/world/obstacle_world/pose/info")
+        self.declare_parameter("gz_model_name", "x500_lidar_2d_0")
         self.declare_parameter("publish_hz", 20.0)
         self.declare_parameter("position_std_m", 0.05)
         self.declare_parameter("velocity_std_mps", 0.08)
         self.declare_parameter("stale_timeout_s", 0.5)
 
         self.gz_topic = str(self.get_parameter("gz_topic").value)
+        self.gz_model_name = str(self.get_parameter("gz_model_name").value)
         self.publish_hz = float(self.get_parameter("publish_hz").value)
         self.position_var = float(self.get_parameter("position_std_m").value) ** 2
         self.velocity_var = float(self.get_parameter("velocity_std_mps").value) ** 2
@@ -63,7 +62,6 @@ class VioBridge(Node):
         self._healthy_pub = self.create_publisher(Bool, "/px4_offboard/vio_healthy", 10)
         self._lock = threading.Lock()
         self._latest: tuple[float, list[float]] | None = None
-        self._origin: list[float] | None = None
         self._previous: tuple[float, list[float]] | None = None
 
         if not _GZ_OK:
@@ -71,20 +69,25 @@ class VioBridge(Node):
             self._gz = None
         else:
             self._gz = GzNode()
-            ok = self._gz.subscribe(GzLaserScan, self.gz_topic, self._scan_cb)
-            self.get_logger().info(f"VIO source subscribed={ok} topic={self.gz_topic}")
+            ok = self._gz.subscribe(GzPoseV, self.gz_topic, self._pose_cb)
+            self.get_logger().info(
+                f"VIO source subscribed={ok} topic={self.gz_topic} "
+                f"model={self.gz_model_name}"
+            )
 
         self.create_timer(1.0 / max(self.publish_hz, 1.0), self._tick)
 
-    def _scan_cb(self, scan: GzLaserScan):
-        pose = scan.world_pose.position
-        ned = enu_to_ned(float(pose.x), float(pose.y), float(pose.z))
+    def _pose_cb(self, msg: GzPoseV):
+        poses = [
+            (pose.name, pose.position.x, pose.position.y, pose.position.z)
+            for pose in msg.pose
+        ]
+        ned = named_enu_pose_to_ned(poses, self.gz_model_name)
+        if ned is None:
+            return
         now = time.monotonic()
         with self._lock:
-            if self._origin is None:
-                self._origin = list(ned)
-            local = [ned[i] - self._origin[i] for i in range(3)]
-            self._latest = (now, local)
+            self._latest = (now, ned)
 
     def _tick(self):
         with self._lock:

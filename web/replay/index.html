@@ -494,8 +494,8 @@ const HUD_MIN_INTERVAL_MS = IS_MOBILE ? 120 : 0;
 // ---------------------------------------------------------------------------
 const container = document.getElementById('scene');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x7aaed9);
-scene.fog = new THREE.Fog(0x9ec4dd, IS_MOBILE ? 90 : 140, IS_MOBILE ? 220 : 320);
+scene.background = new THREE.Color(0x050a0b);
+scene.fog = new THREE.Fog(0x050a0b, IS_MOBILE ? 40 : 55, IS_MOBILE ? 140 : 190);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
@@ -566,9 +566,9 @@ function activeControls() {
   return null;
 }
 
-scene.add(new THREE.HemisphereLight(0xeaf4ff, 0x3d5c32, 0.95));
-const sun = new THREE.DirectionalLight(0xffffff, 1.15);
-sun.position.set(-20, 50, 10);
+scene.add(new THREE.HemisphereLight(0xcaffef, 0x050a0b, 0.72));
+const sun = new THREE.DirectionalLight(0xffe1ae, 1.05);
+sun.position.set(-15, 40, 20);
 scene.add(sun);
 
 function addBox(east, north, alt, sizeE, sizeH, sizeN, material) {
@@ -578,10 +578,10 @@ function addBox(east, north, alt, sizeE, sizeH, sizeN, material) {
   return mesh;
 }
 
-// Grass around the training pad — same green as obstacle_world.sdf.
+// Dark teal ground around the training pad.
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(220, 220),
-  new THREE.MeshStandardMaterial({ color:0x73a05e, roughness:0.95, metalness:0.02 })
+  new THREE.MeshStandardMaterial({ color:0x091412, roughness:0.96, metalness:0.04 })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.position.set(COURSE_SURFACE.east, 0, -COURSE_SURFACE.north);

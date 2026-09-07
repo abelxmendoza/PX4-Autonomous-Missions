@@ -2,6 +2,7 @@
 
 from px4_offboard.localization_logic import (
     DEFAULT_GPS_DENIED_ZONE,
+    DEFAULT_GPS_FAILURE_EXIT_DWELL_S,
     GpsDeniedZone,
     LocalizationEvent,
     LocalizationInputs,
@@ -9,6 +10,7 @@ from px4_offboard.localization_logic import (
     LocalizationSource,
     LocalizationStateMachine,
     classify_source,
+    gps_failure_desired,
     policy_requires_failsafe,
 )
 
@@ -227,3 +229,98 @@ def test_disabled_skips_zone():
     assert not snap.gps_injected_deny
     assert snap.phase == LocalizationPhase.GPS_OK
     assert not snap.failsafe
+
+
+def test_gps_failure_waits_for_ev_before_inject():
+    active, since = gps_failure_desired(
+        in_zone=True,
+        ev_pos_fused=False,
+        currently_active=False,
+        outside_since=None,
+        now=10.0,
+    )
+    assert not active
+    assert since is None
+
+
+def test_gps_failure_injects_when_in_zone_with_ev():
+    active, since = gps_failure_desired(
+        in_zone=True,
+        ev_pos_fused=True,
+        currently_active=False,
+        outside_since=None,
+        now=10.0,
+    )
+    assert active
+    assert since is None
+
+
+def test_gps_failure_stays_latched_in_zone_if_ev_drops():
+    active, since = gps_failure_desired(
+        in_zone=True,
+        ev_pos_fused=False,
+        currently_active=True,
+        outside_since=None,
+        now=10.0,
+    )
+    assert active
+    assert since is None
+
+
+def test_gps_failure_exit_hysteresis_ignores_south_face_and_home_snap():
+    dwell = DEFAULT_GPS_FAILURE_EXIT_DWELL_S
+    north_max = DEFAULT_GPS_DENIED_ZONE.north_max
+
+    # South-face flicker (N≈15) must not restore GNSS
+    active, since = gps_failure_desired(
+        in_zone=False,
+        ev_pos_fused=True,
+        currently_active=True,
+        outside_since=None,
+        now=20.0,
+        exit_dwell_s=dwell,
+        north_m=14.0,
+        north_max=north_max,
+    )
+    assert active
+    assert since is None
+
+    # EKF snap toward home must not restore GNSS
+    active, since = gps_failure_desired(
+        in_zone=False,
+        ev_pos_fused=True,
+        currently_active=True,
+        outside_since=None,
+        now=20.5,
+        exit_dwell_s=dwell,
+        north_m=0.5,
+        north_max=north_max,
+    )
+    assert active
+    assert since is None
+
+    # Past the far face starts the exit timer
+    active, since = gps_failure_desired(
+        in_zone=False,
+        ev_pos_fused=True,
+        currently_active=True,
+        outside_since=None,
+        now=21.0,
+        exit_dwell_s=dwell,
+        north_m=north_max + 2.5,
+        north_max=north_max,
+    )
+    assert active
+    assert since == 21.0
+    active, since = gps_failure_desired(
+        in_zone=False,
+        ev_pos_fused=True,
+        currently_active=True,
+        outside_since=since,
+        now=21.0 + dwell,
+        exit_dwell_s=dwell,
+        north_m=north_max + 3.0,
+        north_max=north_max,
+    )
+    assert not active
+    assert since is None

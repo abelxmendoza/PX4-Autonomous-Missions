@@ -71,6 +71,45 @@ DEFAULT_GPS_DENIED_ZONE = GpsDeniedZone(
     down_max=0.5,
 )
 
+# Keep EKF2_GPS_CTRL=0 this long after leaving the prism so a one-tick AABB
+# flicker at the N=15.5 / N=31.5 faces cannot restore GNSS and destabilize EKF.
+DEFAULT_GPS_FAILURE_EXIT_DWELL_S = 1.5
+
+
+def gps_failure_desired(
+    in_zone: bool,
+    ev_pos_fused: bool,
+    currently_active: bool,
+    outside_since: float | None,
+    now: float,
+    exit_dwell_s: float = DEFAULT_GPS_FAILURE_EXIT_DWELL_S,
+    north_m: float = 0.0,
+    north_max: float = DEFAULT_GPS_DENIED_ZONE.north_max,
+    exit_north_margin_m: float = 2.0,
+) -> tuple[bool, float | None]:
+    """Return (desired_gps_failure_active, new_outside_since).
+
+    Inject only when inside the prism and external vision is already fused,
+    so GNSS is never dropped without a backup. Once injected, stay injected
+    while in-zone even if EV flickers. Restore GNSS only after the vehicle
+    has been continuously north of the far face (plus a margin) for
+    ``exit_dwell_s``. A south-face flicker or an EKF snap back toward home
+    therefore cannot re-enable GNSS.
+    """
+    if in_zone:
+        if currently_active or ev_pos_fused:
+            return True, None
+        return False, None
+    if not currently_active:
+        return False, None
+    past_exit = north_m > north_max + exit_north_margin_m
+    if not past_exit:
+        return True, None
+    started = now if outside_since is None else outside_since
+    if now - started >= exit_dwell_s:
+        return False, None
+    return True, started
+
 
 @dataclass(frozen=True)
 class LocalizationInputs:

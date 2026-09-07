@@ -30,6 +30,8 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
+import subprocess
 import time
 from enum import Enum
 from pathlib import Path
@@ -74,10 +76,12 @@ from px4_offboard.mission_logic import (
 )
 from px4_offboard.localization_logic import (
     DEFAULT_GPS_DENIED_ZONE,
+    DEFAULT_GPS_FAILURE_EXIT_DWELL_S,
     GpsDeniedZone,
     LocalizationInputs,
     LocalizationSnapshot,
     LocalizationStateMachine,
+    gps_failure_desired,
 )
 from px4_offboard.path_planner import plan_path, plan_path_via
 from px4_offboard.mission_state import (
@@ -312,6 +316,7 @@ class OffboardMission(Node):
         self._gnss_pos_fused = False
         self._gnss_vel_fused = False
         self._gps_failure_active = False
+        self._gps_exit_since: float | None = None
 
         self._log_file = None
         self._log_writer = None
@@ -399,6 +404,11 @@ class OffboardMission(Node):
         self.declare_parameter("gps_denied_enable", True)
         self.declare_parameter("gps_deny_inject", False)
         self.declare_parameter("gps_px4_failure_inject", False)
+        self.declare_parameter("px4_dir", str(Path.home() / "PX4-Autopilot"))
+        self.declare_parameter("ekf2_gps_ctrl_nominal", 7)
+        self.declare_parameter(
+            "gps_failure_exit_dwell_s", DEFAULT_GPS_FAILURE_EXIT_DWELL_S
+        )
         self.declare_parameter("gps_fix_timeout_s", 1.0)
         self.declare_parameter("gps_denied_action", "hold")  # hold | continue | land
         self.declare_parameter("gps_denied_north_min_m", DEFAULT_GPS_DENIED_ZONE.north_min)
@@ -544,6 +554,13 @@ class OffboardMission(Node):
         self.gps_deny_inject = bool(self.get_parameter("gps_deny_inject").value)
         self.gps_px4_failure_inject = bool(
             self.get_parameter("gps_px4_failure_inject").value
+        )
+        self.px4_dir = str(Path(self.get_parameter("px4_dir").value).expanduser())
+        self.ekf2_gps_ctrl_nominal = int(
+            self.get_parameter("ekf2_gps_ctrl_nominal").value
+        )
+        self.gps_failure_exit_dwell_s = float(
+            self.get_parameter("gps_failure_exit_dwell_s").value
         )
         self.gps_fix_timeout = float(self.get_parameter("gps_fix_timeout_s").value)
         gps_action = str(self.get_parameter("gps_denied_action").value).lower()
@@ -754,10 +771,32 @@ class OffboardMission(Node):
         self._vio_stream_healthy = bool(msg.data)
 
     def _raw_gps_healthy(self) -> bool:
-        return bool(
+        sensor_ok = bool(
             self._raw_gps_fix_valid and self._gps_stamp
             and time.monotonic() - self._gps_stamp <= self.gps_fix_timeout
         )
+        if not sensor_ok:
+            return False
+        if self._gps_failure_active:
+            # Gazebo's GPS plugin ignores VEHICLE_CMD_INJECT_FAILURE. After we
+            # zero EKF2_GPS_CTRL, navigation health is the EKF GNSS flag.
+            return bool(self._gnss_pos_fused or self._gnss_vel_fused)
+        return True
+
+    def _px4_param_set(self, name: str, value: str) -> None:
+        binary = os.path.join(self.px4_dir, "build/px4_sitl_default/bin/px4-param")
+        if not os.path.isfile(binary):
+            self.get_logger().error(f"px4-param not found: {binary}")
+            return
+        try:
+            subprocess.Popen(
+                [binary, "set", name, value],
+                cwd=self.px4_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            self.get_logger().error(f"px4-param set {name}={value} failed: {exc}")
 
     def _set_gps_failure(self, enabled: bool):
         if enabled == self._gps_failure_active:
@@ -771,9 +810,16 @@ class OffboardMission(Node):
             float(VehicleCommand.FAILURE_UNIT_SENSOR_GPS),
             float(failure_type),
         )
+        # Gazebo Harmonic GPS does not honor INJECT_FAILURE. Dropping EKF GNSS
+        # aiding is the SITL-visible equivalent of a denied sensor.
+        self._px4_param_set(
+            "EKF2_GPS_CTRL",
+            "0" if enabled else str(self.ekf2_gps_ctrl_nominal),
+        )
         self._gps_failure_active = enabled
         self.get_logger().warn(
-            f"PX4 GPS sensor failure {'INJECTED' if enabled else 'CLEARED'}"
+            f"PX4 GPS sensor failure {'INJECTED' if enabled else 'CLEARED'} "
+            f"(EKF2_GPS_CTRL={'0' if enabled else self.ekf2_gps_ctrl_nominal})"
         )
 
     def _update_localization(self) -> LocalizationSnapshot:
@@ -782,7 +828,17 @@ class OffboardMission(Node):
             self.current_x, self.current_y, self.current_z
         ) if self.gps_denied_enable else False
         if self.gps_px4_failure_inject:
-            self._set_gps_failure(in_zone)
+            desired, self._gps_exit_since = gps_failure_desired(
+                in_zone=in_zone,
+                ev_pos_fused=self._ev_pos_fused,
+                currently_active=self._gps_failure_active,
+                outside_since=self._gps_exit_since,
+                now=time.monotonic(),
+                exit_dwell_s=self.gps_failure_exit_dwell_s,
+                north_m=float(self.current_x),
+                north_max=self._gps_denied_zone.north_max,
+            )
+            self._set_gps_failure(desired)
         raw_gps_healthy = self._raw_gps_healthy()
         non_gps_healthy = self._vio_stream_healthy and self._ev_pos_fused
         snap = self._loc_sm.update(

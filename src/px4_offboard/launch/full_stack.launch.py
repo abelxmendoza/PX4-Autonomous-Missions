@@ -97,6 +97,7 @@ def _launch_setup(context, *args, **kwargs):
                 "sensor_timeout_s": 0.75 if use_lidar else 0.5,
                 "obstacle_source": obstacle_source,
                 "gps_px4_failure_inject": gps_failure,
+                "px4_dir": px4_dir,
                 "gps_denied_action": "continue" if use_vio else "hold",
                 "log_dir": root,
             },
