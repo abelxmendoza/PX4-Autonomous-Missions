@@ -150,18 +150,36 @@
   .sensor-cell span{display:block;color:var(--muted);font-size:8px;letter-spacing:.12em;}.sensor-cell b{display:block;margin-top:3px;font-size:10px;color:var(--mint);}
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;padding:24px;text-align:center;z-index:40;}
 
-  .intro-backdrop{position:fixed;inset:0;background:rgba(2,7,8,.78);display:flex;align-items:flex-end;justify-content:center;z-index:50;backdrop-filter:blur(10px);
-    padding:max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));}
-  .intro-backdrop[hidden]{display:none;}
-  .intro-card{position:relative;width:min(520px,100%);max-height:min(88dvh,720px);overflow-y:auto;-webkit-overflow-scrolling:touch;
+  /* Landing hero — visible by default (no [hidden] until JS dismisses it),
+     so it renders even if the 3D viewer's script never runs at all (WebGL
+     unavailable, a blocked CDN script, etc.) — see the try/catch around
+     WebGLRenderer construction below for why that's a real, not
+     hypothetical, failure mode this page needs a legible fallback for. */
+  .landing-hero{position:fixed;inset:0;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    background:radial-gradient(circle at 28% 18%, rgba(105,247,205,.07), transparent 55%), var(--ink);
+    display:flex;align-items:center;justify-content:center;
+    padding:max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));}
+  .landing-hero[hidden]{display:none;}
+  .landing-card{position:relative;width:min(640px,100%);max-height:min(92dvh,780px);overflow-y:auto;-webkit-overflow-scrolling:touch;
     background:linear-gradient(145deg,rgba(17,39,39,.96),rgba(6,16,17,.98));
-    border:1px solid rgba(105,247,205,.3);border-top:3px solid var(--mint);border-radius:2px;padding:30px 32px;box-shadow:0 35px 100px rgba(0,0,0,.7);animation:modal-in .45s both;}
-  .intro-card::before{content:"MISSION REPLAY / 01";display:block;margin-bottom:18px;color:var(--amber);font:800 9px var(--mono);letter-spacing:.2em;}
-  .intro-card h3{margin:0 0 14px;font-size:clamp(22px,6vw,28px);line-height:1.05;letter-spacing:-.045em;}.intro-card h3 span{color:var(--mint);}
-  .intro-card p{margin:0 0 9px;font:12px/1.65 var(--mono);color:var(--muted);}.intro-card p b{color:var(--text);font-weight:700;}
-  .intro-card .actions{margin-top:22px;display:flex;justify-content:stretch;}
-  .intro-card .actions button{width:100%;min-height:48px;font-size:12px;}
-  .intro-mobile-note{display:none;}
+    border:1px solid rgba(105,247,205,.3);border-top:3px solid var(--mint);border-radius:2px;
+    padding:40px 36px;box-shadow:0 35px 100px rgba(0,0,0,.7);animation:modal-in .5s both;}
+  .landing-eyebrow{color:var(--amber);font:800 10px var(--mono);letter-spacing:.2em;text-transform:uppercase;margin-bottom:18px;}
+  .landing-title{margin:0 0 16px;font:800 clamp(24px,5vw,36px)/1.14 var(--display);letter-spacing:-.02em;color:var(--text);}
+  .landing-title span{color:var(--mint);}
+  .landing-pitch{margin:0 0 22px;font:14px/1.65 var(--display);color:var(--muted);max-width:58ch;}
+  .landing-pitch b{color:var(--text);}
+  .landing-badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;}
+  .landing-badges span{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);}
+  .landing-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin-bottom:26px;}
+  .landing-actions button{min-height:50px;padding:0 22px;font-size:13px;}
+  .landing-actions a{color:var(--text);text-decoration:none;font:700 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--amber);padding-bottom:3px;white-space:nowrap;}
+  .landing-actions a:hover{color:var(--amber);}
+  .landing-tips{border-top:1px solid var(--line);padding-top:18px;}
+  .landing-tips p{margin:0 0 8px;font:12px/1.65 var(--mono);color:var(--muted);}
+  .landing-tips p:last-child{margin-bottom:0;}
+  .landing-tips p b{color:var(--text);font-weight:700;}
+  .landing-mobile-note{display:none;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(105,247,205,.65)}70%{box-shadow:0 0 0 7px rgba(105,247,205,0)}100%{box-shadow:0 0 0 0 rgba(105,247,205,0)}}
   @keyframes card-in{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
   @keyframes modal-in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
@@ -260,9 +278,11 @@
     .time{grid-area:time;display:block;min-width:0;text-align:center;font-size:11px;}
     .scrubwrap button,.scrubwrap select{width:100%;white-space:nowrap;padding:8px 6px;font-size:10px;}
 
-    .intro-backdrop{align-items:flex-end;}
-    .intro-card{padding:22px 18px 18px;border-radius:14px 14px 2px 2px;}
-    .intro-mobile-note{display:block;margin-top:10px;color:var(--amber);font:700 11px/1.45 var(--mono);}
+    .landing-hero{align-items:flex-end;}
+    .landing-card{padding:26px 20px 20px;border-radius:14px 14px 2px 2px;}
+    .landing-actions{gap:12px 16px;}
+    .landing-actions button{width:100%;}
+    .landing-mobile-note{display:block;margin-top:10px;color:var(--amber);font:700 11px/1.45 var(--mono);}
   }
 
   @media(max-width:380px){
@@ -299,18 +319,29 @@
 <div id="scene"></div>
 <div id="loading" class="loading">Loading flight log…</div>
 
-<div id="introBackdrop" class="intro-backdrop" hidden>
-  <div class="intro-card">
-    <h3>Autonomy, <span>made visible.</span></h3>
-    <p>This is a <b>real recorded flight</b> from PX4 SITL + Gazebo Harmonic —
-      not a live physics simulation. The drone, obstacle course, and avoidance
-      decisions are all pulled from an actual telemetry log.</p>
-    <p>Press <b>play</b>, switch missions in the top-right dropdown, or toggle
-      <b>Top-Down</b> for a map view. Trail color shows when the reactive
-      avoidance controller took over (front/left/right/bypass).</p>
-    <p class="intro-mobile-note">On iPhone: starts in Top-Down map view — pinch to zoom, open <b>Telemetry</b> for live HUD, swipe it down to close.</p>
-    <div class="actions">
-      <button id="introDismiss" class="primary">Got it</button>
+<div id="landingHero" class="landing-hero">
+  <div class="landing-card">
+    <div class="landing-eyebrow">Autonomy Lab / 001 · Portfolio Demo</div>
+    <h1 class="landing-title">Autonomous drone flight, <span>replayed in your browser.</span></h1>
+    <p class="landing-pitch">This is a <b>real recorded flight</b> from PX4 + Gazebo Harmonic —
+      not a live simulation — showing reactive obstacle avoidance, sensor fusion, and
+      geofencing end to end. Backed by a real automated test suite, including
+      offline flight-log verification that checks every recorded flight against
+      the same requirements a real acceptance review would use.</p>
+    <div class="landing-badges">
+      <span>PX4</span><span>ROS 2</span><span>Gazebo</span><span>Python</span><span>Three.js</span>
+    </div>
+    <div class="landing-actions">
+      <button id="landingLaunch" class="primary">▶ Launch Flight Replay</button>
+      <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+      <a href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
+    </div>
+    <div class="landing-tips">
+      <p><b>Once inside:</b> press play, switch missions from the top-right
+        dropdown, or toggle <b>Top-Down</b> for a map view. Trail color shows
+        when the reactive avoidance controller took over.</p>
+      <p class="landing-mobile-note">On iPhone: starts in Top-Down map view —
+        pinch to zoom, open <b>Telemetry</b> for live HUD, swipe it down to close.</p>
     </div>
   </div>
 </div>
@@ -961,18 +992,26 @@ let acc = 0;
 let dragging = false;
 let animating = false;
 
-// First-visit intro — if it's showing, missions load paused so nobody
-// misses the opening seconds while reading it. Dismiss is remembered
-// per-browser via localStorage.
+// Landing hero — visible by default in the HTML itself (see the markup:
+// no [hidden] attribute), so it renders as a real pitch page even if this
+// script never runs at all. If it *does* run and the visitor already
+// dismissed it before (localStorage), skip straight to the viewer instead
+// of showing it again. While showing, missions load paused so nobody
+// misses the opening seconds reading it.
 let introShowing = false;
 (function checkIntro() {
-  const SEEN_KEY = 'px4_replay_seen_intro';
-  try { if (localStorage.getItem(SEEN_KEY) === '1') return; } catch (e) {}
+  const SEEN_KEY = 'px4_replay_seen_landing';
+  const hero = document.getElementById('landingHero');
+  let seen = false;
+  try { seen = localStorage.getItem(SEEN_KEY) === '1'; } catch (e) {}
+  if (seen) {
+    hero.hidden = true;
+    return;
+  }
   introShowing = true;
-  document.getElementById('introBackdrop').hidden = false;
-  document.getElementById('introDismiss').addEventListener('click', () => {
+  document.getElementById('landingLaunch').addEventListener('click', () => {
     introShowing = false;
-    document.getElementById('introBackdrop').hidden = true;
+    hero.hidden = true;
     try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
     playing = true;
     document.getElementById('btnPlay').textContent = '⏸ Pause';
