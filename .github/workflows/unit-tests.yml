@@ -27,6 +27,7 @@ jobs:
           test/test_localization_logic.py
           test/test_vio_bridge.py
           test/test_vio_noise.py
+          test/test_camera_frame.py
 
   web-tests:
     # JS unit tests for web/replay/lib.js (toWorld/parseCsv) — the logic the

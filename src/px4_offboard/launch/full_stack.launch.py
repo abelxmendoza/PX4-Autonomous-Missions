@@ -151,6 +151,14 @@ def _launch_setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration("use_vio")),
     )
 
+    camera_node = Node(
+        package="px4_offboard",
+        executable="camera_bridge",
+        name="camera_bridge",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("use_camera")),
+    )
+
     mavros_node = Node(
         package="mavros",
         executable="mavros_node",
@@ -192,6 +200,7 @@ def _launch_setup(context, *args, **kwargs):
     )
     delayed_lidar = TimerAction(period=14.0, actions=[lidar_node])
     delayed_vio = TimerAction(period=14.0, actions=[vio_node])
+    delayed_camera = TimerAction(period=14.0, actions=[camera_node])
     delayed_ekf_config = TimerAction(
         period=18.0,
         actions=[ExecuteProcess(
@@ -226,6 +235,7 @@ def _launch_setup(context, *args, **kwargs):
         delayed_gcs,
         delayed_lidar,
         delayed_vio,
+        delayed_camera,
         delayed_ekf_config,
         delayed_failure_config,
         delayed_trail,
@@ -312,6 +322,11 @@ def generate_launch_description():
                 "use_vio",
                 default_value="false",
                 description="Publish Gazebo pose as PX4 external-vision odometry",
+            ),
+            DeclareLaunchArgument(
+                "use_camera",
+                default_value="false",
+                description="Bridge the Gazebo forward camera to /px4_offboard/camera/image_raw",
             ),
             DeclareLaunchArgument(
                 "gps_px4_failure_inject",

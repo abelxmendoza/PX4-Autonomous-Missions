@@ -209,6 +209,35 @@ ros2 launch px4_offboard full_stack.launch.py obstacle_source:=sensor_only
 ros2 topic echo /px4_offboard/obstacle_dir
 ```
 
+### Forward camera
+
+`models/x500_lidar_2d/model.sdf` (this repo's tracked override of PX4's stock
+`x500_lidar_2d`) merges in PX4's stock `mono_cam` sensor alongside the 2D
+LiDAR, so the vehicle carries a real forward-facing Gazebo camera — an actual
+rendered sensor, not the web replay's FPV viewing angle (see below). Install
+it like the LiDAR override (step 1):
+
+```bash
+cp -r models/lidar_2d_v2 models/x500_lidar_2d \
+  ~/PX4-Autopilot/Tools/simulation/gz/models/
+```
+
+`camera_bridge` republishes the raw Gazebo frames as ROS `sensor_msgs/Image`:
+
+```bash
+ros2 launch px4_offboard full_stack.launch.py use_camera:=true
+ros2 run rqt_image_view rqt_image_view /px4_offboard/camera/image_raw
+```
+
+`/px4_offboard/camera_healthy` (`std_msgs/Bool`) drops to false if frames go
+stale for more than 1 s. Nothing in the mission or avoidance stack consumes
+these frames today — it's a real sensor feed available for a future
+vision-based perception node, not yet load-bearing.
+
+> Note: the web replay's "FPV" view (`view` toggle in `web/replay/`) is a
+> Three.js camera angle over recorded telemetry, unrelated to this sensor —
+> it renders no imagery and reads no Gazebo topic.
+
 ### Geo-cage & geofence
 
 | Feature | Behavior |
