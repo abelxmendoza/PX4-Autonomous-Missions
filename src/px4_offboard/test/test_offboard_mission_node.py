@@ -22,13 +22,16 @@ directory without crashing node startup or the control-loop timer callback.
 
 from __future__ import annotations
 
+import csv
 import math
+import time
 
 import pytest
 
 rclpy = pytest.importorskip("rclpy")
 px4_msgs_msg = pytest.importorskip("px4_msgs.msg")
 
+from px4_offboard.mission_state import State  # noqa: E402
 from px4_offboard.offboard_mission import OffboardMission  # noqa: E402
 
 VehicleLocalPosition = px4_msgs_msg.VehicleLocalPosition
@@ -136,5 +139,52 @@ def test_open_log_survives_unwritable_directory(tmp_path):
         assert n._log_writer is None
         assert n._log_file is None
         n.destroy_node()  # must not raise despite no open log file
+    finally:
+        rclpy.shutdown()
+
+
+def test_gps_denied_failsafe_event_is_captured_in_the_log(tmp_path):
+    # End-to-end regression test for a real bug found while reviewing the
+    # GPS-denied feature: LocalizationStateMachine's LOC_FAILSAFE event is
+    # one-shot (sticky-to-None on every later tick), and _control_loop used
+    # to `return` — past every state block that calls _log_row — the moment
+    # it saw loc.failsafe, so no CSV row ever recorded the event that
+    # actually triggered the failsafe. REQ-GPS-POLICY-01 (vv_harness.py)
+    # then always passed via its "no events" early-out, even in the exact
+    # deny-inject -> hold/land case it exists to verify. Drives the real
+    # control loop (not just the pure LocalizationStateMachine) and reads
+    # the real CSV back to prove the event now lands in the log.
+    rclpy.init(args=[
+        "--ros-args",
+        "-p", f"log_dir:={tmp_path}",
+        "-p", "gps_denied_enable:=true",
+        "-p", "gps_deny_inject:=true",
+        "-p", "gps_denied_action:=hold",
+    ])
+    try:
+        n = OffboardMission()
+        # Skip the arming sequence — jump straight to a flight state so the
+        # localization failsafe branch in _control_loop is actually reached
+        # (it's gated on state not in {PREFLIGHT, FAILSAFE, LANDING}).
+        n._state_machine.state = State.MOVE
+        n._have_position = True
+        n._pos_stamp = time.monotonic()
+        n._last_wp_progress_t = time.monotonic()
+        # Inside the configured GPS-denied prism (default N[18,28] E[-5,5]
+        # D[-12,0.5] — see config/offboard_mission.yaml).
+        n.current_x, n.current_y, n.current_z = 23.0, 0.0, -5.0
+
+        n._control_loop()  # should enter FAILSAFE and log this exact tick
+
+        assert n._state == State.FAILSAFE
+
+        log_files = list(tmp_path.glob("flight_log_mission_*.csv"))
+        assert len(log_files) == 1
+        with open(log_files[0], newline="") as f:
+            rows = list(csv.DictReader(f))
+        loc_events = [r["loc_event"] for r in rows if r["loc_event"]]
+        assert "LOC_FAILSAFE" in loc_events
+
+        n.destroy_node()
     finally:
         rclpy.shutdown()
