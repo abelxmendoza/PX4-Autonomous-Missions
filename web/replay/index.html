@@ -94,6 +94,14 @@
   .row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0;}
   .row+.row{border-top:1px solid rgba(255,255,255,.025);}
   .row .k{color:var(--muted);}.row .v{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+  /* Persistent re-entry point for guided story mode — otherwise it's only
+     reachable once, from the landing hero, before localStorage hides that
+     for the rest of this browser's visits. */
+  .hud-story-btn{width:100%;margin-top:10px;padding:8px 10px;
+    background:rgba(105,247,205,.08);border:1px solid rgba(105,247,205,.3);
+    color:var(--mint);font:700 10px var(--mono);letter-spacing:.04em;
+    border-radius:1px;cursor:pointer;text-align:center;}
+  .hud-story-btn:hover{background:rgba(105,247,205,.15);}
   .badge{display:inline-block;padding:3px 8px;border:1px solid currentColor;border-radius:1px;font:800 9px var(--mono);
     letter-spacing:.06em;text-transform:uppercase;}
   .badge.state-PREFLIGHT,.badge.state-ARMING{color:#78cfff;background:rgba(120,207,255,.08);}
@@ -431,6 +439,7 @@
       <div id="missionLabel" style="font:750 12px/1.35 var(--display);margin-bottom:8px;letter-spacing:-.01em">Mission</div>
       <div class="row"><span class="k">Avoidance maneuvers</span><span id="hudEvents" class="v">–</span></div>
       <div class="row"><span class="k">Duration</span><span id="hudDuration" class="v">–</span></div>
+      <button type="button" id="hudStoryBtn" class="hud-story-btn">▶ Watch the guided story</button>
     </div>
     <div class="card">
       <h2>Mission Phase</h2>
@@ -1287,6 +1296,11 @@ function enterStoryMode() {
   hud.decision.style.display = 'none';
   document.getElementById('speed').value = '1';
   speed = 1;
+  // Close the mobile Telemetry drawer if it's the thing that triggered
+  // this (the "Watch the guided story" re-entry button lives inside it) —
+  // otherwise the drawer would keep covering the 3D scene and the story
+  // panel it's supposed to show.
+  document.body.classList.remove('hud-open');
   if (missionSelect.value !== STORY_MISSION_ID) {
     missionSelect.value = STORY_MISSION_ID;
     loadMission(MISSIONS.find(m => m.id === STORY_MISSION_ID));
@@ -1317,6 +1331,7 @@ function updateStoryPanel(frameIndex) {
 }
 
 document.getElementById('storyExit').addEventListener('click', exitStoryMode);
+document.getElementById('hudStoryBtn').addEventListener('click', enterStoryMode);
 // Switching missions mid-story would desync the script from what's on
 // screen (beats are keyed to the "full avoidance" recording specifically),
 // so treat a manual mission change as leaving the guided tour.
