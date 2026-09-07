@@ -54,6 +54,7 @@
 
   .overlay{position:fixed;inset:0;z-index:3;pointer-events:none;}
   .overlay > *{pointer-events:auto;}
+  .overlay > .cam-overlay{pointer-events:none;}
   .eyebrow{font:700 9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);}
 
   header{position:fixed;top:0;left:0;right:0;
@@ -274,6 +275,22 @@
     .decision{right:calc(108px + env(safe-area-inset-right));}
   }
 
+  .cam-overlay{
+    position:fixed;inset:0;z-index:4;pointer-events:none;
+    border:16px solid rgba(5,10,11,.62);
+    box-shadow:inset 0 0 90px rgba(0,0,0,.4);
+  }
+  .cam-rec,.cam-name{
+    position:absolute;top:calc(58px + env(safe-area-inset-top));
+    font:800 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  }
+  .cam-rec{left:max(28px, env(safe-area-inset-left));color:var(--danger);}
+  .cam-name{right:max(28px, env(safe-area-inset-right));color:var(--text);}
+  @media(max-width:760px){
+    .cam-overlay{border-width:10px;}
+    .cam-rec,.cam-name{top:calc(48px + env(safe-area-inset-top));font-size:10px;}
+  }
+
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
@@ -410,7 +427,12 @@
     </div>
   </div>
 
-  <div class="hint">drag to orbit · scroll to zoom · real recorded Gazebo SITL flight, not a physics simulation</div>
+  <div id="camOverlay" class="cam-overlay" hidden>
+    <span class="cam-rec">● REC</span>
+    <span class="cam-name">SIM CAM 0 · FPV</span>
+  </div>
+
+  <div class="hint">drag to orbit · camera for FPV · real recorded Gazebo SITL flight, not a physics simulation</div>
 
   <div class="transport">
     <div class="scrubwrap">
@@ -534,9 +556,21 @@ orthoControls.minZoom = 0.2;
 orthoControls.maxZoom = 8;
 orthoControls.zoomSpeed = IS_MOBILE ? 0.7 : 1.0;
 
-let topDown = IS_MOBILE; // map view is clearer on a phone-sized screen
-function activeCamera()  { return topDown ? orthoCamera  : camera;  }
-function activeControls(){ return topDown ? orthoControls : controls; }
+const VIEW_ORBIT = 'orbit';
+const VIEW_MAP = 'map';
+const VIEW_CAM = 'cam';
+let viewMode = IS_MOBILE ? VIEW_MAP : VIEW_ORBIT;
+let fpvCamera;
+function activeCamera() {
+  if (viewMode === VIEW_MAP) return orthoCamera;
+  if (viewMode === VIEW_CAM) return fpvCamera;
+  return camera;
+}
+function activeControls() {
+  if (viewMode === VIEW_MAP) return orthoControls;
+  if (viewMode === VIEW_ORBIT) return controls;
+  return null;
+}
 
 scene.add(new THREE.HemisphereLight(0xeaf4ff, 0x3d5c32, 0.95));
 const sun = new THREE.DirectionalLight(0xffffff, 1.15);
@@ -630,6 +664,12 @@ gpsDeniedGroup.add(deniedFill);
 gpsDeniedGroup.add(deniedEdges);
 scene.add(gpsDeniedGroup);
 let gpsDeniedInside = false;
+{
+  const labelAt = gpsDeniedLabelPos();
+  const deniedLabel = makeLabelSprite('GPS DENIED', 'rgba(4,28,36,0.92)', '#7af4ff', 7.2, 1.8);
+  deniedLabel.position.set(labelAt.east, labelAt.alt, -labelAt.north);
+  gpsDeniedGroup.add(deniedLabel);
+}
 
 // Obstacles — rescaled per recording so old evidence is never shown against
 // geometry it did not fly through.
@@ -789,23 +829,24 @@ deadRing.rotation.x = -Math.PI / 2;
 lidarGroup.add(deadRing);
 
 document.getElementById('toggleLidar').addEventListener('change', e => {
-  lidarGroup.visible = e.target.checked;
+  lidarGroup.visible = e.target.checked && viewMode !== VIEW_CAM;
 });
 
-function makeLabelSprite(text, bg) {
+function makeLabelSprite(text, bg, fg, scaleX, scaleY) {
   const c = document.createElement('canvas');
-  c.width = 128; c.height = 64;
+  const wide = text.length > 6;
+  c.width = wide ? 256 : 128; c.height = 64;
   const ctx = c.getContext('2d');
   ctx.fillStyle = bg || 'rgba(7,22,22,0.92)';
-  roundRect(ctx, 2, 2, 124, 60, 12); ctx.fill();
-  ctx.fillStyle = '#69f7cd';
-  ctx.font = 'bold 30px monospace';
+  roundRect(ctx, 2, 2, c.width - 4, 60, 12); ctx.fill();
+  ctx.fillStyle = fg || '#69f7cd';
+  ctx.font = wide ? 'bold 28px monospace' : 'bold 30px monospace';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(text, 64, 34);
+  ctx.fillText(text, c.width / 2, 34);
   const tex = new THREE.CanvasTexture(c);
   const mat = new THREE.SpriteMaterial({ map:tex, depthTest:false });
   const spr = new THREE.Sprite(mat);
-  spr.scale.set(2.2, 1.1, 1);
+  spr.scale.set(scaleX || (wide ? 6.4 : 2.2), scaleY || (wide ? 1.6 : 1.1), 1);
   return spr;
 }
 function roundRect(ctx,x,y,w,h,r){
@@ -836,9 +877,27 @@ const drone = new THREE.Group();
     rotor.position.set(dx, 0.03, dz);
     drone.add(rotor);
   }
+  const camBody = new THREE.Mesh(
+    new THREE.BoxGeometry(0.09, 0.07, 0.11),
+    new THREE.MeshStandardMaterial({ color:0x141414, metalness:0.55, roughness:0.32 })
+  );
+  camBody.position.set(0, -0.07, 0.16);
+  drone.add(camBody);
+  const lens = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.028, 0.034, 0.045, 14),
+    new THREE.MeshStandardMaterial({ color:0x1a6a88, emissive:0x082430, metalness:0.85, roughness:0.18 })
+  );
+  lens.rotation.x = Math.PI / 2;
+  lens.position.set(0, -0.07, 0.22);
+  drone.add(lens);
 }
 drone.add(lidarGroup);
 scene.add(drone);
+
+fpvCamera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.08, 250);
+fpvCamera.position.set(0, -0.07, 0.26);
+fpvCamera.rotation.y = Math.PI;
+drone.add(fpvCamera);
 
 const droneLight = new THREE.PointLight(0x69f7cd, IS_MOBILE ? 0 : 1.5, 5);
 droneLight.visible = !IS_MOBILE;
@@ -1323,7 +1382,8 @@ function animate() {
   } else {
     animate._last = now;
   }
-  activeControls().update();
+  const ctrls = activeControls();
+  if (ctrls) ctrls.update();
   renderer.render(scene, activeCamera());
 }
 
@@ -1343,11 +1403,28 @@ document.getElementById('btnRestart').addEventListener('click', () => {
 document.getElementById('speed').addEventListener('change', e => {
   speed = parseFloat(e.target.value);
 });
-document.getElementById('btnView').addEventListener('click', e => {
-  topDown = !topDown;
-  e.target.textContent = topDown ? '🎥 Orbit' : '🗺 Top-Down';
+function applyViewMode() {
+  const btn = document.getElementById('btnView');
+  const overlay = document.getElementById('camOverlay');
+  const lidarOn = document.getElementById('toggleLidar').checked;
+  drone.visible = viewMode !== VIEW_CAM;
+  lidarGroup.visible = viewMode !== VIEW_CAM && lidarOn;
+  controls.enabled = viewMode === VIEW_ORBIT;
+  orthoControls.enabled = viewMode === VIEW_MAP;
+  if (overlay) overlay.hidden = viewMode !== VIEW_CAM;
+  btn.textContent = viewMode === VIEW_MAP
+    ? '🎥 Camera'
+    : viewMode === VIEW_CAM
+      ? '👁 Orbit'
+      : '🗺 Top-Down';
+}
+document.getElementById('btnView').addEventListener('click', () => {
+  viewMode = viewMode === VIEW_ORBIT ? VIEW_MAP
+    : viewMode === VIEW_MAP ? VIEW_CAM
+      : VIEW_ORBIT;
+  applyViewMode();
 });
-document.getElementById('btnView').textContent = topDown ? '🎥 Orbit' : '🗺 Top-Down';
+applyViewMode();
 const scrub = document.getElementById('scrub');
 scrub.addEventListener('mousedown', () => dragging = true);
 scrub.addEventListener('touchstart', () => dragging = true, {passive:true});
@@ -1403,6 +1480,10 @@ function resizeRenderer() {
   const h = window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (fpvCamera) {
+    fpvCamera.aspect = w / h;
+    fpvCamera.updateProjectionMatrix();
+  }
   const aspect = w / h;
   const halfSpan = (orthoCamera.top - orthoCamera.bottom) / 2;
   orthoCamera.left = -halfSpan * aspect; orthoCamera.right = halfSpan * aspect;

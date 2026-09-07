@@ -50,6 +50,11 @@ function gpsDeniedWorldBox(zone) {
   };
 }
 
+function gpsDeniedLabelPos(zone) {
+  const box = gpsDeniedWorldBox(zone);
+  return { east: box.east, north: box.north, alt: box.height + 1.6 };
+}
+
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   const header = lines[0].split(',');
@@ -114,6 +119,6 @@ function parseCsv(text) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE,
-    COURSE_SURFACE, COURSE_BEACONS, gpsDeniedWorldBox,
+    COURSE_SURFACE, COURSE_BEACONS, gpsDeniedWorldBox, gpsDeniedLabelPos,
   };
 }

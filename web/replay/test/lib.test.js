@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox } from '../lib.js';
+import { toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox, gpsDeniedLabelPos } from '../lib.js';
 
 const FULL_HEADER =
   'time,state,north,east,down,tgt_n,tgt_e,tgt_d,obstacle,obstacle_source,sensor_fresh,' +
@@ -69,6 +69,9 @@ describe('toWorld', () => {
     expect(world.x).toBeCloseTo(0);
     expect(world.y).toBeCloseTo(6);
     expect(world.z).toBeCloseTo(-23.5);
+    const label = gpsDeniedLabelPos();
+    expect(label.north).toBeCloseTo(23.5);
+    expect(label.alt).toBeGreaterThan(box.height);
   });
 
   it('places the landing pad 50 m north of the launch pad', () => {
