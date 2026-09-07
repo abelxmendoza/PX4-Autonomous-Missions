@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toWorld, parseCsv, COURSE_PADS } from '../lib.js';
+import { toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox } from '../lib.js';
 
 const FULL_HEADER =
   'time,state,north,east,down,tgt_n,tgt_e,tgt_d,obstacle,obstacle_source,sensor_fresh,' +
@@ -52,6 +52,23 @@ describe('toWorld', () => {
     expect(rows[0].vio_stream_healthy).toBe(true);
     expect(rows[0].ev_pos_fused).toBe(true);
     expect(rows[0].gnss_pos_fused).toBe(false);
+  });
+
+  it('places the GPS-denied prism over the mid-course corridor', () => {
+    expect(GPS_DENIED_ZONE.northMin).toBe(15.5);
+    expect(GPS_DENIED_ZONE.northMax).toBe(31.5);
+    expect(GPS_DENIED_ZONE.eastMin).toBe(-8);
+    expect(GPS_DENIED_ZONE.eastMax).toBe(8);
+    const box = gpsDeniedWorldBox();
+    expect(box.north).toBeCloseTo(23.5);
+    expect(box.east).toBeCloseTo(0);
+    expect(box.sizeE).toBeCloseTo(16);
+    expect(box.sizeN).toBeCloseTo(16);
+    expect(box.height).toBeCloseTo(12);
+    const world = toWorld(box.north, box.east, -box.height / 2);
+    expect(world.x).toBeCloseTo(0);
+    expect(world.y).toBeCloseTo(6);
+    expect(world.z).toBeCloseTo(-23.5);
   });
 
   it('places the landing pad 50 m north of the launch pad', () => {

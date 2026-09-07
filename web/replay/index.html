@@ -377,11 +377,18 @@
         <span class="label">LiDAR range</span>
         <span class="hint">4.0m</span>
       </label>
+      <label class="toggle-row">
+        <input type="checkbox" id="toggleDenied" checked/>
+        <span class="sw" style="background:transparent;border:1.5px solid #26d9ff;"></span>
+        <span class="label">GPS-denied zone</span>
+        <span class="hint">16×16 m</span>
+      </label>
       <div class="legend" style="margin-top:5px;padding-top:6px;border-top:1px solid var(--line)">
         <div class="item"><span class="sw" style="background:#69f7cd"></span>actual flight path</div>
         <div class="item"><span class="sw" style="background:#ffb547"></span>intended corridor</div>
         <div class="item"><span class="sw" style="background:transparent;border:1.5px solid #69f7cd;height:8px;width:8px;border-radius:50%"></span>launch pad</div>
         <div class="item"><span class="sw" style="background:transparent;border:1.5px solid #ffb547;height:8px;width:8px;border-radius:50%"></span>landing pad</div>
+        <div class="item"><span class="sw" style="background:rgba(38,217,255,.55)"></span>GPS-denied prism</div>
       </div>
     </div>
     <div class="card">
@@ -446,7 +453,7 @@ const LEGACY_OBSTACLES = [
   { name:'OB4', east:6,  north:24, sizeE:2, sizeN:2, h:5, color:0x2626d9 },
   { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:4, color:0xa600bf },
 ];
-let activeObstacles = LEGACY_OBSTACLES;
+let activeObstacles = OBSTACLES;
 
 const AVOID_COLOR = {
   '':        0x69f7cd,
@@ -471,8 +478,8 @@ const HUD_MIN_INTERVAL_MS = IS_MOBILE ? 120 : 0;
 // ---------------------------------------------------------------------------
 const container = document.getElementById('scene');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050a0b);
-scene.fog = new THREE.Fog(0x050a0b, IS_MOBILE ? 40 : 55, IS_MOBILE ? 140 : 190);
+scene.background = new THREE.Color(0x7aaed9);
+scene.fog = new THREE.Fog(0x9ec4dd, IS_MOBILE ? 90 : 140, IS_MOBILE ? 220 : 320);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
@@ -531,23 +538,49 @@ let topDown = IS_MOBILE; // map view is clearer on a phone-sized screen
 function activeCamera()  { return topDown ? orthoCamera  : camera;  }
 function activeControls(){ return topDown ? orthoControls : controls; }
 
-scene.add(new THREE.HemisphereLight(0xcaffef, 0x050a0b, 0.72));
-const sun = new THREE.DirectionalLight(0xffe1ae, 1.05);
-sun.position.set(-15, 40, 20);
+scene.add(new THREE.HemisphereLight(0xeaf4ff, 0x3d5c32, 0.95));
+const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+sun.position.set(-20, 50, 10);
 scene.add(sun);
 
-// Ground
+function addBox(east, north, alt, sizeE, sizeH, sizeN, material) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sizeE, sizeH, sizeN), material);
+  mesh.position.set(east, alt, -north);
+  scene.add(mesh);
+  return mesh;
+}
+
+// Grass around the training pad — same green as obstacle_world.sdf.
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(120, 120),
-  new THREE.MeshStandardMaterial({ color:0x091412, roughness:0.96, metalness:0.04 })
+  new THREE.PlaneGeometry(220, 220),
+  new THREE.MeshStandardMaterial({ color:0x73a05e, roughness:0.95, metalness:0.02 })
 );
-ground.rotation.x = -Math.PI/2;
-ground.position.set(0, 0, -20);
+ground.rotation.x = -Math.PI / 2;
+ground.position.set(COURSE_SURFACE.east, 0, -COURSE_SURFACE.north);
 scene.add(ground);
 
-const grid = new THREE.GridHelper(120, 24, 0x2dd9ae, 0x18332e);
-grid.position.set(0, 0.01, -20);
-scene.add(grid);
+const tarmac = addBox(
+  COURSE_SURFACE.east, COURSE_SURFACE.north, 0.012,
+  COURSE_SURFACE.sizeE, 0.02, COURSE_SURFACE.sizeN,
+  new THREE.MeshStandardMaterial({ color:0x3d4a4f, roughness:0.92, metalness:0.04 })
+);
+const goldLine = new THREE.MeshStandardMaterial({ color:0xf2d119, roughness:0.55, metalness:0.08 });
+addBox(-14.5, 25, 0.03, 0.18, 0.025, 60, goldLine);
+addBox(14.5, 25, 0.03, 0.18, 0.025, 60, goldLine);
+const gridMat = new THREE.MeshStandardMaterial({ color:0x8c979c, roughness:0.7 });
+const gridCenter = new THREE.MeshStandardMaterial({ color:0xe1e4e6, roughness:0.55 });
+for (const east of [-10, -5, 5, 10]) addBox(east, 25, 0.028, 0.055, 0.022, 60, gridMat);
+addBox(0, 25, 0.029, 0.12, 0.024, 60, gridCenter);
+for (let north = 5; north <= 50; north += 5) addBox(0, north, 0.028, 30, 0.022, 0.055, gridMat);
+
+const beaconMat = new THREE.MeshStandardMaterial({
+  color:0xff5905, emissive:0x4d1400, roughness:0.4, metalness:0.1,
+});
+for (const beacon of COURSE_BEACONS) {
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.3, 10), beaconMat);
+  post.position.set(beacon.east, 0.65, -beacon.north);
+  scene.add(post);
+}
 
 function addHelipad(pad, ringColor, markColor) {
   const disc = new THREE.Mesh(
@@ -578,13 +611,25 @@ function addHelipad(pad, ringColor, markColor) {
 const padRing = addHelipad(COURSE_PADS.launch, 0x69f7cd, 0xf2f2f2);
 const landingRing = addHelipad(COURSE_PADS.landing, 0xffb547, 0xffd27a);
 
-const courseLine = new THREE.Mesh(
-  new THREE.PlaneGeometry(12, 50),
-  new THREE.MeshBasicMaterial({ color:0x102420, transparent:true, opacity:0.38, side:THREE.DoubleSide })
+const deniedBox = gpsDeniedWorldBox();
+const deniedFill = new THREE.Mesh(
+  new THREE.BoxGeometry(deniedBox.sizeE, deniedBox.height, deniedBox.sizeN),
+  new THREE.MeshPhongMaterial({
+    color: 0x26d9ff, transparent: true, opacity: 0.18,
+    depthWrite: false, side: THREE.DoubleSide, emissive: 0x082830,
+  })
 );
-courseLine.rotation.x = -Math.PI / 2;
-courseLine.position.set(0, 0.025, -25);
-scene.add(courseLine);
+deniedFill.position.set(deniedBox.east, deniedBox.height / 2, -deniedBox.north);
+const deniedEdges = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(deniedBox.sizeE, deniedBox.height, deniedBox.sizeN)),
+  new THREE.LineBasicMaterial({ color: 0x7af4ff, transparent: true, opacity: 0.9 })
+);
+deniedEdges.position.copy(deniedFill.position);
+const gpsDeniedGroup = new THREE.Group();
+gpsDeniedGroup.add(deniedFill);
+gpsDeniedGroup.add(deniedEdges);
+scene.add(gpsDeniedGroup);
+let gpsDeniedInside = false;
 
 // Obstacles — rescaled per recording so old evidence is never shown against
 // geometry it did not fly through.
@@ -601,17 +646,27 @@ for (const ob of OBSTACLES) {
   );
   edges.position.copy(mesh.position);
   scene.add(edges);
-  obstacleMeshes.push({ mesh, edges, base:ob });
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(ob.sizeE + 0.18, 0.12, ob.sizeN + 0.18),
+    new THREE.MeshStandardMaterial({ color:0x141414, roughness:0.85 })
+  );
+  roof.position.set(ob.east, ob.h + 0.06, -ob.north);
+  scene.add(roof);
+  obstacleMeshes.push({ mesh, edges, roof, base:ob });
 }
 
 function setCourseGeometry(obstacles) {
   activeObstacles = obstacles;
-  obstacleMeshes.forEach(({mesh, edges, base}, index) => {
+  obstacleMeshes.forEach(({mesh, edges, roof, base}, index) => {
     const ob = obstacles[index];
     const scale = [ob.sizeE / base.sizeE, ob.h / base.h, ob.sizeN / base.sizeN];
     mesh.scale.set(...scale); edges.scale.set(...scale);
     mesh.position.set(ob.east, ob.h / 2, -ob.north);
     edges.position.copy(mesh.position);
+    if (roof) {
+      roof.scale.set(ob.sizeE / base.sizeE, 1, ob.sizeN / base.sizeN);
+      roof.position.set(ob.east, ob.h + 0.06, -ob.north);
+    }
   });
   document.getElementById('legendOb1').textContent = `OB1 · red · ${obstacles[0].h}m`;
   document.getElementById('legendOb5').textContent = `OB5 · purple · ${obstacles[4].h}m`;
@@ -652,6 +707,9 @@ document.getElementById('toggleFence').addEventListener('change', e => {
 });
 document.getElementById('toggleCage').addEventListener('change', e => {
   geocageBox.visible = e.target.checked;
+});
+document.getElementById('toggleDenied').addEventListener('change', e => {
+  gpsDeniedGroup.visible = e.target.checked;
 });
 
 // ---------------------------------------------------------------------------
@@ -1203,8 +1261,9 @@ function updateFrame(idx, snapToo) {
       : 'legacy log'
   );
 
+  gpsDeniedInside = Boolean(r.in_gps_denied_zone);
   if (hud.loc) {
-    const denied = Boolean(r.in_gps_denied_zone);
+    const denied = gpsDeniedInside;
     const src = (r.loc_source || (denied ? 'ZONE' : 'GPS')).toString();
     const short = denied
       ? (r.gps_injected_deny ? `DENY · ${src}` : `ZONE · ${src}`)
@@ -1238,6 +1297,8 @@ function animate() {
     padRing.material.opacity = 0.55 + Math.sin(now * 2.4) * 0.22;
     landingRing.material.opacity = 0.55 + Math.sin(now * 2.4 + 1.1) * 0.22;
     droneLight.intensity = 1.35 + Math.sin(now * 5) * 0.2;
+    deniedFill.material.opacity = gpsDeniedInside ? 0.34 : 0.16;
+    deniedEdges.material.opacity = gpsDeniedInside ? 1.0 : 0.85;
   }
   if (playing && rows.length) {
     // Use real frame delta so playback stays correct when raf drops below 60fps.

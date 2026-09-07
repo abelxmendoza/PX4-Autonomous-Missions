@@ -20,6 +20,36 @@ const COURSE_PADS = {
   landing: { east: 0, north: 50, radius: 2.5 },
 };
 
+// Mirrors worlds/obstacle_world.sdf gps_denied_zone and
+// localization_logic.DEFAULT_GPS_DENIED_ZONE / offboard_mission.yaml.
+const GPS_DENIED_ZONE = {
+  eastMin: -8.0,
+  eastMax: 8.0,
+  northMin: 15.5,
+  northMax: 31.5,
+  altMin: 0.0,
+  altMax: 12.0,
+};
+
+const COURSE_SURFACE = { east: 0, north: 25, sizeE: 30, sizeN: 60 };
+
+const COURSE_BEACONS = [
+  { east: -16, north: 10 }, { east: 16, north: 10 },
+  { east: -16, north: 25 }, { east: 16, north: 25 },
+  { east: -16, north: 40 }, { east: 16, north: 40 },
+];
+
+function gpsDeniedWorldBox(zone) {
+  const z = zone || GPS_DENIED_ZONE;
+  return {
+    east: (z.eastMin + z.eastMax) / 2,
+    north: (z.northMin + z.northMax) / 2,
+    sizeE: z.eastMax - z.eastMin,
+    sizeN: z.northMax - z.northMin,
+    height: z.altMax - z.altMin,
+  };
+}
+
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   const header = lines[0].split(',');
@@ -82,5 +112,8 @@ function parseCsv(text) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { toWorld, parseCsv, COURSE_PADS };
+  module.exports = {
+    toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE,
+    COURSE_SURFACE, COURSE_BEACONS, gpsDeniedWorldBox,
+  };
 }
