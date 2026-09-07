@@ -420,7 +420,7 @@
     <div class="card legend">
       <h2>Obstacle Course</h2>
       <div class="item"><span class="sw" style="background:#d92626"></span><span id="legendOb1">OB1 · red · 11.5m</span></div>
-      <div class="item"><span class="sw" style="background:#e58010"></span>OB2 · orange · 6m</div>
+      <div class="item"><span class="sw" style="background:#e6800d"></span>OB2 · orange · 6m</div>
       <div class="item"><span class="sw" style="background:#26a626"></span>OB3 · green · 4m</div>
       <div class="item"><span class="sw" style="background:#2626d9"></span>OB4 · blue · 5m</div>
       <div class="item"><span class="sw" style="background:#a600bf"></span><span id="legendOb5">OB5 · purple · 11.5m</span></div>
@@ -461,19 +461,13 @@
 // Obstacle course — fixed geometry, mirrors worlds/obstacle_world.sdf exactly.
 // sdf local frame: x=east, y=north, z=up. size = (eastExtent, northExtent, height).
 // ---------------------------------------------------------------------------
-const OBSTACLES = [
-  { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:11.5, color:0xd92626 },
-  { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6, color:0xe58010 },
-  { name:'OB3', east:-8, north:24, sizeE:5, sizeN:3, h:4, color:0x26a626 },
-  { name:'OB4', east:6,  north:24, sizeE:3, sizeN:2, h:5, color:0x2626d9 },
-  { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:11.5, color:0xa600bf },
-];
+const OBSTACLES = COURSE_OBSTACLES;
 const LEGACY_OBSTACLES = [
-  { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:4, color:0xd92626 },
-  { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6, color:0xe58010 },
-  { name:'OB3', east:-8, north:24, sizeE:4, sizeN:3, h:4, color:0x26a626 },
-  { name:'OB4', east:6,  north:24, sizeE:2, sizeN:2, h:5, color:0x2626d9 },
-  { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:4, color:0xa600bf },
+  { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:4 },
+  { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6 },
+  { name:'OB3', east:-8, north:24, sizeE:4, sizeN:3, h:4 },
+  { name:'OB4', east:6,  north:24, sizeE:2, sizeN:2, h:5 },
+  { name:'OB5', east:0,  north:38, sizeE:5, sizeN:3, h:4 },
 ];
 let activeObstacles = OBSTACLES;
 
@@ -675,37 +669,28 @@ let gpsDeniedInside = false;
 // geometry it did not fly through.
 const obstacleMeshes = [];
 for (const ob of OBSTACLES) {
-  const geo = new THREE.BoxGeometry(ob.sizeE, ob.h, ob.sizeN);
-  const mat = new THREE.MeshStandardMaterial({ color:ob.color, roughness:0.6, metalness:0.05 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(ob.east, ob.h/2, -ob.north);
+  const mat = new THREE.MeshLambertMaterial({ color: rgb01ToHex(ob.color) });
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(ob.sizeE, ob.h, ob.sizeN), mat);
+  mesh.position.set(ob.east, ob.h / 2, -ob.north);
   scene.add(mesh);
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geo),
-    new THREE.LineBasicMaterial({ color:0xffd38a, transparent:true, opacity:0.62 })
-  );
-  edges.position.copy(mesh.position);
-  scene.add(edges);
   const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(ob.sizeE + 0.18, 0.12, ob.sizeN + 0.18),
-    new THREE.MeshStandardMaterial({ color:0x141414, roughness:0.85 })
+    new THREE.BoxGeometry(ob.roof.sizeE, ob.roof.h, ob.roof.sizeN),
+    new THREE.MeshLambertMaterial({ color: rgb01ToHex(ob.roof.color) })
   );
-  roof.position.set(ob.east, ob.h + 0.06, -ob.north);
+  roof.position.set(ob.east, ob.h + ob.roof.h / 2, -ob.north);
   scene.add(roof);
-  obstacleMeshes.push({ mesh, edges, roof, base:ob });
+  obstacleMeshes.push({ mesh, roof, base: ob });
 }
 
 function setCourseGeometry(obstacles) {
   activeObstacles = obstacles;
-  obstacleMeshes.forEach(({mesh, edges, roof, base}, index) => {
+  obstacleMeshes.forEach(({mesh, roof, base}, index) => {
     const ob = obstacles[index];
-    const scale = [ob.sizeE / base.sizeE, ob.h / base.h, ob.sizeN / base.sizeN];
-    mesh.scale.set(...scale); edges.scale.set(...scale);
+    mesh.scale.set(ob.sizeE / base.sizeE, ob.h / base.h, ob.sizeN / base.sizeN);
     mesh.position.set(ob.east, ob.h / 2, -ob.north);
-    edges.position.copy(mesh.position);
     if (roof) {
       roof.scale.set(ob.sizeE / base.sizeE, 1, ob.sizeN / base.sizeN);
-      roof.position.set(ob.east, ob.h + 0.06, -ob.north);
+      roof.position.set(ob.east, ob.h + base.roof.h / 2, -ob.north);
     }
   });
   document.getElementById('legendOb1').textContent = `OB1 · red · ${obstacles[0].h}m`;

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox, gpsDeniedLabelPos } from '../lib.js';
+import {
+  toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox,
+  gpsDeniedLabelPos, COURSE_OBSTACLES, rgb01ToHex,
+} from '../lib.js';
 
 const FULL_HEADER =
   'time,state,north,east,down,tgt_n,tgt_e,tgt_d,obstacle,obstacle_source,sensor_fresh,' +
@@ -72,6 +75,16 @@ describe('toWorld', () => {
     const label = gpsDeniedLabelPos();
     expect(label.north).toBeCloseTo(23.5);
     expect(label.alt).toBeGreaterThan(box.height);
+  });
+
+  it('keeps Gazebo obstacle colors and roof slabs', () => {
+    expect(COURSE_OBSTACLES).toHaveLength(5);
+    const ob2 = COURSE_OBSTACLES[1];
+    expect(ob2.roof.sizeE).toBeCloseTo(4.18);
+    expect(ob2.roof.color[0]).toBeCloseTo(0.98);
+    expect(rgb01ToHex(COURSE_OBSTACLES[0].color)).toBe(0xd92626);
+    expect(rgb01ToHex(COURSE_OBSTACLES[4].color)).toBe(0xa600bf);
+    expect(COURSE_OBSTACLES[2].roof.sizeE).toBeLessThan(COURSE_OBSTACLES[2].sizeE);
   });
 
   it('places the landing pad 50 m north of the launch pad', () => {

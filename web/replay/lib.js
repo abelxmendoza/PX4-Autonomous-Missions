@@ -39,6 +39,30 @@ const COURSE_BEACONS = [
   { east: -16, north: 40 }, { east: 16, north: 40 },
 ];
 
+// Painted boxes + roof slabs from worlds/obstacle_world.sdf (diffuse RGB 0–1).
+const COURSE_OBSTACLES = [
+  { name: 'OB1', east: -6, north: 10, sizeE: 3, sizeN: 3, h: 11.5,
+    color: [0.85, 0.15, 0.15],
+    roof: { sizeE: 3.18, sizeN: 3.18, h: 0.12, color: [0.08, 0.08, 0.08] } },
+  { name: 'OB2', east: 10, north: 10, sizeE: 3, sizeN: 3, h: 6,
+    color: [0.90, 0.50, 0.05],
+    roof: { sizeE: 4.18, sizeN: 3.18, h: 0.12, color: [0.98, 0.98, 0.98] } },
+  { name: 'OB3', east: -8, north: 24, sizeE: 5, sizeN: 3, h: 4,
+    color: [0.15, 0.65, 0.15],
+    roof: { sizeE: 2.18, sizeN: 2.18, h: 0.12, color: [0.98, 0.98, 0.98] } },
+  { name: 'OB4', east: 6, north: 24, sizeE: 3, sizeN: 2, h: 5,
+    color: [0.15, 0.15, 0.85],
+    roof: { sizeE: 2.18, sizeN: 2.18, h: 0.12, color: [0.98, 0.98, 0.98] } },
+  { name: 'OB5', east: 0, north: 38, sizeE: 5, sizeN: 3, h: 11.5,
+    color: [0.65, 0.00, 0.75],
+    roof: { sizeE: 5.18, sizeN: 3.18, h: 0.12, color: [0.08, 0.08, 0.08] } },
+];
+
+function rgb01ToHex(rgb) {
+  const to = (x) => Math.max(0, Math.min(255, Math.round(x * 255)));
+  return (to(rgb[0]) << 16) | (to(rgb[1]) << 8) | to(rgb[2]);
+}
+
 function gpsDeniedWorldBox(zone) {
   const z = zone || GPS_DENIED_ZONE;
   return {
@@ -119,6 +143,7 @@ function parseCsv(text) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE,
-    COURSE_SURFACE, COURSE_BEACONS, gpsDeniedWorldBox, gpsDeniedLabelPos,
+    COURSE_SURFACE, COURSE_BEACONS, COURSE_OBSTACLES, rgb01ToHex,
+    gpsDeniedWorldBox, gpsDeniedLabelPos,
   };
 }
