@@ -1547,14 +1547,26 @@ class OffboardMission(Node):
             if self.avoidance_strategy == "climb":
                 if can_climb:
                     adjusted[2] = -climb_alt
-                else:
+                elif not self._lateral_blocked("right"):
                     adjusted[1] += self.sidestep_m
-                    if self._lateral_blocked("right"):
-                        self.get_logger().error(
-                            "AVOID front: boxed in (too tall to climb, "
-                            "right side also blocked)",
-                            throttle_duration_sec=2.0,
-                        )
+                elif not self._lateral_blocked("left"):
+                    # East escape is blocked too — try the other side
+                    # instead of driving into a confirmed obstacle.
+                    adjusted[1] -= self.sidestep_m
+                else:
+                    # Too tall to climb and blocked on every side we can
+                    # check — a lateral move here would clip something.
+                    # Hold position instead; the stuck-in-avoidance
+                    # watchdog will trigger a safe failsafe landing if
+                    # this doesn't clear on its own.
+                    adjusted[0] = self.current_x
+                    adjusted[1] = self.current_y
+                    adjusted[2] = self.current_z
+                    self.get_logger().error(
+                        "AVOID front: boxed in on all sides, holding "
+                        "position",
+                        throttle_duration_sec=2.0,
+                    )
         elif obs == "left":
             # Escaping "left" means steering east; if the right side is
             # also blocked, that escape would clip a second obstacle —
