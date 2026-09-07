@@ -23,6 +23,10 @@ jobs:
           test/test_mission_executive.py
           test/test_flight_vv.py
           test/test_path_planner.py
+          test/test_lidar_sectors.py
+          test/test_localization_logic.py
+          test/test_vio_bridge.py
+          test/test_vio_noise.py
 
   web-tests:
     # JS unit tests for web/replay/lib.js (toWorld/parseCsv) — the logic the

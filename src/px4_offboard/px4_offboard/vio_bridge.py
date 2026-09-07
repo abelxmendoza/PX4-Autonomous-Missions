@@ -22,6 +22,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from std_msgs.msg import Bool
 
 from .frame_transforms import named_enu_pose_to_ned
+from .vio_noise import VioDriftConfig, VioDriftModel
 
 try:
     from gz.msgs10.pose_v_pb2 import Pose_V as GzPoseV
@@ -42,13 +43,28 @@ class VioBridge(Node):
         self.declare_parameter("position_std_m", 0.05)
         self.declare_parameter("velocity_std_mps", 0.08)
         self.declare_parameter("stale_timeout_s", 0.5)
+        self.declare_parameter("drift_std_m_per_sqrt_s", 0.02)
+        self.declare_parameter("drift_revert_rate_hz", 0.05)
+        self.declare_parameter("max_drift_bias_m", 1.5)
 
         self.gz_topic = str(self.get_parameter("gz_topic").value)
         self.gz_model_name = str(self.get_parameter("gz_model_name").value)
         self.publish_hz = float(self.get_parameter("publish_hz").value)
-        self.position_var = float(self.get_parameter("position_std_m").value) ** 2
         self.velocity_var = float(self.get_parameter("velocity_std_mps").value) ** 2
         self.stale_timeout = float(self.get_parameter("stale_timeout_s").value)
+        self._drift = VioDriftModel(
+            VioDriftConfig(
+                position_std_m=float(self.get_parameter("position_std_m").value),
+                drift_std_m_per_sqrt_s=float(
+                    self.get_parameter("drift_std_m_per_sqrt_s").value
+                ),
+                drift_revert_rate_hz=float(
+                    self.get_parameter("drift_revert_rate_hz").value
+                ),
+                max_bias_m=float(self.get_parameter("max_drift_bias_m").value),
+            )
+        )
+        self._last_drift_t: float | None = None
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -97,7 +113,16 @@ class VioBridge(Node):
         if not healthy or latest is None:
             return
 
-        sample_t, position = latest
+        sample_t, true_position = latest
+        dt_drift = (
+            sample_t - self._last_drift_t
+            if self._last_drift_t is not None
+            else 1.0 / max(self.publish_hz, 1.0)
+        )
+        self._last_drift_t = sample_t
+        self._drift.step(dt_drift)
+        position = self._drift.apply(true_position)
+
         velocity = [float("nan")] * 3
         if self._previous is not None:
             previous_t, previous_position = self._previous
@@ -118,7 +143,7 @@ class VioBridge(Node):
         msg.velocity_frame = VehicleOdometry.VELOCITY_FRAME_NED
         msg.velocity = velocity
         msg.angular_velocity = [float("nan")] * 3
-        msg.position_variance = [self.position_var] * 3
+        msg.position_variance = [float(v) for v in self._drift.reported_variance()]
         msg.orientation_variance = [float("nan")] * 3
         msg.velocity_variance = [self.velocity_var] * 3
         msg.reset_counter = 0
