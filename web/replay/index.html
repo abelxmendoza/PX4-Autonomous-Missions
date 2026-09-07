@@ -141,6 +141,37 @@
   .decision::before{content:"FLIGHT DIRECTOR";display:block;margin-bottom:5px;color:var(--mint);font-size:8px;letter-spacing:.18em;}
   .decision.active{border-left-color:var(--amber);color:var(--text);background:rgba(35,25,8,.88);transform:translateX(4px);box-shadow:0 0 34px rgba(255,181,71,.12);}
   .decision.active::before{color:var(--amber);}.decision strong{color:var(--text);}.decision.active strong{color:var(--amber);}
+
+  /* Guided story mode — a prominent, documentary-style caption that walks
+     a non-technical viewer through one curated mission beat by beat,
+     timed to the real recorded flight (see STORY_BEATS in the script).
+     Anchored above the transport bar via --transport-h, same pattern as
+     .decision / .hud-toggle, so it can't drift into overlapping it. */
+  .story-panel{position:fixed;z-index:20;left:0;right:0;margin:0 auto;
+    /* Centered via left:0;right:0;margin:auto — not transform:translateX(-50%) —
+       because the card-in animation's end keyframe sets transform:none,
+       which would silently clobber a centering transform once it finishes
+       (found by actually rendering this, not just reading the CSS). */
+    bottom:calc(var(--transport-h) + 16px + env(safe-area-inset-bottom));
+    width:min(560px, calc(100vw - 40px));
+    background:linear-gradient(145deg,rgba(17,39,39,.97),rgba(6,16,17,.98));
+    border:1px solid rgba(105,247,205,.35);border-left:3px solid var(--mint);
+    border-radius:2px;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.55);
+    animation:card-in .4s both;}
+  .story-panel[hidden]{display:none;}
+  .story-eyebrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .story-eyebrow span{color:var(--amber);font:800 9px var(--mono);letter-spacing:.18em;text-transform:uppercase;}
+  .story-exit{background:none;border:none;color:var(--muted);font:700 10px var(--mono);
+    cursor:pointer;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;}
+  .story-exit:hover{color:var(--text);}
+  .story-title{margin:0 0 6px;font:800 17px var(--display);color:var(--text);letter-spacing:-.01em;}
+  .story-text{margin:0;font:13px/1.6 var(--display);color:var(--muted);}
+  .story-text b{color:var(--text);}
+  @media(max-width:760px){
+    .story-panel{width:calc(100vw - 24px);padding:14px 16px;}
+    .story-title{font-size:15px;}
+    .story-text{font-size:12px;}
+  }
   .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:3px;}
   .result{padding:8px;background:rgba(105,247,205,.035);border:1px solid var(--line);}
   .result span{display:block;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.08em;}
@@ -350,7 +381,8 @@
       <span>PX4</span><span>ROS 2</span><span>Gazebo</span><span>Python</span><span>Three.js</span>
     </div>
     <div class="landing-actions">
-      <button id="landingLaunch" class="primary">▶ Launch Flight Replay</button>
+      <button id="landingStory" class="primary">▶ Watch the Story (90s)</button>
+      <button id="landingLaunch">Explore Freely</button>
       <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
       <a href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
     </div>
@@ -380,6 +412,15 @@
   </header>
 
   <div id="decision" class="decision">Tracking waypoint corridor <strong>— nominal flight</strong></div>
+
+  <div id="storyPanel" class="story-panel" hidden>
+    <div class="story-eyebrow">
+      <span>Guided Story</span>
+      <button type="button" id="storyExit" class="story-exit">✕ Exit</button>
+    </div>
+    <h2 id="storyTitle" class="story-title">Mission Start</h2>
+    <p id="storyText" class="story-text">—</p>
+  </div>
 
   <button type="button" id="hudToggle" class="hud-toggle" aria-expanded="false" aria-controls="hudPanel">Telemetry</button>
   <div id="hudScrim" class="hud-scrim" hidden></div>
@@ -1035,12 +1076,19 @@ let introShowing = false;
     return;
   }
   introShowing = true;
-  document.getElementById('landingLaunch').addEventListener('click', () => {
+  const dismiss = () => {
     introShowing = false;
     hero.hidden = true;
     try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
+  };
+  document.getElementById('landingLaunch').addEventListener('click', () => {
+    dismiss();
     playing = true;
     document.getElementById('btnPlay').textContent = '⏸ Pause';
+  });
+  document.getElementById('landingStory').addEventListener('click', () => {
+    dismiss();
+    enterStoryMode();
   });
 })();
 
@@ -1200,6 +1248,81 @@ function loadVvReport(m) {
     })
     .catch(() => { card.hidden = true; });
 }
+
+// ---------------------------------------------------------------------------
+// Guided story mode — a scripted, plain-language walkthrough of one real
+// mission (the "full avoidance" recording) for viewers who don't already
+// know what a geocage or an AABB is. Beats are keyed to real frame indices
+// (0-based row index into that mission's CSV, matching frameIndex exactly)
+// found by inspecting the actual recorded obstacle/wp_index transitions —
+// not arbitrary timestamps, so the narration stays true to what's on screen.
+// ---------------------------------------------------------------------------
+const STORY_MISSION_ID = 'full';
+const STORY_BEATS = [
+  { atFrame: 0, title: 'Mission Start',
+    text: "This is a real recorded flight — not a live simulation. Watch the drone navigate 9 waypoints autonomously, reacting to obstacles it discovers along the way." },
+  { atFrame: 15, title: 'Closing In',
+    text: "It's approaching an obstacle it can't see yet — its onboard sensor only detects what's directly ahead, within a few meters." },
+  { atFrame: 23, title: 'Obstacle Detected',
+    text: "There it is. The avoidance controller reacts immediately, steering around it while still tracking its original destination." },
+  { atFrame: 109, title: 'Path Clear',
+    text: "Once clear, it confirms the way ahead is safe and hands back to normal waypoint tracking — that whole detect → avoid → resume cycle took about 9 seconds." },
+  { atFrame: 205, title: 'Cruising',
+    text: "Covering ground toward waypoint 6. The same reactive logic keeps running continuously in the background, even when nothing is happening." },
+  { atFrame: 217, title: 'Second Obstacle',
+    text: "Another obstacle, same playbook: detect, avoid, resume — proven, repeatable behavior, not a one-off." },
+  { atFrame: 331, title: 'Final Approach',
+    text: "Clear again, and heading for the last waypoint." },
+  { atFrame: 400, title: 'Landing',
+    text: "Touchdown. Every second of this flight was checked afterward against a formal requirements checklist — see the Requirements panel to the right." },
+];
+
+let storyModeActive = false;
+let lastStoryBeatIdx = -1;
+
+function enterStoryMode() {
+  storyModeActive = true;
+  lastStoryBeatIdx = -1;
+  document.getElementById('storyPanel').hidden = false;
+  hud.decision.style.display = 'none';
+  document.getElementById('speed').value = '1';
+  speed = 1;
+  if (missionSelect.value !== STORY_MISSION_ID) {
+    missionSelect.value = STORY_MISSION_ID;
+    loadMission(MISSIONS.find(m => m.id === STORY_MISSION_ID));
+  } else {
+    updateFrame(0, true);
+    playing = true;
+    document.getElementById('btnPlay').textContent = '⏸ Pause';
+  }
+}
+
+function exitStoryMode() {
+  storyModeActive = false;
+  document.getElementById('storyPanel').hidden = true;
+  hud.decision.style.display = '';
+}
+
+function updateStoryPanel(frameIndex) {
+  if (!storyModeActive) return;
+  let idx = -1;
+  for (let i = 0; i < STORY_BEATS.length; i++) {
+    if (STORY_BEATS[i].atFrame <= frameIndex) idx = i;
+    else break;
+  }
+  if (idx < 0 || idx === lastStoryBeatIdx) return;
+  lastStoryBeatIdx = idx;
+  document.getElementById('storyTitle').textContent = STORY_BEATS[idx].title;
+  document.getElementById('storyText').textContent = STORY_BEATS[idx].text;
+}
+
+document.getElementById('storyExit').addEventListener('click', exitStoryMode);
+// Switching missions mid-story would desync the script from what's on
+// screen (beats are keyed to the "full avoidance" recording specifically),
+// so treat a manual mission change as leaving the guided tour.
+missionSelect.addEventListener('change', () => {
+  if (storyModeActive && missionSelect.value !== STORY_MISSION_ID) exitStoryMode();
+});
 
 let totalWaypoints = 0;
 
@@ -1380,6 +1503,8 @@ function updateFrame(idx, snapToo) {
     hud.decision.innerHTML = DECISIONS[r.obstacle] || DECISION_NOMINAL;
     hud.decision.className = 'decision' + (r.obstacle ? ' active' : '');
   }
+
+  updateStoryPanel(frameIndex);
 
   const nowMs = performance.now();
   const forceHud = snapToo || dragging || HUD_MIN_INTERVAL_MS === 0
