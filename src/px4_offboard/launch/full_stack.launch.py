@@ -171,6 +171,14 @@ def _launch_setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration("use_camera")),
     )
 
+    vision_marker_node = Node(
+        package="px4_offboard",
+        executable="vision_marker_node",
+        name="vision_marker_node",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("use_vision_marker")),
+    )
+
     mavros_node = Node(
         package="mavros",
         executable="mavros_node",
@@ -213,6 +221,7 @@ def _launch_setup(context, *args, **kwargs):
     delayed_lidar = TimerAction(period=14.0, actions=[lidar_node])
     delayed_vio = TimerAction(period=14.0, actions=[vio_node])
     delayed_camera = TimerAction(period=14.0, actions=[camera_node])
+    delayed_vision_marker = TimerAction(period=15.0, actions=[vision_marker_node])
     delayed_ekf_config = TimerAction(
         period=18.0,
         actions=[ExecuteProcess(
@@ -248,6 +257,7 @@ def _launch_setup(context, *args, **kwargs):
         delayed_lidar,
         delayed_vio,
         delayed_camera,
+        delayed_vision_marker,
         delayed_ekf_config,
         delayed_failure_config,
         delayed_trail,
@@ -339,6 +349,11 @@ def generate_launch_description():
                 "use_camera",
                 default_value="false",
                 description="Bridge the Gazebo forward camera to /px4_offboard/camera/image_raw",
+            ),
+            DeclareLaunchArgument(
+                "use_vision_marker",
+                default_value="false",
+                description="Detect an ArUco marker in the camera feed (requires use_camera:=true)",
             ),
             DeclareLaunchArgument(
                 "gps_px4_failure_inject",

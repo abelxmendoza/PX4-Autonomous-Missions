@@ -15,7 +15,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: python -m pip install pytest
+      # cv2.aruco lives in opencv's contrib modules, not the base package.
+      - run: python -m pip install pytest opencv-contrib-python-headless numpy
       - run: >-
           python -m pytest -q
           test/test_mission_logic.py
@@ -28,6 +29,8 @@ jobs:
           test/test_vio_bridge.py
           test/test_vio_noise.py
           test/test_camera_frame.py
+          test/test_vision_marker.py
+          test/test_vision_marker_detect.py
 
   web-tests:
     # JS unit tests for web/replay/lib.js (toWorld/parseCsv) — the logic the

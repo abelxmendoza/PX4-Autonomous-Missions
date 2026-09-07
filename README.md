@@ -230,13 +230,42 @@ ros2 run rqt_image_view rqt_image_view /px4_offboard/camera/image_raw
 ```
 
 `/px4_offboard/camera_healthy` (`std_msgs/Bool`) drops to false if frames go
-stale for more than 1 s. Nothing in the mission or avoidance stack consumes
-these frames today — it's a real sensor feed available for a future
-vision-based perception node, not yet load-bearing.
+stale for more than 1 s. The mission/avoidance stack itself still doesn't
+consume this feed — `vision_marker_node` (below) is the one real consumer
+so far.
 
 > Note: the web replay's "FPV" view (`view` toggle in `web/replay/`) is a
 > Three.js camera angle over recorded telemetry, unrelated to this sensor —
 > it renders no imagery and reads no Gazebo topic.
+
+### Vision-based marker detection
+
+`vision_marker_node` subscribes to `/px4_offboard/camera/image_raw` and runs
+real ArUco detection (OpenCV, both the legacy `Dictionary_get`-based API and
+the newer `ArucoDetector` class are supported — whichever the installed
+OpenCV provides) against the actual frames, then publishes bearing,
+elevation, and estimated range to the largest detected marker via pinhole
+camera geometry:
+
+```bash
+/px4_offboard/vision_marker/visible  # std_msgs/Bool
+/px4_offboard/vision_marker/bearing  # geometry_msgs/PointStamped: x=bearing_deg, y=elevation_deg, z=range_m
+```
+
+```bash
+ros2 launch px4_offboard full_stack.launch.py use_camera:=true use_vision_marker:=true
+```
+
+`vision_marker.py` (pinhole geometry) and `vision_marker_detect.py` (the
+actual OpenCV detection call, exercised against real synthetically-generated
+marker images, not mocked) are both unit tested independently of ROS or
+Gazebo — that part is fully verified. What is **not** yet done: there is no
+physical ArUco marker placed in `worlds/obstacle_world.sdf`, since authoring
+its texture/material placement can't be verified without confirming actual
+camera rendering first (see the note above and in "Notes" below). Point the
+node at any image topic carrying a real ArUco marker — sim or hardware — and
+it will detect it; that part of the pipeline is genuinely done, just not
+wired into this specific world yet.
 
 ### Geo-cage & geofence
 
