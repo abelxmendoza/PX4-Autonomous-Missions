@@ -279,30 +279,28 @@ Offline verification maps named requirements to checks against `flight_log_missi
 | `REQ-GPS-ZONE-01` | `in_gps_denied_zone` matches the denied AABB (SHOULD; skip legacy) |
 | `REQ-GPS-INJECT-01` | Injected deny never claims healthy `loc_source=GPS` (skip legacy) |
 | `REQ-GPS-POLICY-01` | `LOC_FAILSAFE` → FAILSAFE/LANDING within 2 s (skip legacy) |
+| `REQ-GPS-ACTUAL-01` | PX4 GNSS fusion drops after SITL sensor failure injection |
+| `REQ-VIO-FUSION-01` | External-vision position remains fused during GPS loss |
 
-### GPS-denied Pass 1 (scaffolding)
+### Operational GPS-denied demo
 
-Honest Pass-1 scaffolding for a GPS-denied demo — **not** operational GPS-denied navigation.
+The `gps-denied` scenario disables the PX4 SITL GPS sensor inside the visible
+denied prism and keeps the mission flying with external-vision odometry.
 
 **What it does**
 - Visible magenta/cyan prism in `worlds/obstacle_world.sdf` (NED N\[18,28\] E\[−5,5\])
-- `localization_logic.py`: zone AABB, source/events, ROS-level inject, hold/land/continue policy
-- `offboard_mission` logs + `/px4_offboard/mission_status`: `in_gps_denied_zone`, `gps_xy_valid`, `gps_injected_deny`, `loc_source`, `loc_event`, `dead_reckoning`, `eph_m`
-- With `gps_deny_inject:=true` and `gps_denied_action:=hold|land`, autonomy treats GPS as invalid inside the zone and can enter FAILSAFE
+- PX4 `VEHICLE_CMD_INJECT_FAILURE` turns the simulated GPS off on entry and restores it on exit
+- `vio_bridge` converts Gazebo LiDAR world pose from ENU to local NED and publishes PX4 external vision at 20 Hz
+- PX4 EKF2 fuses external-vision position/velocity (`EKF2_EV_CTRL=5`)
+- CSV/HUD evidence records GPS failure state, VIO stream health, and GNSS/EV fusion flags
+- V&V independently checks actual GNSS loss and continuous external-vision fusion
 
-**What it does *not* prove**
-- PX4 EKF still uses GPS until Pass 2 (Gazebo/PX4 GPS deny + VO/mocap)
-- `gps_deny_inject` falsifies GPS **at the autonomy layer only** for policy/telemetry demos
+Simulator ground truth is used only as a synthetic VIO sensor input. Guidance
+continues to consume PX4's estimated local position, not Gazebo truth directly.
 
 ```bash
-# Telemetry + zone visualization (default inject off)
-ros2 run px4_offboard offboard_mission --ros-args \
-  --params-file config/offboard_mission.yaml
-
-# Pass-1 policy demo: ROS-level inject → HOLD failsafe in the prism
-ros2 run px4_offboard offboard_mission --ros-args \
-  --params-file config/offboard_mission.yaml \
-  -p gps_deny_inject:=true -p gps_denied_action:=hold
+# Visible recruiter demo
+./scripts/run_demo.sh gps-denied
 ```
 
 ```bash
@@ -350,7 +348,7 @@ whatever PX4 firmware version you're running (v1.15+ here):
 sudo apt install ros-humble-desktop python3-colcon-common-extensions
 
 cd ~/Desktop/px4-autonomous-mission
-git clone https://github.com/PX4/px4_msgs.git src/px4_msgs
+git clone --branch release/1.16 https://github.com/PX4/px4_msgs.git src/px4_msgs
 git clone https://github.com/PX4/px4_ros_com.git src/px4_ros_com
 
 source /opt/ros/humble/setup.bash

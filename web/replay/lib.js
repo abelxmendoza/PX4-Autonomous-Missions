@@ -52,7 +52,7 @@ function parseCsv(text) {
     o.battery_frac = parseFloat(o.battery_frac);
     o.link_quality = parseFloat(o.link_quality);
     o.propellant_s = parseFloat(o.propellant_s);
-    // GPS-denied Pass 1 scaffolding columns (absent on legacy logs).
+    // GPS-denied and estimator-fusion evidence (absent on legacy logs).
     o.in_gps_denied_zone = o.in_gps_denied_zone === '1';
     o.gps_injected_deny = o.gps_injected_deny === '1';
     o.gps_xy_valid = o.gps_xy_valid === undefined || o.gps_xy_valid === ''
@@ -62,6 +62,10 @@ function parseCsv(text) {
     o.eph_m = parseFloat(o.eph_m);
     o.loc_source = o.loc_source || '';
     o.loc_event = o.loc_event || '';
+    for (const key of ['raw_gps_healthy', 'vio_stream_healthy', 'ev_pos_fused',
+      'ev_vel_fused', 'gnss_pos_fused', 'gnss_vel_fused', 'gps_failure_active']) {
+      o[key] = o[key] === '1';
+    }
     out.push(o);
   }
   if (skipped > 0) {

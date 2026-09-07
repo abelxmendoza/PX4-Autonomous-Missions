@@ -60,6 +60,13 @@ class FlightSample:
     loc_event: str | None = None
     dead_reckoning: bool = False
     eph_m: float | None = None
+    raw_gps_healthy: bool = False
+    vio_stream_healthy: bool = False
+    ev_pos_fused: bool = False
+    ev_vel_fused: bool = False
+    gnss_pos_fused: bool = False
+    gnss_vel_fused: bool = False
+    gps_failure_active: bool = False
 
     @property
     def altitude_m(self) -> float:
@@ -246,6 +253,13 @@ def load_flight_log(path: str | Path) -> FlightTrace:
                 ),
                 dead_reckoning=_as_bool(row.get("dead_reckoning", 0)),
                 eph_m=_as_optional_float(row.get("eph_m")),
+                raw_gps_healthy=_as_bool(row.get("raw_gps_healthy", 0)),
+                vio_stream_healthy=_as_bool(row.get("vio_stream_healthy", 0)),
+                ev_pos_fused=_as_bool(row.get("ev_pos_fused", 0)),
+                ev_vel_fused=_as_bool(row.get("ev_vel_fused", 0)),
+                gnss_pos_fused=_as_bool(row.get("gnss_pos_fused", 0)),
+                gnss_vel_fused=_as_bool(row.get("gnss_vel_fused", 0)),
+                gps_failure_active=_as_bool(row.get("gps_failure_active", 0)),
             )
         )
 
@@ -296,6 +310,13 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
         "loc_event",
         "dead_reckoning",
         "eph_m",
+        "raw_gps_healthy",
+        "vio_stream_healthy",
+        "ev_pos_fused",
+        "ev_vel_fused",
+        "gnss_pos_fused",
+        "gnss_vel_fused",
+        "gps_failure_active",
     ]
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -356,6 +377,13 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
                     "loc_event": sample.loc_event or "",
                     "dead_reckoning": int(sample.dead_reckoning),
                     "eph_m": "" if sample.eph_m is None else sample.eph_m,
+                    "raw_gps_healthy": int(sample.raw_gps_healthy),
+                    "vio_stream_healthy": int(sample.vio_stream_healthy),
+                    "ev_pos_fused": int(sample.ev_pos_fused),
+                    "ev_vel_fused": int(sample.ev_vel_fused),
+                    "gnss_pos_fused": int(sample.gnss_pos_fused),
+                    "gnss_vel_fused": int(sample.gnss_vel_fused),
+                    "gps_failure_active": int(sample.gps_failure_active),
                 }
             )
 

@@ -48,6 +48,8 @@ def _launch_setup(context, *args, **kwargs):
     use_lidar = LaunchConfiguration("use_lidar").perform(context).lower() == "true"
     lidar_trigger = LaunchConfiguration("lidar_trigger_m").perform(context)
     obstacle_source = LaunchConfiguration("obstacle_source").perform(context)
+    use_vio = LaunchConfiguration("use_vio").perform(context).lower() == "true"
+    gps_failure = LaunchConfiguration("gps_px4_failure_inject").perform(context).lower() == "true"
 
     root = _repo_root()
     worlds_dir = os.path.join(root, "worlds")
@@ -94,6 +96,8 @@ def _launch_setup(context, *args, **kwargs):
                 "detection_margin_m": float(detection_margin),
                 "sensor_timeout_s": 0.75 if use_lidar else 0.5,
                 "obstacle_source": obstacle_source,
+                "gps_px4_failure_inject": gps_failure,
+                "gps_denied_action": "continue" if use_vio else "hold",
                 "log_dir": root,
             },
         ],
@@ -138,6 +142,14 @@ def _launch_setup(context, *args, **kwargs):
         ],
     )
 
+    vio_node = Node(
+        package="px4_offboard",
+        executable="vio_bridge",
+        name="vio_bridge",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("use_vio")),
+    )
+
     mavros_node = Node(
         package="mavros",
         executable="mavros_node",
@@ -178,6 +190,31 @@ def _launch_setup(context, *args, **kwargs):
         ],
     )
     delayed_lidar = TimerAction(period=14.0, actions=[lidar_node])
+    delayed_vio = TimerAction(period=14.0, actions=[vio_node])
+    delayed_ekf_config = TimerAction(
+        period=18.0,
+        actions=[ExecuteProcess(
+            cmd=[os.path.join(px4_dir, "build/px4_sitl_default/bin/px4-param"),
+                 # Fuse horizontal + vertical external-vision position. The
+                 # synthetic scan pose has no independent velocity estimate.
+                 "set", "EKF2_EV_CTRL", "3"],
+            cwd=px4_dir,
+            output="screen",
+            name="enable_external_vision_fusion",
+            condition=IfCondition(LaunchConfiguration("use_vio")),
+        )],
+    )
+    delayed_failure_config = TimerAction(
+        period=18.0,
+        actions=[ExecuteProcess(
+            cmd=[os.path.join(px4_dir, "build/px4_sitl_default/bin/px4-param"),
+                 "set", "SYS_FAILURE_EN", "1"],
+            cwd=px4_dir,
+            output="screen",
+            name="enable_px4_failure_injection",
+            condition=IfCondition(LaunchConfiguration("gps_px4_failure_inject")),
+        )],
+    )
     delayed_trail = TimerAction(period=16.0, actions=[trail_node])
     delayed_mission = TimerAction(period=24.0, actions=[mission_node])
     delayed_mavros = TimerAction(period=12.0, actions=[mavros_node])
@@ -187,6 +224,9 @@ def _launch_setup(context, *args, **kwargs):
         delayed_xrce,
         delayed_gcs,
         delayed_lidar,
+        delayed_vio,
+        delayed_ekf_config,
+        delayed_failure_config,
         delayed_trail,
         delayed_mission,
         demo_hud_node,
@@ -266,6 +306,16 @@ def generate_launch_description():
                 "use_mavros",
                 default_value="false",
                 description="Also start MAVROS2",
+            ),
+            DeclareLaunchArgument(
+                "use_vio",
+                default_value="false",
+                description="Publish Gazebo pose as PX4 external-vision odometry",
+            ),
+            DeclareLaunchArgument(
+                "gps_px4_failure_inject",
+                default_value="false",
+                description="Disable the PX4 SITL GPS sensor inside the denied zone",
             ),
             OpaqueFunction(function=_launch_setup),
         ]

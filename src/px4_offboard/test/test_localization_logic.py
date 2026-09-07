@@ -207,6 +207,7 @@ def test_non_gps_healthy_avoids_failsafe():
     assert not snap.failsafe
     assert snap.phase == LocalizationPhase.NON_GPS_ACTIVE
     assert snap.event == LocalizationEvent.NON_GPS_ACTIVE
+    assert snap.source == LocalizationSource.VIO
 
 
 def test_disabled_skips_zone():

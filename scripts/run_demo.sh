@@ -13,9 +13,9 @@ LAUNCH_PID=""
 FINALIZED=0
 
 case "$MODE" in
-  waypoints|course|circle) ;;
+  waypoints|course|circle|gps-denied) ;;
   *)
-    echo "Usage: $0 [waypoints|course|circle]" >&2
+    echo "Usage: $0 [waypoints|course|circle|gps-denied]" >&2
     exit 2
     ;;
 esac
@@ -82,7 +82,7 @@ set +u
 source /opt/ros/humble/setup.bash
 set -u
 echo "Preparing demo package..."
-colcon build --symlink-install --packages-select px4_offboard
+colcon build --symlink-install --packages-select px4_msgs px4_offboard
 # shellcheck disable=SC1091
 set +u
 source "$ROOT/install/setup.bash"
@@ -95,13 +95,29 @@ echo " Optional: open QGroundControl before launch for split-screen telemetry."
 echo " Press Ctrl+C after landing to generate the flight report."
 echo "============================================================"
 
+TRAJECTORY_MODE="$MODE"
+USE_VIO=false
+GPS_FAILURE=false
+DETECTION_MARGIN=5.0
+if [[ "$MODE" == "gps-denied" ]]; then
+  TRAJECTORY_MODE=course
+  USE_VIO=true
+  GPS_FAILURE=true
+  # The course already provides mapped clearance. A tighter live-sensor
+  # margin avoids turning toward a neighboring obstacle before the VIO demo.
+  DETECTION_MARGIN=2.5
+  echo " GPS-denied mode: PX4 GPS failure + external-vision EKF fusion"
+fi
+
 ros2 launch px4_offboard full_stack.launch.py \
   "px4_dir:=$PX4_CHECKOUT" \
-  "trajectory_mode:=$MODE" \
+  "trajectory_mode:=$TRAJECTORY_MODE" \
   "avoidance_strategy:=climb" \
   "obstacle_source:=sensor_only" \
-  "detection_margin_m:=5.0" \
+  "detection_margin_m:=$DETECTION_MARGIN" \
   "demo_mode:=true" \
+  "use_vio:=$USE_VIO" \
+  "gps_px4_failure_inject:=$GPS_FAILURE" \
   "headless:=false" &
 LAUNCH_PID=$!
 wait "$LAUNCH_PID"

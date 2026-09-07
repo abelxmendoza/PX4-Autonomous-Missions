@@ -131,6 +131,18 @@ REQUIREMENTS: tuple[Requirement, ...] = (
             "within the response window (Pass-1 hold/land policy)."
         ),
     ),
+    Requirement(
+        id="REQ-GPS-ACTUAL-01",
+        title="PX4 GPS sensor actually becomes unavailable",
+        severity=Severity.MUST,
+        description="After failure injection settles, raw GPS health must be false.",
+    ),
+    Requirement(
+        id="REQ-VIO-FUSION-01",
+        title="External vision sustains GPS-denied flight",
+        severity=Severity.MUST,
+        description="PX4 EKF must fuse external-vision position while GPS is unavailable.",
+    ),
 )
 
 
@@ -631,6 +643,47 @@ def check_gps_policy_response(
     )
 
 
+def check_actual_gps_failure(trace: FlightTrace, settle_s: float = 1.5) -> CheckResult:
+    req = _req("REQ-GPS-ACTUAL-01")
+    required = {"gps_failure_active", "raw_gps_healthy"}
+    if not required.issubset(trace.columns):
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "legacy log has no PX4 GPS-failure evidence", skipped=True)
+    active = [s for s in trace.samples if s.gps_failure_active]
+    if not active:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "PX4 GPS failure was not requested", skipped=True)
+    settled = [s for s in active if s.t_s >= active[0].t_s + settle_s]
+    violations = [f"t={s.t_s:.2f}s raw_gps_healthy=1" for s in settled
+                  if s.raw_gps_healthy]
+    passed = bool(settled) and not violations
+    detail = (f"GPS unavailable in {len(settled)} settled failure sample(s)"
+              if passed else "GPS remained healthy or the failure interval was too short")
+    return CheckResult(req.id, req.title, req.severity, passed, detail,
+                       evidence=violations[:8])
+
+
+def check_vio_fusion(trace: FlightTrace, settle_s: float = 1.5) -> CheckResult:
+    req = _req("REQ-VIO-FUSION-01")
+    required = {"gps_failure_active", "raw_gps_healthy", "vio_stream_healthy", "ev_pos_fused"}
+    if not required.issubset(trace.columns):
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "legacy log has no VIO fusion evidence", skipped=True)
+    active = [s for s in trace.samples if s.gps_failure_active]
+    if not active:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "PX4 GPS failure was not requested", skipped=True)
+    denied = [s for s in active
+              if s.t_s >= active[0].t_s + settle_s and not s.raw_gps_healthy]
+    violations = [f"t={s.t_s:.2f}s stream={int(s.vio_stream_healthy)} fusion={int(s.ev_pos_fused)}"
+                  for s in denied if not (s.vio_stream_healthy and s.ev_pos_fused)]
+    passed = bool(denied) and not violations
+    detail = (f"external vision fused in {len(denied)} GPS-denied sample(s)"
+              if passed else "external vision was not continuously fused during GPS loss")
+    return CheckResult(req.id, req.title, req.severity, passed, detail,
+                       evidence=violations[:8])
+
+
 def check_obstacle_clearance(trace: FlightTrace) -> CheckResult:
     req = _req("REQ-CLEARANCE-01")
     if "mapped_clearance_m" not in trace.columns:
@@ -680,5 +733,7 @@ def run_vv(
         check_gps_denied_zone(trace),
         check_gps_inject_source(trace),
         check_gps_policy_response(trace),
+        check_actual_gps_failure(trace),
+        check_vio_fusion(trace),
     ]
     return VvReport(source=trace.source, results=results, summary=trace.summary())

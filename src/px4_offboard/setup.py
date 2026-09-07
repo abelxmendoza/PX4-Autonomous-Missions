@@ -30,6 +30,7 @@ setup(
             "demo_hud = px4_offboard.demo_hud:main",
             "lidar_sectors = px4_offboard.lidar_sectors:main",
             "vv_replay = px4_offboard.vv_replay:main",
+            "vio_bridge = px4_offboard.vio_bridge:main",
         ],
     },
 )

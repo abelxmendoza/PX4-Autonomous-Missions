@@ -73,8 +73,19 @@ class DemoHud(Node):
             zone = "IN DENIED ZONE" if in_denied else "GPS zone clear"
             inject = " inject" if status.get("gps_injected_deny") else ""
             event = f" event={loc_event}" if loc_event else ""
-            level = self.get_logger().warning if in_denied else self.get_logger().info
-            level(f"LOCALIZATION  | {zone} | source={loc_source}{inject}{event}")
+            gnss = "ON" if status.get("gnss_pos_fused") else "OFF"
+            vio = "ON" if status.get("ev_pos_fused") else "OFF"
+            transition = f"{self._last_loc_source or 'START'} -> {loc_source}"
+            message = (
+                f"LOCALIZATION  | {transition} | {zone}{inject}{event} | "
+                f"EKF GNSS={gnss} VIO={vio}"
+            )
+            # rclpy caches a call site's severity and rejects changing it.
+            # Keep the warning/info calls on distinct source lines.
+            if in_denied:
+                self.get_logger().warning(message)
+            else:
+                self.get_logger().info(message)
             self._last_in_denied = in_denied
             self._last_loc_source = loc_source
 

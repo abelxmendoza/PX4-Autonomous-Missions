@@ -46,7 +46,9 @@ from px4_msgs.msg import (
     VehicleCommand,
     VehicleControlMode,
     VehicleLocalPosition,
+    SensorGps,
     VehicleStatus,
+    EstimatorStatusFlags,
 )
 from px4_offboard.mission_executive import (
     ExecutiveAction,
@@ -184,14 +186,9 @@ class OffboardMission(Node):
             self._attitude_callback,
             qos_sub,
         )
-        # PX4 v1.15+ publishes the live topic as vehicle_status_v1
-        self.create_subscription(
-            VehicleStatus,
-            "/fmu/out/vehicle_status_v1",
-            self._status_callback,
-            qos_sub,
-        )
-        # Reliable arm/offboard flags (works even when VehicleStatus DDS type drifts)
+        # Arm/offboard flags. We intentionally avoid VehicleStatus here because
+        # its versioned wire schema drifts between PX4 releases; control mode is
+        # stable across the supported SITL checkout.
         self.create_subscription(
             VehicleControlMode,
             "/fmu/out/vehicle_control_mode",
@@ -220,6 +217,17 @@ class OffboardMission(Node):
         )
         self.create_subscription(
             Bool, "/px4_offboard/geofence_enable", self._geofence_toggle_cb, 10
+        )
+        self.create_subscription(
+            EstimatorStatusFlags, "/fmu/out/estimator_status_flags",
+            self._estimator_flags_callback, qos_sub,
+        )
+        self.create_subscription(
+            SensorGps, "/fmu/out/vehicle_gps_position",
+            self._sensor_gps_callback, qos_sub,
+        )
+        self.create_subscription(
+            Bool, "/px4_offboard/vio_healthy", self._vio_health_callback, 10
         )
 
         self.current_x = 0.0
@@ -277,10 +285,18 @@ class OffboardMission(Node):
         self._path_suffix_m = path_suffix_costs_m(self.waypoints)
         self._loc_sm = LocalizationStateMachine(self._gps_denied_zone)
         self._loc_snap: LocalizationSnapshot | None = None
-        self._gps_xy_valid = True
+        self._gps_xy_valid = False
+        self._raw_gps_fix_valid = False
         self._gps_z_valid = True
         self._gps_dead_reckoning = False
         self._gps_eph_m: float | None = None
+        self._gps_stamp = 0.0
+        self._vio_stream_healthy = False
+        self._ev_pos_fused = False
+        self._ev_vel_fused = False
+        self._gnss_pos_fused = False
+        self._gnss_vel_fused = False
+        self._gps_failure_active = False
 
         self._log_file = None
         self._log_writer = None
@@ -296,6 +312,7 @@ class OffboardMission(Node):
             f"executive={'ON' if self._executive.config.enable else 'OFF'} "
             f"gps_denied={'ON' if self.gps_denied_enable else 'OFF'} "
             f"gps_inject={'ON' if self.gps_deny_inject else 'OFF'} "
+            f"px4_gps_failure={'ON' if self.gps_px4_failure_inject else 'OFF'} "
             f"box N[{self.fence_n_min},{self.fence_n_max}] "
             f"E[{self.fence_e_min},{self.fence_e_max}] "
             f"alt≤{self.fence_alt_max}m"
@@ -356,9 +373,11 @@ class OffboardMission(Node):
         self.declare_parameter("propellant_safe_s", 45.0)
         self.declare_parameter("propellant_abort_s", 20.0)
 
-        # GPS-denied Pass 1 (scaffolding — ROS-level inject only; not PX4/EKF deny)
+        # GPS-denied testing: logical injection plus optional PX4 SITL sensor failure.
         self.declare_parameter("gps_denied_enable", True)
         self.declare_parameter("gps_deny_inject", False)
+        self.declare_parameter("gps_px4_failure_inject", False)
+        self.declare_parameter("gps_fix_timeout_s", 1.0)
         self.declare_parameter("gps_denied_action", "hold")  # hold | continue | land
         self.declare_parameter("gps_denied_north_min_m", DEFAULT_GPS_DENIED_ZONE.north_min)
         self.declare_parameter("gps_denied_north_max_m", DEFAULT_GPS_DENIED_ZONE.north_max)
@@ -468,6 +487,10 @@ class OffboardMission(Node):
 
         self.gps_denied_enable = bool(self.get_parameter("gps_denied_enable").value)
         self.gps_deny_inject = bool(self.get_parameter("gps_deny_inject").value)
+        self.gps_px4_failure_inject = bool(
+            self.get_parameter("gps_px4_failure_inject").value
+        )
+        self.gps_fix_timeout = float(self.get_parameter("gps_fix_timeout_s").value)
         gps_action = str(self.get_parameter("gps_denied_action").value).lower()
         self.gps_denied_action = (
             gps_action if gps_action in ("hold", "continue", "land") else "hold"
@@ -541,6 +564,13 @@ class OffboardMission(Node):
                 "loc_event",
                 "dead_reckoning",
                 "eph_m",
+                "raw_gps_healthy",
+                "vio_stream_healthy",
+                "ev_pos_fused",
+                "ev_vel_fused",
+                "gnss_pos_fused",
+                "gnss_vel_fused",
+                "gps_failure_active",
             ]
         )
         self.get_logger().info(f"Logging to {path}")
@@ -609,6 +639,13 @@ class OffboardMission(Node):
                 if (snap.eph_m if snap else self._gps_eph_m) is None
                 else round(float(snap.eph_m if snap else self._gps_eph_m), 3)
             ),
+            int(self._raw_gps_healthy()),
+            int(self._vio_stream_healthy),
+            int(self._ev_pos_fused),
+            int(self._ev_vel_fused),
+            int(self._gnss_pos_fused),
+            int(self._gnss_vel_fused),
+            int(self._gps_failure_active),
         ]
         try:
             self._log_writer.writerow(row)
@@ -637,7 +674,6 @@ class OffboardMission(Node):
         self.current_vx = msg.vx
         self.current_vy = msg.vy
         self.current_vz = msg.vz
-        self._gps_xy_valid = bool(msg.xy_valid)
         self._gps_z_valid = bool(msg.z_valid)
         self._gps_dead_reckoning = bool(msg.dead_reckoning)
         eph = float(msg.eph)
@@ -645,18 +681,65 @@ class OffboardMission(Node):
         self._pos_stamp = time.monotonic()
         self._have_position = True
 
+    def _estimator_flags_callback(self, msg: EstimatorStatusFlags):
+        self._ev_pos_fused = bool(msg.cs_ev_pos)
+        self._ev_vel_fused = bool(msg.cs_ev_vel)
+        self._gnss_pos_fused = bool(msg.cs_gnss_pos)
+        self._gnss_vel_fused = bool(msg.cs_gnss_vel)
+        self._gps_xy_valid = self._gnss_pos_fused or self._gnss_vel_fused
+
+    def _sensor_gps_callback(self, msg: SensorGps):
+        self._raw_gps_fix_valid = bool(msg.fix_type >= SensorGps.FIX_TYPE_3D)
+        eph = float(msg.eph)
+        if math.isfinite(eph):
+            self._gps_eph_m = eph
+        self._gps_stamp = time.monotonic()
+
+    def _vio_health_callback(self, msg: Bool):
+        self._vio_stream_healthy = bool(msg.data)
+
+    def _raw_gps_healthy(self) -> bool:
+        return bool(
+            self._raw_gps_fix_valid and self._gps_stamp
+            and time.monotonic() - self._gps_stamp <= self.gps_fix_timeout
+        )
+
+    def _set_gps_failure(self, enabled: bool):
+        if enabled == self._gps_failure_active:
+            return
+        failure_type = (
+            VehicleCommand.FAILURE_TYPE_OFF if enabled
+            else VehicleCommand.FAILURE_TYPE_OK
+        )
+        self._cmd(
+            VehicleCommand.VEHICLE_CMD_INJECT_FAILURE,
+            float(VehicleCommand.FAILURE_UNIT_SENSOR_GPS),
+            float(failure_type),
+        )
+        self._gps_failure_active = enabled
+        self.get_logger().warn(
+            f"PX4 GPS sensor failure {'INJECTED' if enabled else 'CLEARED'}"
+        )
+
     def _update_localization(self) -> LocalizationSnapshot:
-        """Advance Pass-1 localization SM from VLP + inject params."""
+        """Advance localization state using raw GPS and EKF external-vision flags."""
+        in_zone = self._gps_denied_zone.contains(
+            self.current_x, self.current_y, self.current_z
+        ) if self.gps_denied_enable else False
+        if self.gps_px4_failure_inject:
+            self._set_gps_failure(in_zone)
+        raw_gps_healthy = self._raw_gps_healthy()
+        non_gps_healthy = self._vio_stream_healthy and self._ev_pos_fused
         snap = self._loc_sm.update(
             LocalizationInputs(
                 north_m=self.current_x,
                 east_m=self.current_y,
                 down_m=self.current_z,
-                gps_xy_valid=self._gps_xy_valid,
+                gps_xy_valid=raw_gps_healthy,
                 dead_reckoning=self._gps_dead_reckoning,
                 eph_m=self._gps_eph_m,
-                inject_deny=self.gps_deny_inject,
-                non_gps_healthy=False,  # Pass 1: no VO/mocap yet
+                inject_deny=(self.gps_deny_inject or self._gps_failure_active),
+                non_gps_healthy=non_gps_healthy,
                 action=self.gps_denied_action,
                 enabled=self.gps_denied_enable,
             )
@@ -750,6 +833,18 @@ class OffboardMission(Node):
 
         if self._state not in (State.PREFLIGHT, State.FAILSAFE, State.LANDING):
             if loc.failsafe and loc.failsafe_reason:
+                # Log this exact tick before transitioning: LocalizationStateMachine's
+                # LOC_FAILSAFE event is one-shot (the sticky branch returns event=None
+                # on every later tick, per localization_logic.py), and we're about to
+                # `return` past every state block below that calls _log_row. Without
+                # this, no CSV row ever records the event that caused the failsafe,
+                # so REQ-GPS-POLICY-01 (vv_harness.py) can never find one to check
+                # against and trivially passes via its "no events" early-out — even
+                # in the exact case (deny-inject -> hold/land) it exists to verify.
+                self._log_row(
+                    [self.current_x, self.current_y, self.current_z],
+                    self._last_obstacle,
+                )
                 self._enter_failsafe(loc.failsafe_reason)
                 return
             if self._check_failsafes():
@@ -867,10 +962,21 @@ class OffboardMission(Node):
                 self._publish_setpoint(hold)
                 self._log_row(hold, self._last_obstacle)
                 if not self._land_sent:
-                    self.get_logger().error(
-                        f"FAILSAFE: {self._failsafe_reason} — {self.geofence_action}"
+                    # A localization-triggered failsafe must resolve via
+                    # gps_denied_action, not geofence_action — they're
+                    # independently configurable (e.g. geofence_action=rtl
+                    # for a real fence breach, gps_denied_action=land for
+                    # the GPS-denied demo) and using the wrong one here
+                    # would silently RTL instead of land, or vice versa.
+                    action = (
+                        self.gps_denied_action
+                        if "localization" in self._failsafe_reason
+                        else self.geofence_action
                     )
-                    if self.geofence_action == "rtl":
+                    self.get_logger().error(
+                        f"FAILSAFE: {self._failsafe_reason} — {action}"
+                    )
+                    if action == "rtl":
                         self._send_rtl()
                     else:
                         self._send_land()
@@ -1365,6 +1471,14 @@ class OffboardMission(Node):
             ),
             "eph_m": snap.eph_m if snap else self._gps_eph_m,
             "gps_deny_inject": self.gps_deny_inject,
+            "gps_px4_failure_inject": self.gps_px4_failure_inject,
+            "gps_failure_active": self._gps_failure_active,
+            "raw_gps_healthy": self._raw_gps_healthy(),
+            "vio_stream_healthy": self._vio_stream_healthy,
+            "ev_pos_fused": self._ev_pos_fused,
+            "ev_vel_fused": self._ev_vel_fused,
+            "gnss_pos_fused": self._gnss_pos_fused,
+            "gnss_vel_fused": self._gnss_vel_fused,
             "gps_denied_enable": self.gps_denied_enable,
         }
         self._pub_mission_status.publish(String(data=json.dumps(payload)))
@@ -1454,6 +1568,8 @@ class OffboardMission(Node):
         return yaw_toward([self.current_x, self.current_y, self.current_z], target)
 
     def destroy_node(self):
+        if self._gps_failure_active:
+            self._set_gps_failure(False)
         if self._log_file:
             try:
                 self._log_file.close()

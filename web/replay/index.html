@@ -108,6 +108,8 @@
   .badge.loc-gps{color:var(--mint);background:rgba(105,247,205,.08);}
   .badge.loc-denied{color:#e56bff;background:rgba(229,107,255,.12);}
   .badge.loc-dr{color:var(--amber);background:rgba(255,181,71,.09);}
+  .badge.loc-vio{color:#78cfff;background:rgba(120,207,255,.12);box-shadow:0 0 18px rgba(120,207,255,.22);animation:vioPulse 1.4s ease-in-out infinite;}
+  @keyframes vioPulse{50%{box-shadow:0 0 28px rgba(120,207,255,.48);transform:translateY(-1px)}}
   .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;}.dot.on{background:var(--mint);box-shadow:0 0 8px var(--mint);}.dot.off{background:#38504b;}
   .legend .item{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--muted);}.legend .sw{width:12px;height:3px;flex:none;}
   .toggle-row{display:flex;align-items:center;gap:8px;padding:4px 0;min-height:36px;cursor:pointer;user-select:none;}
@@ -348,6 +350,7 @@
       <div class="row"><span class="k">Evidence source</span><span id="hudSource" class="v">legacy log</span></div>
       <div class="row"><span class="k">Localization</span>
         <span id="hudLoc" class="badge avoid-none">GPS</span></div>
+      <div class="row"><span class="k">EKF fusion</span><span id="hudFusion" class="v">GNSS — · VIO —</span></div>
       <div class="sensor-array" aria-label="LiDAR sector minimum ranges">
         <div class="sensor-cell"><span>FRONT</span><b id="hudLidarFront">—</b></div>
         <div class="sensor-cell"><span>LEFT</span><b id="hudLidarLeft">—</b></div>
@@ -824,6 +827,7 @@ const hud = {
   lidarRight: document.getElementById('hudLidarRight'),
   source: document.getElementById('hudSource'),
   loc: document.getElementById('hudLoc'),
+  fusion: document.getElementById('hudFusion'),
   cage: document.getElementById('hudCage'),
   fence: document.getElementById('hudFence'),
   range: document.getElementById('hudRange'),
@@ -1192,9 +1196,13 @@ function updateFrame(idx, snapToo) {
       : src;
     hud.loc.textContent = short;
     hud.loc.className = 'badge ' + (
-      denied || src.includes('DENIED') ? 'loc-denied'
+      src.includes('VIO') ? 'loc-vio'
+        : denied || src.includes('DENIED') ? 'loc-denied'
         : src.includes('DEAD') ? 'loc-dr' : 'loc-gps'
     );
+    const gnss = Boolean(r.gnss_pos_fused || r.gnss_vel_fused);
+    const vio = Boolean(r.ev_pos_fused || r.ev_vel_fused);
+    setText(hud.fusion, `GNSS ${gnss ? '●' : '○'} · VIO ${vio ? '●' : '○'}`);
   }
 
   hud.dotCage.className = 'dot ' + (r.geocage ? 'on' : 'off');

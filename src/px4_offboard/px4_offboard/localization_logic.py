@@ -1,8 +1,7 @@
-"""GPS-denied Pass 1 localization scaffolding (pure logic, no ROS).
+"""Pure localization-state logic for GPS-denied mission scenarios.
 
-This module models a configurable denied zone, ROS-level GPS deny
-injection, and a safety policy. It does **not** disable PX4/EKF GPS —
-that is Pass 2.
+ROS and PX4 sensor injection live in ``offboard_mission``; this module keeps
+zone classification, source selection, transitions, and policy testable.
 """
 
 from __future__ import annotations
@@ -13,6 +12,7 @@ from enum import Enum, auto
 
 class LocalizationSource(Enum):
     GPS = "GPS"
+    VIO = "VIO"
     GPS_DENIED_INJECTED = "GPS_DENIED_INJECTED"
     DEAD_RECKONING = "DEAD_RECKONING"
     UNKNOWN = "UNKNOWN"
@@ -60,11 +60,13 @@ class GpsDeniedZone:
 
 
 # Mid-course prism crossed by DEFAULT_COURSE (N≈15→32 along E≈0).
+# The 16 m length intentionally exceeds PX4's GNSS fusion timeout so the
+# simulated sensor failure becomes observable before the vehicle exits.
 DEFAULT_GPS_DENIED_ZONE = GpsDeniedZone(
-    north_min=18.0,
-    north_max=28.0,
-    east_min=-5.0,
-    east_max=5.0,
+    north_min=15.5,
+    north_max=31.5,
+    east_min=-8.0,
+    east_max=8.0,
     down_min=-12.0,
     down_max=0.5,
 )
@@ -106,6 +108,8 @@ def classify_source(
     raw_gps_xy_valid: bool,
     non_gps_healthy: bool,
 ) -> LocalizationSource:
+    if non_gps_healthy and (gps_injected_deny or not raw_gps_xy_valid):
+        return LocalizationSource.VIO
     if gps_injected_deny:
         return LocalizationSource.GPS_DENIED_INJECTED
     if non_gps_healthy:
@@ -122,7 +126,7 @@ def policy_requires_failsafe(
     gps_injected_deny: bool,
     non_gps_healthy: bool,
 ) -> bool:
-    """Pass-1 policy: injected deny without healthy non-GPS → hold/land failsafe."""
+    """Injected deny without healthy non-GPS requires a hold/land failsafe."""
     if not gps_injected_deny or non_gps_healthy:
         return False
     return action.lower() in FAILSAFE_ACTIONS

@@ -6,7 +6,8 @@ const FULL_HEADER =
   'lidar_front_m,lidar_left_m,lidar_right_m,mapped_clearance_m,nominal_n,nominal_e,nominal_d,' +
   'wp_index,geocage,geofence,inside,caged,roll_deg,pitch_deg,yaw_deg,vn,ve,vd,' +
   'executive_mode,battery_frac,link_quality,propellant_s,' +
-  'in_gps_denied_zone,gps_xy_valid,gps_injected_deny,loc_source,loc_event,dead_reckoning,eph_m';
+  'in_gps_denied_zone,gps_xy_valid,gps_injected_deny,loc_source,loc_event,dead_reckoning,eph_m,' +
+  'raw_gps_healthy,vio_stream_healthy,ev_pos_fused,ev_vel_fused,gnss_pos_fused,gnss_vel_fused,gps_failure_active';
 
 function fullRow(overrides = {}) {
   const base = {
@@ -21,6 +22,8 @@ function fullRow(overrides = {}) {
     executive_mode: 'NOMINAL', battery_frac: '0.9', link_quality: '1.0', propellant_s: '150.0',
     in_gps_denied_zone: '0', gps_xy_valid: '1', gps_injected_deny: '0',
     loc_source: 'GPS', loc_event: '', dead_reckoning: '0', eph_m: '0.8',
+    raw_gps_healthy: '1', vio_stream_healthy: '1', ev_pos_fused: '0', ev_vel_fused: '0',
+    gnss_pos_fused: '1', gnss_vel_fused: '1', gps_failure_active: '0',
   };
   return Object.assign(base, overrides);
 }
@@ -37,6 +40,18 @@ describe('toWorld', () => {
     expect(v.x).toBe(3);
     expect(v.y).toBe(5);
     expect(v.z).toBe(-10);
+  });
+
+  it('parses operational GPS-denied fusion evidence', () => {
+    const rows = parseCsv(csv([fullRow({
+      raw_gps_healthy: '0', gps_failure_active: '1', vio_stream_healthy: '1',
+      ev_pos_fused: '1', ev_vel_fused: '1', gnss_pos_fused: '0', gnss_vel_fused: '0',
+    })]));
+    expect(rows[0].gps_failure_active).toBe(true);
+    expect(rows[0].raw_gps_healthy).toBe(false);
+    expect(rows[0].vio_stream_healthy).toBe(true);
+    expect(rows[0].ev_pos_fused).toBe(true);
+    expect(rows[0].gnss_pos_fused).toBe(false);
   });
 
   it('places the origin at the world origin', () => {
