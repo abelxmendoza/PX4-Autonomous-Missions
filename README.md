@@ -527,6 +527,8 @@ fcu_url: "serial:///dev/ttyUSB0:57600"    # USB serial
 - Simulated battery drains — full sim restart required between flights
 - World SDF contains no plugin declarations — sensor plugins come from PX4's `server.config`
 - Do not rename sensor names in `x500_base/model.sdf` — they match `GZBridge.cpp` topic paths
+- On multi-GPU laptops, `full_stack.launch.py` forces gz-sim's EGL rendering onto the NVIDIA vendor ICD (when present) so headless device enumeration doesn't land on an unsupported integrated GPU, which silently breaks camera/LiDAR rendering with no fatal error — only Mesa/EGL warnings in the log
+- `use_camera:=true` is wired and its topic is confirmed live against a real SITL run, but an actual rendered frame hasn't been visually confirmed end-to-end yet — check `/px4_offboard/camera/image_raw` with `rqt_image_view` if you rely on it
 
 ---
 

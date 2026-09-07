@@ -60,11 +60,23 @@ def _launch_setup(context, *args, **kwargs):
     # Prefer local model overrides (always-on lidar) then worlds, then PX4 defaults
     gz_path = f"{models_dir}:{worlds_dir}:${{GZ_SIM_RESOURCE_PATH}}"
     headless_env = "HEADLESS=1 " if headless else ""
+    # On multi-GPU laptops, gz-sim's headless EGL device enumeration can pick
+    # an unsupported integrated GPU over a perfectly good discrete one (seen
+    # here: Mesa refusing an Intel iGPU while an NVIDIA GPU sat idle),
+    # breaking every rendering-based sensor. Force the NVIDIA EGL vendor when
+    # its ICD is present; harmless no-op on machines without one.
+    nvidia_egl_icd = "/usr/share/glvnd/egl_vendor.d/10_nvidia.json"
+    egl_vendor_env = (
+        f"__EGL_VENDOR_LIBRARY_FILENAMES={nvidia_egl_icd} "
+        if os.path.isfile(nvidia_egl_icd)
+        else ""
+    )
     px4_cmd = (
         f"cd {px4_dir} && "
         f"rm -f build/px4_sitl_default/dataman && "
         f"PX4_GZ_WORLD=obstacle_world "
         f"GZ_SIM_RESOURCE_PATH={gz_path} "
+        f"{egl_vendor_env}"
         f"{headless_env}"
         f"make px4_sitl {vehicle}"
     )
