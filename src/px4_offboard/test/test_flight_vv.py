@@ -1,5 +1,6 @@
 """Unit tests for flight-log replay and V&V requirement checks."""
 
+import json
 from pathlib import Path
 
 from px4_offboard.flight_replay import FlightSample, FlightTrace, load_flight_log, write_flight_log
@@ -86,6 +87,37 @@ def test_nominal_trace_passes_vv():
     ]
     report = run_vv(FlightTrace(samples=samples, source="synthetic-nominal"))
     assert report.passed, report.format_text()
+
+
+def test_report_to_dict_is_json_serializable_and_preserves_skip_vs_pass():
+    # The web viewer's "Requirements" panel is built entirely from this
+    # dict (scripts/gen_vv_reports.py ships it as JSON next to each mission
+    # CSV) — it must faithfully distinguish "skipped" (not applicable to
+    # this recording's schema) from "passed", not collapse them, since a
+    # legacy recording showing all-green would misrepresent what was
+    # actually verified.
+    samples = [
+        _sample(t_s=0.0, state="MOVE", wp_index=0),
+        _sample(t_s=0.5, state="LANDING", wp_index=1),
+    ]
+    report = run_vv(FlightTrace(samples=samples, source="synthetic-dict-test"))
+
+    d = report.to_dict()
+    json.dumps(d)  # must not raise — every value has to be JSON-safe
+
+    assert d["source"] == "synthetic-dict-test"
+    assert d["passed"] == report.passed
+    assert len(d["results"]) == len(report.results)
+
+    by_id = {r["requirement_id"]: r for r in d["results"]}
+    live = by_id["REQ-STATE-01"]
+    assert live["skipped"] is False
+    assert live["passed"] is True
+    assert isinstance(live["severity"], str)  # enum serialized to its .value, not the enum object
+
+    legacy = by_id["REQ-CLEARANCE-01"]  # no mapped_clearance_m column in these samples
+    assert legacy["skipped"] is True
+    assert legacy["passed"] is True  # skipped checks report passed=True; UI must check skipped first
 
 
 def test_illegal_state_transition_fails():

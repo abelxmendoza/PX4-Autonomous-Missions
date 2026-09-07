@@ -147,6 +147,24 @@
   .result b{display:block;margin-top:3px;font:800 13px var(--mono);color:var(--text);}
   .sensor-array{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px;}
   .sensor-cell{padding:6px 4px;text-align:center;border:1px solid var(--line);background:rgba(105,247,205,.025);}
+
+  .vv-note{margin:0 0 10px;font:11px/1.55 var(--mono);color:var(--muted);}
+  .vv-note code{color:var(--mint);font-size:10px;}
+  .vv-summary{margin-bottom:10px;padding:8px 10px;border:1px solid var(--line);
+    background:rgba(105,247,205,.035);font:700 11px/1.5 var(--mono);color:var(--text);}
+  .vv-summary .vv-na{display:block;margin-top:2px;font-weight:400;color:var(--muted);}
+  .vv-list{display:flex;flex-direction:column;gap:7px;max-height:260px;overflow-y:auto;}
+  .vv-item{display:flex;align-items:flex-start;gap:8px;font:11px/1.45 var(--mono);}
+  .vv-item .vv-icon{flex:none;width:13px;text-align:center;font-weight:800;margin-top:1px;}
+  .vv-item.pass .vv-icon{color:var(--mint);}
+  .vv-item.fail .vv-icon{color:var(--danger);}
+  .vv-item.skip .vv-icon{color:var(--muted);}
+  .vv-item .vv-body{min-width:0;}
+  .vv-item .vv-title{color:var(--text);display:block;}
+  .vv-item.skip .vv-title{color:var(--muted);}
+  .vv-item .vv-id{color:var(--muted);font-size:9px;letter-spacing:.04em;}
+  .vv-item .vv-detail{display:block;color:var(--muted);font-size:10px;margin-top:1px;}
+  .vv-item.fail .vv-detail{color:var(--danger);}
   .sensor-cell span{display:block;color:var(--muted);font-size:8px;letter-spacing:.12em;}.sensor-cell b{display:block;margin-top:3px;font-size:10px;color:var(--mint);}
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;padding:24px;text-align:center;z-index:40;}
 
@@ -447,6 +465,14 @@
         <div class="result"><span>Progress</span><b id="hudProgress">0%</b></div>
         <div class="result"><span>Breaches</span><b id="hudBreaches">—</b></div>
       </div>
+    </div>
+    <div class="card" id="vvCard" hidden>
+      <h2>Requirements (offline V&amp;V)</h2>
+      <p class="vv-note">Same requirement checks a real acceptance review would
+        run — computed by <code>vv_harness.py</code> against this exact
+        recording, not simulated for display.</p>
+      <div id="vvSummary" class="vv-summary">—</div>
+      <div id="vvList" class="vv-list"></div>
     </div>
     <div class="card legend">
       <h2>Obstacle Course</h2>
@@ -1103,6 +1129,7 @@ function loadMission(m) {
       buildNominalRoute();
       fitCamera();
       document.getElementById('missionLabel').textContent = m.label;
+      loadVvReport(m);
       const { maneuvers, minClearance, breaches } = summarizeMission(rows);
       document.getElementById('hudEvents').textContent = maneuvers;
       document.getElementById('hudManeuvers').textContent = maneuvers;
@@ -1126,6 +1153,53 @@ function loadMission(m) {
 loadMission(MISSIONS[0]);
 
 // parseCsv() is defined in lib.js (shared with the test suite).
+
+// Real offline V&V report (vv_harness.py, pre-computed by
+// scripts/gen_vv_reports.py and shipped as JSON next to each mission CSV)
+// — displays the same requirement-by-requirement result that module
+// actually computed, not a reimplementation of the checks in JS. Best
+// effort: an older mission recording without a matching .vv.json simply
+// hides the card rather than showing a broken/empty state.
+function loadVvReport(m) {
+  const card = document.getElementById('vvCard');
+  const jsonPath = m.file.replace(/\.csv$/, '.vv.json');
+  fetch(jsonPath)
+    .then(r => { if (!r.ok) throw new Error(`no V&V report (${r.status})`); return r.json(); })
+    .then(report => {
+      const passed = report.results.filter(x => x.passed && !x.skipped).length;
+      const failed = report.results.filter(x => !x.passed && !x.skipped).length;
+      const skipped = report.results.filter(x => x.skipped).length;
+      const applicable = passed + failed;
+
+      const summary = document.getElementById('vvSummary');
+      summary.innerHTML =
+        (failed > 0
+          ? `${passed} / ${applicable} applicable requirements passed — ${failed} FAILED`
+          : `${passed} / ${applicable} applicable requirements passed`) +
+        (skipped > 0
+          ? `<span class="vv-na">${skipped} not applicable — this recording predates that telemetry</span>`
+          : '');
+
+      const list = document.getElementById('vvList');
+      list.innerHTML = '';
+      for (const r of report.results) {
+        const status = r.skipped ? 'skip' : (r.passed ? 'pass' : 'fail');
+        const icon = r.skipped ? '·' : (r.passed ? '✓' : '✕');
+        const el = document.createElement('div');
+        el.className = 'vv-item ' + status;
+        el.innerHTML =
+          `<span class="vv-icon">${icon}</span>` +
+          `<span class="vv-body">` +
+            `<span class="vv-id">${r.requirement_id}</span> ` +
+            `<span class="vv-title">${r.title}</span>` +
+            (status === 'fail' ? `<span class="vv-detail">${r.detail}</span>` : '') +
+          `</span>`;
+        list.appendChild(el);
+      }
+      card.hidden = false;
+    })
+    .catch(() => { card.hidden = true; });
+}
 
 let totalWaypoints = 0;
 

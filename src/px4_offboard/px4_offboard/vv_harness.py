@@ -175,6 +175,29 @@ class VvReport:
     def passed(self) -> bool:
         return not self.must_failed
 
+    def to_dict(self) -> dict:
+        """JSON-serializable form — used to ship a real V&V report alongside
+        a recorded mission for the web viewer, so it displays the same
+        requirement-by-requirement result this module actually computed
+        (not a re-implementation of the checks in JS)."""
+        return {
+            "source": self.source,
+            "summary": self.summary,
+            "passed": self.passed,
+            "results": [
+                {
+                    "requirement_id": r.requirement_id,
+                    "title": r.title,
+                    "severity": r.severity.value,
+                    "passed": r.passed,
+                    "skipped": r.skipped,
+                    "detail": r.detail,
+                    "evidence": r.evidence[:5],
+                }
+                for r in self.results
+            ],
+        }
+
     def format_text(self) -> str:
         lines = [
             f"V&V report — {self.source}",

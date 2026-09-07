@@ -1,0 +1,148 @@
+{
+  "source": "/home/azrael/Desktop/px4-autonomous-mission/web/replay/data/mission_clean_pass.csv",
+  "summary": {
+    "source": "/home/azrael/Desktop/px4-autonomous-mission/web/replay/data/mission_clean_pass.csv",
+    "samples": 211,
+    "duration_s": 21.0,
+    "state_sequence": [
+      "MOVE",
+      "LANDING"
+    ],
+    "max_altitude_m": 5.16,
+    "final_wp_index": 9,
+    "avoidance_samples": 0,
+    "geofence_breach_samples": 0,
+    "has_executive": false,
+    "sensor_evidence_samples": 0,
+    "minimum_mapped_clearance_m": null
+  },
+  "passed": true,
+  "results": [
+    {
+      "requirement_id": "REQ-STATE-01",
+      "title": "Legal mission state sequence",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "all transitions legal",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-WP-01",
+      "title": "Waypoint index monotonic",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "wp_index non-decreasing",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GEOCAGE-01",
+      "title": "Geo-cage clamps setpoints",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no caged samples (N/A \u2014 treated as pass)",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GEOFENCE-01",
+      "title": "Hard geofence \u2192 FAILSAFE",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no airborne geofence breaches observed",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-ALT-01",
+      "title": "Altitude keep-in",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "altitude within keep-in",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-TERM-01",
+      "title": "Terminal state finality",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no post-terminal MOVE",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-EXEC-01",
+      "title": "Executive abort consistency",
+      "severity": "should",
+      "passed": true,
+      "skipped": true,
+      "detail": "no executive ABORT in log",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-AVOID-SENSOR-01",
+      "title": "Avoidance backed by live sensor evidence",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no sensor-evidence columns",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-CLEARANCE-01",
+      "title": "No mapped-obstacle intersection",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no mapped-clearance column",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-ZONE-01",
+      "title": "GPS-denied zone flag consistency",
+      "severity": "should",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no GPS-denied zone column",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-INJECT-01",
+      "title": "Injected deny does not claim healthy GPS",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no GPS-inject columns",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-POLICY-01",
+      "title": "Localization failsafe reaches terminal/hold",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no loc_event column",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-ACTUAL-01",
+      "title": "PX4 GPS sensor actually becomes unavailable",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no PX4 GPS-failure evidence",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-VIO-FUSION-01",
+      "title": "External vision sustains GPS-denied flight",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no VIO fusion evidence",
+      "evidence": []
+    }
+  ]
+}
