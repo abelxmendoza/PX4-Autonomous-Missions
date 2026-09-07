@@ -24,6 +24,22 @@ jobs:
           test/test_flight_vv.py
           test/test_path_planner.py
 
+  web-tests:
+    # JS unit tests for web/replay/lib.js (toWorld/parseCsv) — the logic the
+    # page actually loads, not a reimplementation. Was only running locally;
+    # nothing wired this into CI until now.
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: web/replay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm test
+
   vv-regression:
     # Offline end-to-end check: replays the real recorded flight logs
     # committed for the web viewer against the formal V&V requirements
