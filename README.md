@@ -10,7 +10,7 @@
 | Sensor → decision → setpoint → PX4 loop | LiDAR sectors, avoidance, state machine |
 | Geofence / failsafe / resource executive | CSV + `/px4_offboard/mission_status` |
 | Offline requirement checks (V&V) | `vv_replay` on the flight log |
-| Browser flight replay | [Live demo](https://replay-sepia-tau.vercel.app) |
+| Browser flight replay | [Live demo](https://replay-sepia-tau.vercel.app/demo/) — [project home](https://replay-sepia-tau.vercel.app) · [write-up](https://replay-sepia-tau.vercel.app/writeup/) |
 
 > **Portfolio clip (do this next):** record 60–90 s of Gazebo + HUD — takeoff → obstacle → avoidance → land → paste the V&V report at the end. Drop the GIF/MP4 here when you have it.
 

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a1011">
+<title>The Verification Log — Abel Mendoza</title>
+<meta name="description" content="How I found and fixed six real bugs in a GPS-denied drone autonomy stack by actually verifying it against recorded flight logs.">
+<link rel="icon" href="../favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Verification Log">
+<meta property="og:description" content="How I found and fixed six real bugs in a GPS-denied drone autonomy stack by actually verifying it against recorded flight logs.">
+<meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png">
+<meta property="og:url" content="https://replay-sepia-tau.vercel.app/writeup/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Verification Log">
+<meta name="twitter:image" content="https://replay-sepia-tau.vercel.app/og-image.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f6f7f5;
+    --surface:#ececea;
+    --surface-2:#e3e6e1;
+    --ink:#10171a;
+    --muted:#4d5c5a;
+    --faint:#7c8a86;
+    --line:#d6dbd4;
+    --teal:#0c7d70;
+    --teal-ink:#075e54;
+    --amber:#9a5b0a;
+    --amber-bg:#f3e6d2;
+    --good-bg:#dcece5;
+    --shadow:0 1px 2px rgba(16,23,26,.06);
+    --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+    --sans:"Archivo",-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0a1011; --surface:#111a1b; --surface-2:#0d1516; --ink:#e7f0ee;
+      --muted:#a8bab6; --faint:#728482; --line:#223130; --teal:#55e0c9;
+      --teal-ink:#8bf0dd; --amber:#f0a94a; --amber-bg:#2c2210; --good-bg:#12251f;
+      --shadow:0 1px 3px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0a1011; --surface:#111a1b; --surface-2:#0d1516; --ink:#e7f0ee;
+    --muted:#a8bab6; --faint:#728482; --line:#223130; --teal:#55e0c9;
+    --teal-ink:#8bf0dd; --amber:#f0a94a; --amber-bg:#2c2210; --good-bg:#12251f;
+    --shadow:0 1px 3px rgba(0,0,0,.5);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--serif);
+    font-size:17px; line-height:1.65; -webkit-font-smoothing:antialiased; margin:0;
+  }
+  ::selection{ background:var(--teal); color:var(--paper); }
+
+  a{ color:var(--teal-ink); text-decoration-thickness:1px; text-underline-offset:2px; }
+  a:hover{ color:var(--teal); }
+  a:focus-visible, button:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+
+  .eyebrow{ font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); }
+  h1,h2,h3{ font-family:var(--sans); text-wrap:balance; color:var(--ink); margin:0; }
+  code, .mono{ font-family:var(--mono); }
+
+  /* ---- top site nav ---- */
+  .sitenav{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:18px 24px; border-bottom:1px solid var(--line);
+    font-family:var(--mono); font-size:12px;
+  }
+  .sitenav .brand{ display:flex; align-items:center; gap:10px; color:var(--ink); text-decoration:none; }
+  .sitenav .brand .mark{ width:24px; height:24px; border:1px solid var(--teal); display:grid; place-items:center;
+    color:var(--paper); background:var(--teal); font:900 10px var(--mono); flex:none; }
+  .sitenav nav{ display:flex; gap:18px; flex-wrap:wrap; }
+  .sitenav nav a{ color:var(--muted); text-decoration:none; letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
+  .sitenav nav a:hover, .sitenav nav a.current{ color:var(--teal-ink); }
+
+  /* ---- shell layout: rail + column ---- */
+  .shell{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:200px minmax(0,1fr); gap:48px; padding:48px 24px 96px; }
+  @media (max-width:980px){ .shell{ grid-template-columns:minmax(0,1fr); padding:36px 20px 72px; } .rail{ display:none; } }
+
+  .rail{ position:sticky; top:24px; align-self:start; font-family:var(--mono); font-size:12.5px; }
+  .rail .rail-title{ color:var(--faint); letter-spacing:.1em; text-transform:uppercase; margin-bottom:14px; }
+  .rail ol{ list-style:none; margin:0; padding:0; border-left:1px solid var(--line); }
+  .rail li{ margin:0; }
+  .rail a{ display:block; padding:7px 0 7px 16px; margin-left:-1px; border-left:1px solid transparent; color:var(--muted); text-decoration:none; }
+  .rail a:hover{ color:var(--teal-ink); border-left-color:var(--teal); }
+  .rail .wp{ color:var(--faint); margin-right:6px; }
+
+  article{ max-width:700px; }
+
+  .masthead{ margin-bottom:52px; }
+  .masthead .eyebrow{ margin-bottom:14px; }
+  h1.title{ font-size:clamp(32px,4.4vw,46px); font-weight:900; letter-spacing:-.01em; line-height:1.05; }
+  .dek{ font-family:var(--serif); font-style:italic; font-size:19px; color:var(--muted); max-width:58ch; margin-top:16px; }
+  .meta-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:26px; }
+  .chip{ font-family:var(--mono); font-size:12px; padding:5px 10px; border:1px solid var(--line); border-radius:3px; color:var(--muted); background:var(--surface); text-decoration:none; }
+  .chip.link{ color:var(--teal-ink); border-color:var(--teal); }
+  .byline{ margin-top:22px; font-family:var(--sans); font-size:13.5px; color:var(--faint); display:flex; gap:10px; align-items:center; }
+  .byline .dot::before{ content:"·"; }
+
+  section{ margin-bottom:56px; scroll-margin-top:40px; }
+  h2.section-h{ font-size:26px; font-weight:800; letter-spacing:-.005em; margin-bottom:6px; }
+  .section-num{ font-family:var(--mono); color:var(--teal-ink); font-weight:600; font-size:14px; display:block; margin-bottom:8px; }
+  p{ margin:16px 0; color:var(--ink); }
+  p.lead{ font-size:19px; color:var(--muted); }
+  .prose-narrow{ max-width:62ch; }
+  strong{ color:var(--ink); }
+  em.small-note{ font-size:14.5px; color:var(--faint); font-style:italic; }
+
+  .flow{ display:flex; flex-wrap:wrap; gap:0; align-items:center; font-family:var(--mono); font-size:12.5px; margin:22px 0 8px; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .flow span{ padding:11px 13px; background:var(--surface); border-right:1px solid var(--line); white-space:nowrap; }
+  .flow span:last-child{ border-right:none; }
+  .flow span.term{ color:var(--amber); background:var(--amber-bg); }
+  .flow-caption{ font-size:13px; color:var(--faint); margin-top:6px; }
+
+  .stack-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr)); gap:10px; margin:20px 0; }
+  .stack-item{ border:1px solid var(--line); background:var(--surface); border-radius:6px; padding:12px 13px; }
+  .stack-item .k{ font-family:var(--mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; }
+  .stack-item .v{ font-family:var(--sans); font-size:14.5px; font-weight:700; margin-top:3px; overflow-wrap:break-word; }
+
+  .finding{ border:1px solid var(--line); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); padding:24px 26px 26px; margin:28px 0; }
+  .finding-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+  .finding-id{ font-family:var(--mono); font-weight:600; font-size:13px; color:var(--amber); background:var(--amber-bg); padding:3px 8px; border-radius:3px; }
+  .finding-loc{ font-family:var(--mono); font-size:12.5px; color:var(--faint); }
+  .finding h3{ font-size:19px; font-weight:700; margin:10px 0 10px; }
+  .finding p{ margin:10px 0; font-size:16px; }
+  .finding .impact{ margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); font-size:14.5px; color:var(--muted); }
+  .finding .impact b{ color:var(--teal-ink); font-family:var(--sans); font-size:11px; text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:5px;}
+
+  pre{ background:var(--surface-2); border:1px solid var(--line); border-radius:6px; padding:14px 16px; overflow-x:auto; font-family:var(--mono); font-size:13px; line-height:1.55; margin:14px 0; }
+  pre .rm{ color:var(--amber); }
+  pre .add{ color:var(--teal-ink); }
+  pre .cm{ color:var(--faint); font-style:italic; }
+
+  .verdicts{ width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px; }
+  .verdicts th, .verdicts td{ text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
+  .verdicts th{ font-family:var(--sans); font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:700; }
+  .verdicts td.id{ font-family:var(--mono); font-size:13px; color:var(--muted); white-space:nowrap; }
+  .verdict-pill{ display:inline-block; font-family:var(--mono); font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; }
+  .verdict-pill.pass{ background:var(--good-bg); color:var(--teal-ink); }
+
+  .wall{ border:1px solid var(--amber); background:var(--amber-bg); border-radius:8px; padding:22px 24px; margin:24px 0; }
+  .wall h3{ font-size:16px; margin-bottom:8px; color:var(--amber); font-weight:800; }
+  .wall p{ font-size:15px; margin:8px 0; }
+
+  .close-cta{ border-top:1px solid var(--line); padding-top:32px; margin-top:8px; }
+  .cta-row{ display:flex; gap:12px; flex-wrap:wrap; margin-top:18px; }
+  .btn{ font-family:var(--sans); font-weight:700; font-size:14px; padding:11px 20px; border-radius:5px; text-decoration:none; display:inline-block; }
+  .btn.primary{ background:var(--teal); color:#04211d; }
+  .btn.primary:hover{ background:var(--teal-ink); color:var(--paper); }
+  .btn.ghost{ border:1px solid var(--line); color:var(--ink); }
+  .btn.ghost:hover{ border-color:var(--teal); color:var(--teal-ink); }
+
+  footer{ max-width:700px; font-family:var(--mono); font-size:12px; color:var(--faint); margin:40px auto 0; padding:0 24px; }
+
+  @media (prefers-reduced-motion: no-preference){ a, .finding{ transition:color .15s ease, border-color .15s ease; } }
+</style>
+</head>
+<body>
+
+<div class="sitenav">
+  <a class="brand" href="/">
+    <span class="mark">PX</span>
+    PX4 Mission
+  </a>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/demo/">Demo</a>
+    <a class="current" href="/writeup/">Write-up</a>
+  </nav>
+</div>
+
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    <div class="rail-title">Waypoints</div>
+    <ol>
+      <li><a href="#origin"><span class="wp">N00</span>Origin</a></li>
+      <li><a href="#architecture"><span class="wp">N01</span>The stack</a></li>
+      <li><a href="#method"><span class="wp">N02</span>How verification worked</a></li>
+      <li><a href="#findings"><span class="wp">N03</span>Six real bugs</a></li>
+      <li><a href="#wall"><span class="wp">N04</span>Where it hit a wall</a></li>
+      <li><a href="#close"><span class="wp">N05</span>Try it</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <header class="masthead" id="origin">
+      <div class="eyebrow">Flight-log verified · PX4 + Gazebo Harmonic</div>
+      <h1 class="title">The Verification Log</h1>
+      <p class="dek">I built a GPS-denied drone autonomy stack, then stopped trusting it and set out to prove it — replaying real recorded flights against named, testable requirements. It found six bugs a demo would never have surfaced.</p>
+      <div class="meta-row">
+        <span class="chip">PX4 v1.15</span>
+        <span class="chip">ROS 2 Humble</span>
+        <span class="chip">Gazebo Harmonic</span>
+        <span class="chip">Python</span>
+        <span class="chip">pytest</span>
+        <a class="chip link" href="/demo/">Live replay ↗</a>
+        <a class="chip link" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+      </div>
+      <div class="byline">Abel Mendoza <span class="dot"></span> Autonomy &amp; robotics</div>
+    </header>
+
+    <section id="architecture">
+      <span class="section-num">N01</span>
+      <h2 class="section-h">A GPS-denied autonomy stack, briefly</h2>
+      <p class="prose-narrow">The vehicle is a simulated x500 quad flying real PX4 offboard control — not a scripted trajectory. A mission executive tracks battery, link quality, and propellant against a resource budget and can degrade the mission before a hard failure forces it to. A LiDAR-backed avoidance layer only ever reacts to live sensor evidence, never to a known map, so a demo can't quietly cheat.</p>
+
+      <div class="flow" role="img" aria-label="Mission state flow: preflight, arming, takeoff, hover, move, landing, or failsafe">
+        <span>PREFLIGHT</span><span>ARMING</span><span>TAKEOFF</span><span>HOVER</span><span>MOVE</span><span>LANDING</span><span class="term">FAILSAFE</span>
+      </div>
+      <p class="flow-caption">The mission-legality state machine. Every recorded flight's transitions get replayed against this exact graph — an illegal jump is an automatic fail.</p>
+
+      <p class="prose-narrow">Partway through, the vehicle crosses into a GPS-denied prism. <code>EKF2_GPS_CTRL</code> gets zeroed on PX4's own EKF — not a mocked failure, the estimator genuinely loses GNSS — and a simulated visual-odometry bridge takes over as external vision until the vehicle clears the zone.</p>
+
+      <div class="stack-grid">
+        <div class="stack-item"><div class="k">Fence</div><div class="v">Hard keep-in + soft geocage</div></div>
+        <div class="stack-item"><div class="k">Avoidance</div><div class="v">Sensor-only LiDAR sectors</div></div>
+        <div class="stack-item"><div class="k">GPS-denial</div><div class="v">Real EKF2_GPS_CTRL=0</div></div>
+        <div class="stack-item"><div class="k">Backup nav</div><div class="v">Simulated VIO → EV fusion</div></div>
+        <div class="stack-item"><div class="k">Vision</div><div class="v">Real ArUco detection</div></div>
+        <div class="stack-item"><div class="k">Resource mgmt</div><div class="v">NOMINAL→DEGRADED→ABORT</div></div>
+      </div>
+    </section>
+
+    <section id="method">
+      <span class="section-num">N02</span>
+      <h2 class="section-h">Verification, not vibes</h2>
+      <p class="lead prose-narrow">A demo proves a system can look right once. It says nothing about the other ninety-nine runs.</p>
+      <p class="prose-narrow">So every simulated flight gets logged to CSV — state, position, target, sensor evidence, fence status, GPS-denial phase — and a harness replays that log against a table of named requirements: <code>REQ-STATE-01</code>, <code>REQ-GEOFENCE-01</code>, <code>REQ-AVOID-SENSOR-01</code>, and eleven others, each with a severity (<code>MUST</code> or <code>SHOULD</code>) and a plain-English description. The web replay renders the same verdicts next to the flight itself, so a requirement and the exact moment it passed or failed sit on the same screen.</p>
+      <div style="overflow-x:auto;">
+      <table class="verdicts">
+        <thead><tr><th>Requirement</th><th>Checks</th><th>Sample verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="id">REQ-GEOFENCE-01</td><td>Hard fence breach reaches FAILSAFE within the response window</td><td><span class="verdict-pill pass">PASS</span></td></tr>
+          <tr><td class="id">REQ-AVOID-SENSOR-01</td><td>Every avoidance call has fresh LiDAR evidence behind it</td><td><span class="verdict-pill pass">PASS</span></td></tr>
+          <tr><td class="id">REQ-VIO-FUSION-01</td><td>External vision stays fused for the entire GPS-denied window</td><td><span class="verdict-pill pass">PASS</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="prose-narrow"><em class="small-note">This is what actually found the bugs below — not code review, not a demo that happened to work. A CLI called <code>vv_replay</code> exits non-zero the moment any MUST requirement fails, so it also runs unattended in CI against committed recordings.</em></p>
+    </section>
+
+    <section id="findings">
+      <span class="section-num">N03</span>
+      <h2 class="section-h">Six bugs a working demo hid</h2>
+      <p class="prose-narrow">Each of these flew fine in the simulator. Every one only surfaced once a log got replayed against a specific, named claim about what "fine" means.</p>
+
+      <div class="finding">
+        <div class="finding-head">
+          <span class="finding-id">FINDING-01</span>
+          <span class="finding-loc mono">mission_logic.py · segment_hits_expanded_aabb</span>
+        </div>
+        <h3>A path running parallel to an obstacle registered as a hit</h3>
+        <p>The collision check is a Liang-Barsky slab test over two axes. When a path segment ran exactly parallel to one axis of an obstacle's box — dx or dy effectively zero — the loop fell through into computing a bogus intersection distance instead of returning "no hit."</p>
+        <pre><span class="cm"># before: falls through to a bogus hit</span>
+if abs(dist) &lt; 1e-12:
+    <span class="rm">break</span>
+
+<span class="cm"># after: parallel + outside the slab genuinely can't hit</span>
+if abs(dist) &lt; 1e-12:
+    if p0 &lt; minimum or p0 &gt; maximum:
+        <span class="add">return False, dist_start, n0, e0</span>
+    continue</pre>
+        <div class="impact"><b>Why it mattered</b>A straight leg running alongside — not into — an obstacle could get flagged as a collision, which either forces an unnecessary reroute or, worse, teaches you to distrust a correct route.</div>
+      </div>
+
+      <div class="finding">
+        <div class="finding-head">
+          <span class="finding-id">FINDING-02</span>
+          <span class="finding-loc mono">vv_harness.py · check_sensor_backed_avoidance</span>
+        </div>
+        <h3>"Confirmed clear" was mistaken for "no data"</h3>
+        <p>The LiDAR sector publisher uses <code>-1.0</code> to mean "I checked this direction and there's nothing there" — a fresh, valid, genuinely good reading. The V&amp;V check treated any range <code>&lt; 0.0</code> as missing evidence, so steering toward the single safest possible direction — a sector confirmed clear — was flagged as unverified.</p>
+        <div class="impact"><b>Why it mattered</b>A safety check that penalizes the correct behavior teaches you to stop trusting the safety check, which is worse than not having one.</div>
+      </div>
+
+      <div class="finding">
+        <div class="finding-head">
+          <span class="finding-id">FINDING-03</span>
+          <span class="finding-loc mono">offboard_mission.py · _control_loop</span>
+        </div>
+        <h3>The most safety-relevant event never made it into the log</h3>
+        <p>On the exact tick a GPS-denial failsafe fired, <code>_control_loop</code> returned early — before the line that writes the CSV row. The event is one-shot; it's <code>None</code> on every tick after. The row that should have recorded "this is why we failsafed" simply never existed.</p>
+        <p><em class="small-note">Caught by writing a node-level test that forces the exact conditions, then verified for real: I temporarily reverted the fix and confirmed the new test actually failed before restoring it — proof the test catches the regression, not just that it passes today.</em></p>
+        <div class="impact"><b>Why it mattered</b>A failsafe that isn't in the log didn't verifiably happen, from an auditor's perspective — indistinguishable from a failsafe that never fired at all.</div>
+      </div>
+
+      <div class="finding">
+        <div class="finding-head">
+          <span class="finding-id">FINDING-04</span>
+          <span class="finding-loc mono">offboard_mission.py · FAILSAFE handler</span>
+        </div>
+        <h3>Two failsafe reasons, one parameter checked</h3>
+        <p>The FAILSAFE state handler needs to route differently depending on <em>why</em> it fired — a geofence breach and a GPS-denial event have different configured actions. The handler was reading <code>geofence_action</code> for both cases, so a GPS-denial failsafe silently obeyed the geofence's policy instead of its own.</p>
+        <div class="impact"><b>Why it mattered</b>The parameter you set for one failure mode quietly governed a different one — the kind of bug that only shows up once both failure modes actually occur in the same flight.</div>
+      </div>
+
+      <div class="finding">
+        <div class="finding-head">
+          <span class="finding-id">FINDING-05</span>
+          <span class="finding-loc mono">vio_bridge.py</span>
+        </div>
+        <h3>The GPS backup was never actually tested against error</h3>
+        <p>The simulated visual-odometry source read Gazebo's exact ground-truth pose and republished it as "external vision," with a fixed, sensor-spec covariance that had no relationship to the (zero) actual error in the data. Every GPS-denied flight was backed by a positioning source that literally could not be wrong.</p>
+        <p>I added a bounded, mean-reverting random walk — real drift, clamped the way a re-anchoring VIO system's error is, plus a covariance that honestly grows with the accumulated bias instead of staying fixed.</p>
+        <div class="impact"><b>Why it mattered</b>This wasn't a bug that broke something — it was a gap that meant nothing had broken yet. The entire GPS-denial pipeline had never been exercised against a position source that could plausibly disagree with reality.</div>
+      </div>
+
+      <div class="finding">
+        <div class="finding-head">
+          <span class="finding-id">FINDING-06</span>
+          <span class="finding-loc mono">.github/workflows/unit-tests.yml</span>
+        </div>
+        <h3>Three test files existed and ran exactly nowhere</h3>
+        <p><code>test_lidar_sectors.py</code>, <code>test_localization_logic.py</code>, and <code>test_vio_bridge.py</code> — pure Python, no simulator dependency, free to run in any CI job — had simply never been added to the CI invocation. They could regress silently forever.</p>
+        <div class="impact"><b>Why it mattered</b>A test that exists but never runs is a false sense of coverage — worse in a specific way than no test at all, because it looks like safety from the outside.</div>
+      </div>
+    </section>
+
+    <section id="wall">
+      <span class="section-num">N04</span>
+      <h2 class="section-h">Where verification hit a wall</h2>
+      <p class="prose-narrow">Not every claim here is closed out, and I'd rather say so than round up. I added a real forward-facing camera sensor and an OpenCV ArUco marker detector — genuinely unit tested end to end against synthetically generated marker images — but I have not personally confirmed a rendered frame coming out of a live simulator run.</p>
+      <div class="wall">
+        <h3>The bug I found trying to verify the bug fix</h3>
+        <p>Attempting to confirm it live surfaced a real, separate problem: on a dual-GPU laptop, Gazebo's headless render pipeline enumerated EGL devices and landed on an unsupported integrated GPU instead of the working discrete one — Mesa warned, didn't crash, and every rendering-based sensor produced nothing. Forcing the NVIDIA EGL vendor ICD fixed that cleanly and is committed.</p>
+        <p>Even with a clean render context, the camera topic still hasn't produced a confirmed frame in that environment, while the sibling LiDAR sensor on the same vehicle publishes instantly every time — narrowing it to a camera-specific activation question I haven't run down yet.</p>
+      </div>
+      <p class="prose-narrow"><em class="small-note">The detector, the geometry, and the GPU fix are all real and tested. The one thing I won't claim is a rendered frame I haven't personally seen.</em></p>
+    </section>
+
+    <section id="close" class="close-cta">
+      <span class="section-num">N05</span>
+      <h2 class="section-h">See it fly</h2>
+      <p class="prose-narrow">The live replay steps through a real recorded flight — geofence, LiDAR avoidance, the GPS-denied prism, and the requirement-by-requirement verdicts — next to the vehicle itself, not after the fact.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="/demo/">Watch the replay</a>
+        <a class="btn ghost" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Read the source</a>
+      </div>
+    </section>
+  </article>
+</div>
+<footer>PX4 v1.15 · ROS 2 Humble · Gazebo Harmonic · Micro XRCE-DDS · written by the engineer, not a template.</footer>
+</body>
+</html>
