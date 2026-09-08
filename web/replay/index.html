@@ -84,9 +84,12 @@
   footer a{text-decoration:none;color:var(--muted);}
   footer a:hover{color:var(--mint);}
 
+  .mobile-note{display:none;}
+
   @media(max-width:600px){
     header{flex-wrap:wrap;}
     .actions{flex-direction:column;align-items:stretch;}
+    .mobile-note{display:block;margin:-14px 0 30px;color:var(--amber);font:700 11px/1.5 var(--mono);}
     .btn{justify-content:center;}
   }
 </style>
@@ -122,6 +125,7 @@
       <a class="btn" href="/writeup/">Read the verification log</a>
       <a class="textlink" href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
     </div>
+    <p class="mobile-note">Built desktop-first — the replay works on phones as a fallback, but it's made for a bigger screen.</p>
 
     <div class="proof">
       <div><span class="k">Requirements</span><span class="v">14 named checks</span></div>
