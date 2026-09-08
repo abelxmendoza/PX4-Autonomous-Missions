@@ -564,6 +564,15 @@
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<!-- "Fat line" addon: LineBasicMaterial's linewidth is ignored by WebGL on
+     virtually every platform, so the flight trail and planned route always
+     rendered at 1px regardless of the `linewidth` set on them. Line2 draws
+     actual screen-space quads instead, giving real, visible pixel width. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineSegmentsGeometry.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineGeometry.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineMaterial.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineSegments2.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/Line2.js"></script>
 <script src="../lib.js"></script>
 <script>
 'use strict';
@@ -1028,6 +1037,10 @@ let waypointObjects = []; // meshes + label sprites, cleared between missions
 let trailLine, trailGeo, trailColors, trailPositions, nominalRoute;
 let trailBuiltTo = -1;
 let trailFrameToVert = null;
+// LineMaterial ("fat line") width is computed from a pixel `resolution` —
+// every Line2 material in play needs it refreshed on window resize.
+let trailLineMaterials = [];
+function trailResolution() { return new THREE.Vector2(window.innerWidth, window.innerHeight); }
 let lastHudWriteMs = 0;
 let lastDecisionKey = null;
 let lastLidarObstacle = null;
@@ -1121,6 +1134,7 @@ function clearMissionObjects() {
   waypointObjects = [];
   if (trailLine) scene.remove(trailLine);
   if (nominalRoute) scene.remove(nominalRoute);
+  trailLineMaterials = [];
 }
 
 function countManeuvers(data) {
@@ -1352,9 +1366,12 @@ function buildWaypoints() {
     if (!seen.has(r.wp_index)) {
       seen.add(r.wp_index);
       const pos = toWorld(r.tgt_n, r.tgt_e, r.tgt_d);
+      // Gold/amber glow matches the Gazebo sim's own waypoint markers
+      // (flight_trail.py spawns identical 1.0/0.72/0.05 spheres at every
+      // corner) so the web replay reads the same way the sim does.
       const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.35, 16, 16),
-        new THREE.MeshStandardMaterial({ color:0x3ddc84, emissive:0x0a3a20, transparent:true, opacity:0.85 })
+        new THREE.SphereGeometry(0.4, 20, 20),
+        new THREE.MeshStandardMaterial({ color:0xffb80d, emissive:0x8c5200, emissiveIntensity:1.1, transparent:true, opacity:0.95 })
       );
       marker.position.copy(pos);
       scene.add(marker);
@@ -1394,23 +1411,28 @@ function buildTrail() {
       trailFrameToVert[i] = v - 1;
     }
   }
-  trailGeo = new THREE.BufferGeometry();
-  trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-  trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
-  trailGeo.setDrawRange(0, 0);
+  // Line2/LineMaterial ("fat lines") instead of plain THREE.Line: WebGL
+  // ignores LineBasicMaterial's `linewidth` on virtually every platform, so
+  // the flown trail always rendered at a bare 1px regardless of what was
+  // set here. Line2 draws real screen-space quads, so `linewidth` actually
+  // controls visible pixel width. Progressive reveal-as-you-fly uses
+  // `instanceCount` (each trail segment is one instance) the same way the
+  // old code used `setDrawRange`.
+  trailGeo = new THREE.LineGeometry();
+  trailGeo.setPositions(trailPositions);
+  trailGeo.setColors(trailColors);
+  trailGeo.instanceCount = 0;
   trailBuiltTo = -1;
-  const mat = new THREE.LineBasicMaterial({ vertexColors:true, linewidth:2 });
-  trailLine = new THREE.Line(trailGeo, mat);
+  const mat = new THREE.LineMaterial({ vertexColors:true, linewidth:5, resolution:trailResolution() });
+  trailLineMaterials.push(mat);
+  trailLine = new THREE.Line2(trailGeo, mat);
+  trailLine.computeLineDistances();
   scene.add(trailLine);
 }
 
 function syncTrail(idx) {
   const vert = trailFrameToVert ? trailFrameToVert[idx] : idx;
-  trailGeo.setDrawRange(0, vert + 1);
-  if (trailBuiltTo < 0) {
-    trailGeo.attributes.position.needsUpdate = true;
-    trailGeo.attributes.color.needsUpdate = true;
-  }
+  trailGeo.instanceCount = Math.max(0, vert);
   trailBuiltTo = idx;
 }
 
@@ -1427,9 +1449,18 @@ function buildNominalRoute() {
       previous = key;
     }
   }
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineDashedMaterial({ color:0xffb547, dashSize:0.65, gapSize:0.38, transparent:true, opacity:0.72 });
-  nominalRoute = new THREE.Line(geometry, material);
+  // Solid green fat line matches the Gazebo sim's own planned-route legs
+  // (flight_trail.py spawns 0.15/1.0/0.35 boxes between consecutive
+  // waypoints) — was previously a thin dashed amber THREE.Line, which both
+  // looked backwards next to the now-gold waypoint spheres and rendered at
+  // 1px regardless of its dashSize/opacity settings.
+  const flat = new Float32Array(points.length * 3);
+  points.forEach((p, i) => { flat[i * 3] = p.x; flat[i * 3 + 1] = p.y; flat[i * 3 + 2] = p.z; });
+  const geometry = new THREE.LineGeometry();
+  geometry.setPositions(flat);
+  const material = new THREE.LineMaterial({ color:0x26ff59, linewidth:4, transparent:true, opacity:0.85, resolution:trailResolution() });
+  trailLineMaterials.push(material);
+  nominalRoute = new THREE.Line2(geometry, material);
   nominalRoute.computeLineDistances();
   scene.add(nominalRoute);
 }
@@ -1732,6 +1763,9 @@ function resizeRenderer() {
   orthoCamera.updateProjectionMatrix();
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, MAX_PIXEL_RATIO));
   renderer.setSize(w, h);
+  // LineMaterial computes screen-space line width from this resolution —
+  // stale values after a resize would make the trail/route width wrong.
+  for (const mat of trailLineMaterials) mat.resolution.set(w, h);
 }
 window.addEventListener('resize', resizeRenderer);
 if (window.visualViewport) {
