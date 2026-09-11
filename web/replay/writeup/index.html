@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a1011">
 <title>The Verification Log — Abel Mendoza</title>
-<meta name="description" content="How I found and fixed six real bugs in a GPS-denied drone autonomy stack by actually verifying it against recorded flight logs.">
+<meta name="description" content="I built a drone that flies and avoids obstacles on its own, then proved it actually works by checking every flight against a safety checklist. That process caught six real problems a working demo would have hidden.">
 <link rel="icon" href="../favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
 
 <meta property="og:type" content="article">
 <meta property="og:title" content="The Verification Log">
-<meta property="og:description" content="How I found and fixed six real bugs in a GPS-denied drone autonomy stack by actually verifying it against recorded flight logs.">
+<meta property="og:description" content="I built a drone that flies and avoids obstacles on its own, then proved it actually works by checking every flight against a safety checklist. That process caught six real problems a working demo would have hidden.">
 <meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png">
 <meta property="og:url" content="https://replay-sepia-tau.vercel.app/writeup/">
 <meta name="twitter:card" content="summary_large_image">
@@ -184,164 +184,143 @@
     <div class="rail-title">Waypoints</div>
     <ol>
       <li><a href="#origin"><span class="wp">N00</span>Origin</a></li>
-      <li><a href="#architecture"><span class="wp">N01</span>The stack</a></li>
-      <li><a href="#method"><span class="wp">N02</span>How verification worked</a></li>
-      <li><a href="#findings"><span class="wp">N03</span>Six real bugs</a></li>
-      <li><a href="#wall"><span class="wp">N04</span>Where it hit a wall</a></li>
+      <li><a href="#architecture"><span class="wp">N01</span>What I built</a></li>
+      <li><a href="#method"><span class="wp">N02</span>Why I tested it</a></li>
+      <li><a href="#findings"><span class="wp">N03</span>What I found</a></li>
+      <li><a href="#wall"><span class="wp">N04</span>Still in progress</a></li>
       <li><a href="#close"><span class="wp">N05</span>Try it</a></li>
     </ol>
   </nav>
 
   <article>
     <header class="masthead" id="origin">
-      <div class="eyebrow">Flight-log verified · PX4 + Gazebo Harmonic</div>
+      <div class="eyebrow">Personal Project · Autonomous Drone Software</div>
       <h1 class="title">The Verification Log</h1>
-      <p class="dek">I built a GPS-denied drone autonomy stack, then stopped trusting it and set out to prove it — replaying real recorded flights against named, testable requirements. It found six bugs a demo would never have surfaced.</p>
+      <p class="dek">I built a drone that flies itself and dodges obstacles on its own — then spent just as much effort proving it actually works, the way you'd have to before trusting it with anything real. That process caught six real problems a working demo alone would never have shown.</p>
       <div class="meta-row">
-        <span class="chip">PX4 v1.15</span>
-        <span class="chip">ROS 2 Humble</span>
-        <span class="chip">Gazebo Harmonic</span>
+        <span class="chip">PX4</span>
+        <span class="chip">ROS 2</span>
+        <span class="chip">Gazebo Simulation</span>
         <span class="chip">Python</span>
-        <span class="chip">pytest</span>
-        <a class="chip link" href="/demo/">Live replay ↗</a>
-        <a class="chip link" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+        <span class="chip">Automated Testing</span>
+        <a class="chip link" href="/demo/">Watch it fly ↗</a>
+        <a class="chip link" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">See the code ↗</a>
       </div>
-      <div class="byline">Abel Mendoza <span class="dot"></span> Autonomy &amp; robotics</div>
+      <div class="byline">Abel Mendoza <span class="dot"></span> Autonomy &amp; robotics software</div>
     </header>
 
     <section id="architecture">
       <span class="section-num">N01</span>
-      <h2 class="section-h">A GPS-denied autonomy stack, briefly</h2>
-      <p class="prose-narrow">The vehicle is a simulated x500 quad flying real PX4 offboard control — not a scripted trajectory. A mission executive tracks battery, link quality, and propellant against a resource budget and can degrade the mission before a hard failure forces it to. A LiDAR-backed avoidance layer only ever reacts to live sensor evidence, never to a known map, so a demo can't quietly cheat.</p>
+      <h2 class="section-h">What I built</h2>
+      <p class="prose-narrow">A simulated drone that flies a mission on its own — no joystick, no remote pilot. It uses a live sensor (not a pre-loaded map) to spot obstacles and steer around them in real time. If it loses GPS partway through the flight, it automatically switches to a backup way of tracking where it is. And if it ever strays outside its allowed area, runs low on battery, or loses signal, it recognizes that and lands safely instead of continuing on blind.</p>
 
-      <div class="flow" role="img" aria-label="Mission state flow: preflight, arming, takeoff, hover, move, landing, or failsafe">
-        <span>PREFLIGHT</span><span>ARMING</span><span>TAKEOFF</span><span>HOVER</span><span>MOVE</span><span>LANDING</span><span class="term">FAILSAFE</span>
+      <div class="flow" role="img" aria-label="Mission flow: preflight, arming, takeoff, hover, move, landing, or safe landing">
+        <span>PREFLIGHT</span><span>ARMING</span><span>TAKEOFF</span><span>HOVER</span><span>MOVE</span><span>LANDING</span><span class="term">SAFE LANDING</span>
       </div>
-      <p class="flow-caption">The mission-legality state machine. Every recorded flight's transitions get replayed against this exact graph — an illegal jump is an automatic fail.</p>
-
-      <p class="prose-narrow">Partway through, the vehicle crosses into a GPS-denied prism. <code>EKF2_GPS_CTRL</code> gets zeroed on PX4's own EKF — not a mocked failure, the estimator genuinely loses GNSS — and a simulated visual-odometry bridge takes over as external vision until the vehicle clears the zone.</p>
+      <p class="flow-caption">Every stage a mission moves through — including the automatic fallback if something goes wrong.</p>
 
       <div class="stack-grid">
-        <div class="stack-item"><div class="k">Fence</div><div class="v">Hard keep-in + soft geocage</div></div>
-        <div class="stack-item"><div class="k">Avoidance</div><div class="v">Sensor-only LiDAR sectors</div></div>
-        <div class="stack-item"><div class="k">GPS-denial</div><div class="v">Real EKF2_GPS_CTRL=0</div></div>
-        <div class="stack-item"><div class="k">Backup nav</div><div class="v">Simulated VIO → EV fusion</div></div>
-        <div class="stack-item"><div class="k">Vision</div><div class="v">Real ArUco detection</div></div>
-        <div class="stack-item"><div class="k">Resource mgmt</div><div class="v">NOMINAL→DEGRADED→ABORT</div></div>
+        <div class="stack-item"><div class="k">Boundaries</div><div class="v">Won't fly outside its zone</div></div>
+        <div class="stack-item"><div class="k">Obstacle sense</div><div class="v">Steers around live sensor data</div></div>
+        <div class="stack-item"><div class="k">GPS loss</div><div class="v">Handles a real simulated outage</div></div>
+        <div class="stack-item"><div class="k">Backup navigation</div><div class="v">Switches to a second tracking method</div></div>
+        <div class="stack-item"><div class="k">Vision</div><div class="v">Recognizes ground markers by camera</div></div>
+        <div class="stack-item"><div class="k">Resource watch</div><div class="v">Tracks battery/signal, lands before failure</div></div>
       </div>
     </section>
 
     <section id="method">
       <span class="section-num">N02</span>
-      <h2 class="section-h">Verification, not vibes</h2>
-      <p class="lead prose-narrow">A demo proves a system can look right once. It says nothing about the other ninety-nine runs.</p>
-      <p class="prose-narrow">So every simulated flight gets logged to CSV — state, position, target, sensor evidence, fence status, GPS-denial phase — and a harness replays that log against a table of named requirements: <code>REQ-STATE-01</code>, <code>REQ-GEOFENCE-01</code>, <code>REQ-AVOID-SENSOR-01</code>, and eleven others, each with a severity (<code>MUST</code> or <code>SHOULD</code>) and a plain-English description. The web replay renders the same verdicts next to the flight itself, so a requirement and the exact moment it passed or failed sit on the same screen.</p>
-      <div style="overflow-x:auto;">
-      <table class="verdicts">
-        <thead><tr><th>Requirement</th><th>Checks</th><th>Sample verdict</th></tr></thead>
-        <tbody>
-          <tr><td class="id">REQ-GEOFENCE-01</td><td>Hard fence breach reaches FAILSAFE within the response window</td><td><span class="verdict-pill pass">PASS</span></td></tr>
-          <tr><td class="id">REQ-AVOID-SENSOR-01</td><td>Every avoidance call has fresh LiDAR evidence behind it</td><td><span class="verdict-pill pass">PASS</span></td></tr>
-          <tr><td class="id">REQ-VIO-FUSION-01</td><td>External vision stays fused for the entire GPS-denied window</td><td><span class="verdict-pill pass">PASS</span></td></tr>
-        </tbody>
-      </table>
-      </div>
-      <p class="prose-narrow"><em class="small-note">This is what actually found the bugs below — not code review, not a demo that happened to work. A CLI called <code>vv_replay</code> exits non-zero the moment any MUST requirement fails, so it also runs unattended in CI against committed recordings.</em></p>
+      <h2 class="section-h">Why I didn't just trust the demo</h2>
+      <p class="lead prose-narrow">A demo only proves a system can look right once. It says nothing about the other ninety-nine times.</p>
+      <p class="prose-narrow">So instead of watching it fly and calling it done, I recorded every detail of each flight and checked that recording against a list of specific rules it has to follow — like a safety inspection, run automatically after every single flight. Did it stay in bounds? Did it actually use sensor data before every turn? Did the backup navigation stay active the whole time GPS was out? Every rule gets a plain pass or fail, and the check runs on its own — I don't have to remember to do it.</p>
+      <p class="prose-narrow"><em class="small-note">This process is what actually found the six issues below — not a code review, and not "it looked fine when I watched it." It stops and flags a failure the moment any required safety rule is broken.</em></p>
     </section>
 
     <section id="findings">
       <span class="section-num">N03</span>
-      <h2 class="section-h">Six bugs a working demo hid</h2>
-      <p class="prose-narrow">Each of these flew fine in the simulator. Every one only surfaced once a log got replayed against a specific, named claim about what "fine" means.</p>
+      <h2 class="section-h">Six real problems this caught</h2>
+      <p class="prose-narrow">Every one of these looked completely fine during a normal test flight. Each only surfaced because I checked it against a specific rule instead of trusting that "it flew fine" meant "it's correct."</p>
 
       <div class="finding">
         <div class="finding-head">
           <span class="finding-id">FINDING-01</span>
-          <span class="finding-loc mono">mission_logic.py · segment_hits_expanded_aabb</span>
+          <span class="finding-loc mono">Obstacle avoidance</span>
         </div>
-        <h3>A path running parallel to an obstacle registered as a hit</h3>
-        <p>The collision check is a Liang-Barsky slab test over two axes. When a path segment ran exactly parallel to one axis of an obstacle's box — dx or dy effectively zero — the loop fell through into computing a bogus intersection distance instead of returning "no hit."</p>
-        <pre><span class="cm"># before: falls through to a bogus hit</span>
-if abs(dist) &lt; 1e-12:
-    <span class="rm">break</span>
-
-<span class="cm"># after: parallel + outside the slab genuinely can't hit</span>
-if abs(dist) &lt; 1e-12:
-    if p0 &lt; minimum or p0 &gt; maximum:
-        <span class="add">return False, dist_start, n0, e0</span>
-    continue</pre>
-        <div class="impact"><b>Why it mattered</b>A straight leg running alongside — not into — an obstacle could get flagged as a collision, which either forces an unnecessary reroute or, worse, teaches you to distrust a correct route.</div>
+        <h3>A safe flight path was wrongly flagged as a crash</h3>
+        <p>When the drone flew in a straight line right alongside an obstacle — not into it — the collision check sometimes mistakenly counted that as a hit, which would force an unnecessary detour around something it was never actually going to touch.</p>
+        <div class="impact"><b>Why it mattered</b>A safety check that cries wolf on a genuinely safe path teaches you to stop trusting it — more dangerous than not having the check at all.</div>
       </div>
 
       <div class="finding">
         <div class="finding-head">
           <span class="finding-id">FINDING-02</span>
-          <span class="finding-loc mono">vv_harness.py · check_sensor_backed_avoidance</span>
+          <span class="finding-loc mono">Sensor logic</span>
         </div>
-        <h3>"Confirmed clear" was mistaken for "no data"</h3>
-        <p>The LiDAR sector publisher uses <code>-1.0</code> to mean "I checked this direction and there's nothing there" — a fresh, valid, genuinely good reading. The V&amp;V check treated any range <code>&lt; 0.0</code> as missing evidence, so steering toward the single safest possible direction — a sector confirmed clear — was flagged as unverified.</p>
-        <div class="impact"><b>Why it mattered</b>A safety check that penalizes the correct behavior teaches you to stop trusting the safety check, which is worse than not having one.</div>
+        <h3>"All clear" was being read as "no data"</h3>
+        <p>The obstacle sensor has a specific signal that means "I checked this direction, it's genuinely clear." My safety checklist was mistakenly treating that exact signal as if the sensor hadn't reported anything at all — so steering toward the direction confirmed safest got flagged as unverified.</p>
+        <div class="impact"><b>Why it mattered</b>Same problem as above: a check that penalizes the right answer undermines trust in the whole safety system.</div>
       </div>
 
       <div class="finding">
         <div class="finding-head">
           <span class="finding-id">FINDING-03</span>
-          <span class="finding-loc mono">offboard_mission.py · _control_loop</span>
+          <span class="finding-loc mono">Flight logging</span>
         </div>
-        <h3>The most safety-relevant event never made it into the log</h3>
-        <p>On the exact tick a GPS-denial failsafe fired, <code>_control_loop</code> returned early — before the line that writes the CSV row. The event is one-shot; it's <code>None</code> on every tick after. The row that should have recorded "this is why we failsafed" simply never existed.</p>
-        <p><em class="small-note">Caught by writing a node-level test that forces the exact conditions, then verified for real: I temporarily reverted the fix and confirmed the new test actually failed before restoring it — proof the test catches the regression, not just that it passes today.</em></p>
-        <div class="impact"><b>Why it mattered</b>A failsafe that isn't in the log didn't verifiably happen, from an auditor's perspective — indistinguishable from a failsafe that never fired at all.</div>
+        <h3>The most important safety event wasn't being recorded</h3>
+        <p>At the exact moment the drone triggered its GPS-loss safety response, the logging code exited early — before it wrote that event down. So the one moment that most needed a record of "here's why the drone reacted" simply wasn't in the log.</p>
+        <p><em class="small-note">I confirmed this was a real, catchable bug by deliberately re-breaking it, watching my test correctly fail, then fixing it again — not just writing a test that happened to pass.</em></p>
+        <div class="impact"><b>Why it mattered</b>A safety response that isn't logged is indistinguishable from one that never happened, if anyone ever needs to review what the drone actually did.</div>
       </div>
 
       <div class="finding">
         <div class="finding-head">
           <span class="finding-id">FINDING-04</span>
-          <span class="finding-loc mono">offboard_mission.py · FAILSAFE handler</span>
+          <span class="finding-loc mono">Failsafe handling</span>
         </div>
-        <h3>Two failsafe reasons, one parameter checked</h3>
-        <p>The FAILSAFE state handler needs to route differently depending on <em>why</em> it fired — a geofence breach and a GPS-denial event have different configured actions. The handler was reading <code>geofence_action</code> for both cases, so a GPS-denial failsafe silently obeyed the geofence's policy instead of its own.</p>
-        <div class="impact"><b>Why it mattered</b>The parameter you set for one failure mode quietly governed a different one — the kind of bug that only shows up once both failure modes actually occur in the same flight.</div>
+        <h3>Two different emergencies, but only one setting was being checked</h3>
+        <p>The drone has separate settings for "what to do if I leave my boundary" versus "what to do if I lose GPS" — but the code was checking the boundary setting for both. A GPS emergency was silently following the wrong rule.</p>
+        <div class="impact"><b>Why it mattered</b>A setting configured for one type of failure was quietly controlling a completely different one — the kind of bug that only shows up once both failures happen for real.</div>
       </div>
 
       <div class="finding">
         <div class="finding-head">
           <span class="finding-id">FINDING-05</span>
-          <span class="finding-loc mono">vio_bridge.py</span>
+          <span class="finding-loc mono">GPS backup system</span>
         </div>
-        <h3>The GPS backup was never actually tested against error</h3>
-        <p>The simulated visual-odometry source read Gazebo's exact ground-truth pose and republished it as "external vision," with a fixed, sensor-spec covariance that had no relationship to the (zero) actual error in the data. Every GPS-denied flight was backed by a positioning source that literally could not be wrong.</p>
-        <p>I added a bounded, mean-reverting random walk — real drift, clamped the way a re-anchoring VIO system's error is, plus a covariance that honestly grows with the accumulated bias instead of staying fixed.</p>
-        <div class="impact"><b>Why it mattered</b>This wasn't a bug that broke something — it was a gap that meant nothing had broken yet. The entire GPS-denial pipeline had never been exercised against a position source that could plausibly disagree with reality.</div>
+        <h3>The GPS backup had never actually been tested against a wrong answer</h3>
+        <p>The simulated backup positioning system was quietly reading the drone's exact, perfect position and reporting that as its own reading — meaning it could never be wrong. So the entire "what happens when GPS goes out" scenario had never really been tested against realistic, imperfect backup data.</p>
+        <p>I rebuilt it to include realistic drift and error, the way an actual backup sensor behaves.</p>
+        <div class="impact"><b>Why it mattered</b>This wasn't something broken — it was a safety feature that had never really been put to the test. Looking safe and being tested are two different things.</div>
       </div>
 
       <div class="finding">
         <div class="finding-head">
           <span class="finding-id">FINDING-06</span>
-          <span class="finding-loc mono">.github/workflows/unit-tests.yml</span>
+          <span class="finding-loc mono">Automated testing setup</span>
         </div>
-        <h3>Three test files existed and ran exactly nowhere</h3>
-        <p><code>test_lidar_sectors.py</code>, <code>test_localization_logic.py</code>, and <code>test_vio_bridge.py</code> — pure Python, no simulator dependency, free to run in any CI job — had simply never been added to the CI invocation. They could regress silently forever.</p>
-        <div class="impact"><b>Why it mattered</b>A test that exists but never runs is a false sense of coverage — worse in a specific way than no test at all, because it looks like safety from the outside.</div>
+        <h3>Three safety tests existed but were never actually being run</h3>
+        <p>I had written three test files that needed no special setup to run — but they'd never been wired into the automatic testing process. They could have silently broken and nobody would have known.</p>
+        <div class="impact"><b>Why it mattered</b>A test that exists but never runs gives false confidence. It looks like coverage from the outside while providing none.</div>
       </div>
     </section>
 
     <section id="wall">
       <span class="section-num">N04</span>
-      <h2 class="section-h">Where verification hit a wall</h2>
-      <p class="prose-narrow">Not every claim here is closed out, and I'd rather say so than round up. I added a real forward-facing camera sensor and an OpenCV ArUco marker detector — genuinely unit tested end to end against synthetically generated marker images — but I have not personally confirmed a rendered frame coming out of a live simulator run.</p>
+      <h2 class="section-h">What I'm still finishing</h2>
+      <p class="prose-narrow">I'd rather be upfront about what isn't done than round up. I built and tested a camera-based marker detector — it correctly recognizes markers in isolated tests — but I haven't yet confirmed it working live, end-to-end, inside the full simulator.</p>
       <div class="wall">
-        <h3>The bug I found trying to verify the bug fix</h3>
-        <p>Attempting to confirm it live surfaced a real, separate problem: on a dual-GPU laptop, Gazebo's headless render pipeline enumerated EGL devices and landed on an unsupported integrated GPU instead of the working discrete one — Mesa warned, didn't crash, and every rendering-based sensor produced nothing. Forcing the NVIDIA EGL vendor ICD fixed that cleanly and is committed.</p>
-        <p>Even with a clean render context, the camera topic still hasn't produced a confirmed frame in that environment, while the sibling LiDAR sensor on the same vehicle publishes instantly every time — narrowing it to a camera-specific activation question I haven't run down yet.</p>
+        <h3>A real hardware quirk I found along the way</h3>
+        <p>Trying to test it live surfaced a separate, genuine problem: on a laptop with two graphics cards, the simulator's rendering was silently defaulting to the wrong, weaker one and producing no camera image at all. I tracked that down and fixed the underlying configuration.</p>
+        <p>Even after that fix, I haven't yet gotten a confirmed live image from the camera in that environment, even though a different sensor on the same drone works instantly — so there's one more specific issue left to track down.</p>
       </div>
-      <p class="prose-narrow"><em class="small-note">The detector, the geometry, and the GPU fix are all real and tested. The one thing I won't claim is a rendered frame I haven't personally seen.</em></p>
+      <p class="prose-narrow"><em class="small-note">The detector itself is built and tested. The only thing I won't claim is a live camera result I haven't personally seen work.</em></p>
     </section>
 
     <section id="close" class="close-cta">
       <span class="section-num">N05</span>
       <h2 class="section-h">See it fly</h2>
-      <p class="prose-narrow">The live replay steps through a real recorded flight — geofence, LiDAR avoidance, the GPS-denied prism, and the requirement-by-requirement verdicts — next to the vehicle itself, not after the fact.</p>
+      <p class="prose-narrow">The live replay steps through a real recorded flight — obstacle avoidance, boundary limits, the GPS-outage response, and the safety checklist results — right next to the drone itself.</p>
       <div class="cta-row">
         <a class="btn primary" href="/demo/">Watch the replay</a>
         <a class="btn ghost" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Read the source</a>
@@ -349,6 +328,6 @@ if abs(dist) &lt; 1e-12:
     </section>
   </article>
 </div>
-<footer>PX4 v1.15 · ROS 2 Humble · Gazebo Harmonic · Micro XRCE-DDS · written by the engineer, not a template.</footer>
+<footer>Built and tested end-to-end by one engineer — not a template.</footer>
 </body>
 </html>
