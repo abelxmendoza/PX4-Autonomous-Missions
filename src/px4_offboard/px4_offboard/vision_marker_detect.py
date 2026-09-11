@@ -73,8 +73,9 @@ def detect_largest_marker(
 
     best_idx = max(range(len(corners)), key=lambda i: cv2.contourArea(corners[i][0]))
     pts = corners[best_idx][0]
+    # ids[i] is shape (1,) on OpenCV <5.0, a bare scalar on 5.0+; np.ravel handles both.
     return MarkerDetection(
-        marker_id=int(ids[best_idx][0]),
+        marker_id=int(np.ravel(ids[best_idx])[0]),
         center_x_px=float(pts[:, 0].mean()),
         center_y_px=float(pts[:, 1].mean()),
         side_px=float(np.linalg.norm(pts[0] - pts[1])),

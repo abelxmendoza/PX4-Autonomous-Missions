@@ -14,3 +14,7 @@ demo_artifacts/
 # PX4's own repos — cloned per README setup, not vendored here
 src/px4_msgs/
 src/px4_ros_com/
+
+# macOS local dev venv (no ROS/Gazebo — see pure-python dev setup)
+.venv-mac/
+web/replay/node_modules/
