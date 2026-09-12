@@ -1363,29 +1363,29 @@ missionSelect.addEventListener('change', () => {
 let totalWaypoints = 0;
 
 function buildWaypoints() {
-  const seen = new Set();
+  // missionWaypoints() (lib.js) recovers the true per-waypoint target —
+  // naively taking the first tgt_* per wp_index put markers at avoidance
+  // setpoints whenever a waypoint transition happened mid-maneuver.
+  const waypoints = missionWaypoints(rows);
   let n = 1;
-  for (const r of rows) {
-    if (!seen.has(r.wp_index)) {
-      seen.add(r.wp_index);
-      const pos = toWorld(r.tgt_n, r.tgt_e, r.tgt_d);
-      // Gold/amber glow matches the Gazebo sim's own waypoint markers
-      // (flight_trail.py spawns identical 1.0/0.72/0.05 spheres at every
-      // corner) so the web replay reads the same way the sim does.
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 20, 20),
-        new THREE.MeshStandardMaterial({ color:0xffb80d, emissive:0x8c5200, emissiveIntensity:1.1, transparent:true, opacity:0.95 })
-      );
-      marker.position.copy(pos);
-      scene.add(marker);
-      const label = makeLabelSprite('WP' + n);
-      label.position.copy(pos).add(new THREE.Vector3(0, 1.1, 0));
-      scene.add(label);
-      waypointObjects.push(marker, label);
-      n++;
-    }
+  for (const wp of waypoints) {
+    const pos = toWorld(wp.n, wp.e, wp.d);
+    // Gold/amber glow matches the Gazebo sim's own waypoint markers
+    // (flight_trail.py spawns identical 1.0/0.72/0.05 spheres at every
+    // corner) so the web replay reads the same way the sim does.
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.4, 20, 20),
+      new THREE.MeshStandardMaterial({ color:0xffb80d, emissive:0x8c5200, emissiveIntensity:1.1, transparent:true, opacity:0.95 })
+    );
+    marker.position.copy(pos);
+    scene.add(marker);
+    const label = makeLabelSprite('WP' + n);
+    label.position.copy(pos).add(new THREE.Vector3(0, 1.1, 0));
+    scene.add(label);
+    waypointObjects.push(marker, label);
+    n++;
   }
-  totalWaypoints = seen.size;
+  totalWaypoints = waypoints.length;
 }
 
 function buildTrail() {
@@ -1440,18 +1440,11 @@ function syncTrail(idx) {
 }
 
 function buildNominalRoute() {
-  const points = [toWorld(rows[0].north, rows[0].east, rows[0].down)];
-  let previous = null;
-  for (const r of rows) {
-    const n = Number.isFinite(r.nominal_n) ? r.nominal_n : r.tgt_n;
-    const e = Number.isFinite(r.nominal_e) ? r.nominal_e : r.tgt_e;
-    const d = Number.isFinite(r.nominal_d) ? r.nominal_d : r.tgt_d;
-    const key = `${r.wp_index}:${n}:${e}:${d}`;
-    if (key !== previous) {
-      points.push(toWorld(n, e, d));
-      previous = key;
-    }
-  }
+  // nominalRoutePoints() (lib.js) recovers the planned waypoint corridor.
+  // The old per-row fallback to tgt_* meant legacy avoidance recordings
+  // (no nominal_* columns) drew the green "planned" path through every
+  // reactive-avoidance setpoint — a dense scribble instead of the plan.
+  const points = nominalRoutePoints(rows).map(p => toWorld(p.n, p.e, p.d));
   // Solid green fat line matches the Gazebo sim's own planned-route legs
   // (flight_trail.py spawns 0.15/1.0/0.35 boxes between consecutive
   // waypoints) — was previously a thin dashed amber THREE.Line, which both

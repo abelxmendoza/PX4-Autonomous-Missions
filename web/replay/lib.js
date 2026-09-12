@@ -140,10 +140,63 @@ function parseCsv(text) {
   return out;
 }
 
+// Planned-route recovery from a flight log. Newer offboard_mission.py
+// recordings carry explicit nominal_n/e/d — the un-avoided waypoint target.
+// Legacy recordings only have tgt_*, which while reactive avoidance is
+// steering (`obstacle` non-empty) is the per-sample avoidance setpoint, not
+// the plan: building the green route from raw tgt_* on those logs drew a
+// dense ~200-segment scribble tracing the avoidance maneuver instead of the
+// waypoint corridor. Recover the true corridor by picking, per waypoint
+// index (in first-seen order): nominal_* when present, otherwise tgt_* from
+// the first sample where avoidance was inactive, otherwise — waypoint flown
+// entirely under avoidance — the last tgt_* seen for it as a best effort.
+function missionWaypoints(rows) {
+  const order = [];
+  const byWp = new Map();
+  for (const r of rows) {
+    let slot = byWp.get(r.wp_index);
+    if (!slot) {
+      slot = { wpIndex: r.wp_index, point: null, fallback: null };
+      byWp.set(r.wp_index, slot);
+      order.push(slot);
+    }
+    if (!slot.point) {
+      if (Number.isFinite(r.nominal_n) && Number.isFinite(r.nominal_e) && Number.isFinite(r.nominal_d)) {
+        slot.point = { n: r.nominal_n, e: r.nominal_e, d: r.nominal_d };
+      } else if (!r.obstacle && Number.isFinite(r.tgt_n) && Number.isFinite(r.tgt_e) && Number.isFinite(r.tgt_d)) {
+        slot.point = { n: r.tgt_n, e: r.tgt_e, d: r.tgt_d };
+      }
+    }
+    if (Number.isFinite(r.tgt_n) && Number.isFinite(r.tgt_e) && Number.isFinite(r.tgt_d)) {
+      slot.fallback = { n: r.tgt_n, e: r.tgt_e, d: r.tgt_d };
+    }
+  }
+  const out = [];
+  for (const slot of order) {
+    const p = slot.point || slot.fallback;
+    if (p) out.push({ wpIndex: slot.wpIndex, n: p.n, e: p.e, d: p.d });
+  }
+  return out;
+}
+
+// Green planned-route polyline in NED: launch position followed by the
+// waypoint corridor, with consecutive duplicate legs collapsed (the final
+// hover + land waypoints share coordinates).
+function nominalRoutePoints(rows) {
+  if (!rows.length) return [];
+  const points = [{ n: rows[0].north, e: rows[0].east, d: rows[0].down }];
+  for (const wp of missionWaypoints(rows)) {
+    const prev = points[points.length - 1];
+    if (wp.n === prev.n && wp.e === prev.e && wp.d === prev.d) continue;
+    points.push({ n: wp.n, e: wp.e, d: wp.d });
+  }
+  return points;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE,
     COURSE_SURFACE, COURSE_BEACONS, COURSE_OBSTACLES, rgb01ToHex,
-    gpsDeniedWorldBox, gpsDeniedLabelPos,
+    gpsDeniedWorldBox, gpsDeniedLabelPos, missionWaypoints, nominalRoutePoints,
   };
 }

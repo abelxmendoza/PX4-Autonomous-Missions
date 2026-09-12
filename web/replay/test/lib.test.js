@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox,
   gpsDeniedLabelPos, COURSE_OBSTACLES, rgb01ToHex,
+  missionWaypoints, nominalRoutePoints,
 } from '../lib.js';
 
 const FULL_HEADER =
@@ -205,5 +208,99 @@ describe('parseCsv — malformed input is rejected, not silently corrupted', () 
 
   it('does not throw on a completely empty string', () => {
     expect(() => parseCsv('')).not.toThrow();
+  });
+});
+
+// Legacy schema (no nominal_* columns) — the shipped reactive-avoidance
+// recordings use this format, where tgt_* is the avoidance setpoint
+// whenever `obstacle` is non-empty.
+const LEGACY_HEADER =
+  'time,state,north,east,down,tgt_n,tgt_e,tgt_d,obstacle,wp_index,geocage,geofence,inside,caged';
+
+function legacyRow({ north = 0, east = 0, down = -5, tgt = [10, 0, -5], obstacle = '', wp = 1 }) {
+  return `10:00:00,MOVE,${north},${east},${down},${tgt[0]},${tgt[1]},${tgt[2]},${obstacle},${wp},1,1,1,0`;
+}
+
+function legacyCsv(rows) {
+  return [LEGACY_HEADER, ...rows].join('\n');
+}
+
+describe('missionWaypoints / nominalRoutePoints — planned-route recovery', () => {
+  it('ignores avoidance setpoints on legacy logs (no nominal_* columns)', () => {
+    const rows = parseCsv(legacyCsv([
+      legacyRow({ north: 0, east: 0, tgt: [5, -6, -5], wp: 1 }),
+      // Reactive avoidance active: tgt_* is a per-sample dodge, not the plan.
+      legacyRow({ north: 4, east: -5, tgt: [7.1, -4.1, -5.1], obstacle: 'front', wp: 2 }),
+      legacyRow({ north: 5, east: -4, tgt: [8.3, -3.2, -5.2], obstacle: 'right', wp: 2 }),
+      legacyRow({ north: 9, east: -6, tgt: [15, -6, -5], wp: 2 }),
+      legacyRow({ north: 15, east: -6, tgt: [18, 0, -5], wp: 3 }),
+    ]));
+    const wps = missionWaypoints(rows);
+    expect(wps).toEqual([
+      { wpIndex: 1, n: 5, e: -6, d: -5 },
+      { wpIndex: 2, n: 15, e: -6, d: -5 },
+      { wpIndex: 3, n: 18, e: 0, d: -5 },
+    ]);
+    const route = nominalRoutePoints(rows);
+    // Launch position followed by the clean corridor — no avoidance points.
+    expect(route).toEqual([
+      { n: 0, e: 0, d: -5 },
+      { n: 5, e: -6, d: -5 },
+      { n: 15, e: -6, d: -5 },
+      { n: 18, e: 0, d: -5 },
+    ]);
+  });
+
+  it('prefers nominal_* on modern logs even while avoidance is active', () => {
+    const rows = parseCsv(csv([
+      fullRow({ wp_index: '1', obstacle: 'front', tgt_n: '7.1', tgt_e: '-4.1', tgt_d: '-5.1',
+        nominal_n: '5.0', nominal_e: '-6.0', nominal_d: '-5.0' }),
+      fullRow({ wp_index: '2', obstacle: '', tgt_n: '15.0', tgt_e: '-6.0', tgt_d: '-5.0',
+        nominal_n: '15.0', nominal_e: '-6.0', nominal_d: '-5.0' }),
+    ]));
+    expect(missionWaypoints(rows)).toEqual([
+      { wpIndex: 1, n: 5, e: -6, d: -5 },
+      { wpIndex: 2, n: 15, e: -6, d: -5 },
+    ]);
+  });
+
+  it('falls back to the last tgt_* for a waypoint flown entirely under avoidance', () => {
+    const rows = parseCsv(legacyCsv([
+      legacyRow({ tgt: [5, -6, -5], wp: 1 }),
+      legacyRow({ tgt: [7.1, -4.1, -5.1], obstacle: 'front', wp: 2 }),
+      legacyRow({ tgt: [14.8, -5.9, -5.0], obstacle: 'right', wp: 2 }),
+      legacyRow({ tgt: [18, 0, -5], wp: 3 }),
+    ]));
+    expect(missionWaypoints(rows)[1]).toEqual({ wpIndex: 2, n: 14.8, e: -5.9, d: -5 });
+  });
+
+  it('collapses consecutive duplicate legs (final hover + land share coordinates)', () => {
+    const rows = parseCsv(legacyCsv([
+      legacyRow({ tgt: [50, 0, -5], wp: 8 }),
+      legacyRow({ tgt: [50, 0, -5], wp: 9 }),
+    ]));
+    expect(missionWaypoints(rows)).toHaveLength(2);
+    const route = nominalRoutePoints(rows);
+    expect(route.filter(p => p.n === 50 && p.e === 0 && p.d === -5)).toHaveLength(1);
+  });
+
+  it('returns an empty route for an empty log', () => {
+    expect(nominalRoutePoints([])).toEqual([]);
+    expect(missionWaypoints([])).toEqual([]);
+  });
+
+  it('recovers a clean corridor from the shipped reactive-avoidance recording', () => {
+    const csvPath = fileURLToPath(new URL('../data/mission_full_avoidance.csv', import.meta.url));
+    const rows = parseCsv(readFileSync(csvPath, 'utf8'));
+    // 214 of 410 samples in this legacy recording are avoidance-active with
+    // per-sample tgt_* setpoints; the recovered plan must be the 9-waypoint
+    // corridor, not a dense avoidance polyline.
+    const wps = missionWaypoints(rows);
+    expect(wps.map(w => [w.n, w.e, w.d])).toEqual([
+      [5, -6, -5], [15, -6, -5], [18, 0, -5], [24, 0, -5], [32, 0, -5],
+      [43, 0, -5], [46, 8, -5], [50, 0, -5], [50, 0, -5],
+    ]);
+    const route = nominalRoutePoints(rows);
+    expect(route.length).toBeLessThanOrEqual(10);
   });
 });
