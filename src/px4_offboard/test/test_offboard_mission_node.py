@@ -104,6 +104,45 @@ def test_attitude_callback_recovers_known_yaw(node):
     assert node.current_pitch == pytest.approx(0.0, abs=1e-6)
 
 
+def test_climb_avoidance_target_is_locked_not_recomputed_each_tick(node):
+    # Regression for a real SITL bug: the climb-avoidance branch recomputed
+    # blocking height and climb-vs-sidestep direction from the *current*
+    # position on every tick. Since the vehicle's position that tick was
+    # itself the result of chasing the previous tick's decision, a small
+    # oscillation could feed back into the next tick's decision — observed
+    # in a real flight as the setpoint zig-zagging (including a commanded
+    # negative altitude) until the stuck-in-avoidance failsafe landed it.
+    # The fix decides once per obstacle encounter and holds that decision.
+    # Both current positions below share the same fixed target and "front"
+    # classification, but the straight-line segment to it clips a
+    # *different* real obstacle from OBSTACLE_BOXES in each case — OB1
+    # (11.5 m tall, forces can_climb=False -> sidestep-right, since no live
+    # sensor data makes _lateral_blocked always read clear) from due south,
+    # vs. only OB2 (6 m tall, can_climb=True -> climb) from due east. An
+    # unlocked recomputation genuinely picks a different response for each;
+    # this is what makes the test able to fail.
+    node.avoidance_strategy = "climb"
+    node.obstacle_source = "hybrid"
+    target = [20.0, -6.0, -3.0]
+
+    node.current_x, node.current_y, node.current_z = 0.0, -6.0, -3.0
+    node._apply_avoidance(list(target), "front")
+    first_target = node._climb_target
+    assert first_target is not None
+    assert first_target[2] == -3.0, "expected the sidestep branch (no altitude change)"
+
+    # Move the vehicle to where a fresh computation would choose climb
+    # instead, and call again with the same obstacle classification: the
+    # locked decision must not change.
+    node.current_x, node.current_y, node.current_z = 0.0, 20.0, -3.4
+    node._apply_avoidance(list(target), "front")
+    assert node._climb_target == first_target
+
+    # Once the obstacle clears, the lock releases for a future encounter.
+    node._apply_avoidance(list(target), None)
+    assert node._climb_target is None
+
+
 def test_log_row_disables_logging_on_write_failure(node):
     # Regression test for the OSError guard added around _log_writer.writerow
     # / _log_file.flush() — a full-disk mid-flight must not propagate out of

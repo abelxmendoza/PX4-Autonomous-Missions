@@ -272,6 +272,12 @@ class OffboardMission(Node):
         self._sensor_leg_target = None
         self._bypassed_obstacles = set()
         self._last_bypass_distance = float("inf")
+        # Climb/lateral avoidance: decided once per obstacle encounter and
+        # then held fixed (see _apply_avoidance's climb branch). Recomputing
+        # climb-vs-left-vs-right every tick from the live position let small
+        # position oscillations feed back into the next tick's decision —
+        # a self-reinforcing instability, not a stale-obstacle read.
+        self._climb_target: list | None = None
 
         self._state_machine = MissionStateMachine()
         self._counter = 0
@@ -1238,6 +1244,7 @@ class OffboardMission(Node):
             self._route_event_t = time.monotonic()
             self._last_wp_progress_t = time.monotonic()
             self._avoid_active_t = 0.0
+            self._climb_target = None
             if self._wp_index >= len(self.waypoints):
                 self._transition(State.LANDING)
                 return list(self.waypoints[-1])
@@ -1536,6 +1543,7 @@ class OffboardMission(Node):
 
         if obs is None:
             self._avoid_active_t = 0.0
+            self._climb_target = None
             self._smooth_target = list(adjusted)
             self._pub_avoiding.publish(Bool(data=False))
             return adjusted
@@ -1545,51 +1553,67 @@ class OffboardMission(Node):
         self._pub_avoiding.publish(Bool(data=True))
         self.get_logger().warn(f"AVOID {obs}", throttle_duration_sec=1.0)
 
-        blocking_h = (
-            self.max_alt
-            if self.obstacle_source == "sensor_only"
-            else self._blocking_height(target)
-        )
-        climb_alt = blocking_h + self.climb_clearance
-        can_climb = climb_alt <= self.max_alt
+        if self._climb_target is None:
+            # Decide once per obstacle encounter, from the position where the
+            # obstacle was first detected, and hold it — recomputing this
+            # every tick from the (then-moving) current position let a small
+            # setpoint oscillation feed back into the next tick's blocking-
+            # height/direction check, which is what produced the runaway
+            # zig-zag this replaced.
+            blocking_h = (
+                self.max_alt
+                if self.obstacle_source == "sensor_only"
+                else self._blocking_height(target)
+            )
+            climb_alt = blocking_h + self.climb_clearance
+            can_climb = climb_alt <= self.max_alt
+            decided = list(adjusted)
 
-        if obs == "front":
-            if self.avoidance_strategy == "climb":
-                if can_climb:
-                    adjusted[2] = -climb_alt
-                elif not self._lateral_blocked("right"):
-                    adjusted[1] += self.sidestep_m
-                elif not self._lateral_blocked("left"):
-                    # East escape is blocked too — try the other side
-                    # instead of driving into a confirmed obstacle.
-                    adjusted[1] -= self.sidestep_m
+            if obs == "front":
+                if self.avoidance_strategy == "climb":
+                    if can_climb:
+                        decided[2] = -climb_alt
+                    elif not self._lateral_blocked("right"):
+                        decided[1] += self.sidestep_m
+                    elif not self._lateral_blocked("left"):
+                        # East escape is blocked too — try the other side
+                        # instead of driving into a confirmed obstacle.
+                        decided[1] -= self.sidestep_m
+                    else:
+                        # Too tall to climb and blocked on every side we can
+                        # check — a lateral move here would clip something.
+                        # Hold position instead; the stuck-in-avoidance
+                        # watchdog will trigger a safe failsafe landing if
+                        # this doesn't clear on its own.
+                        decided[0] = self.current_x
+                        decided[1] = self.current_y
+                        decided[2] = self.current_z
+                        self.get_logger().error(
+                            "AVOID front: boxed in on all sides, holding "
+                            "position",
+                            throttle_duration_sec=2.0,
+                        )
+            elif obs == "left":
+                # Escaping "left" means steering east; if the right side is
+                # also blocked, that escape would clip a second obstacle —
+                # climb over instead, when there's altitude room to do so.
+                if can_climb and self._lateral_blocked("right"):
+                    decided[2] = -climb_alt
                 else:
-                    # Too tall to climb and blocked on every side we can
-                    # check — a lateral move here would clip something.
-                    # Hold position instead; the stuck-in-avoidance
-                    # watchdog will trigger a safe failsafe landing if
-                    # this doesn't clear on its own.
-                    adjusted[0] = self.current_x
-                    adjusted[1] = self.current_y
-                    adjusted[2] = self.current_z
-                    self.get_logger().error(
-                        "AVOID front: boxed in on all sides, holding "
-                        "position",
-                        throttle_duration_sec=2.0,
-                    )
-        elif obs == "left":
-            # Escaping "left" means steering east; if the right side is
-            # also blocked, that escape would clip a second obstacle —
-            # climb over instead, when there's altitude room to do so.
-            if can_climb and self._lateral_blocked("right"):
-                adjusted[2] = -climb_alt
-            else:
-                adjusted[1] += self.sidestep_m
-        elif obs == "right":
-            if can_climb and self._lateral_blocked("left"):
-                adjusted[2] = -climb_alt
-            else:
-                adjusted[1] -= self.sidestep_m
+                    decided[1] += self.sidestep_m
+            elif obs == "right":
+                if can_climb and self._lateral_blocked("left"):
+                    decided[2] = -climb_alt
+                else:
+                    decided[1] -= self.sidestep_m
+
+            self._climb_target = decided
+            self.get_logger().warn(
+                "AVOID target locked -> "
+                f"N={decided[0]:.1f} E={decided[1]:.1f} alt={-decided[2]:.1f}"
+            )
+
+        adjusted = list(self._climb_target)
 
         # Smooth only while avoiding — prevents setpoint step jumps
         a = self.avoid_smooth
