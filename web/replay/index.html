@@ -58,8 +58,9 @@
   p.pitch b{color:var(--text);}
 
   .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:30px;}
-  .badges span{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;
-    font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);}
+  .badges span,.badges a{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;
+    font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);
+    text-decoration:none;}
 
   .actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px;margin-bottom:36px;}
   .btn{display:inline-flex;align-items:center;gap:8px;min-height:50px;padding:0 22px;
@@ -117,7 +118,7 @@
     <p class="pitch">This project is a real PX4 + Gazebo Harmonic autonomy stack — reactive obstacle avoidance, geofencing, and a GPS-denied navigation pipeline that hands off to simulated visual odometry mid-flight. It's backed by an offline verification harness that replays every recorded flight against named, testable requirements — <b>the same discipline a real acceptance review would use</b>, not a demo that just happened to work once.</p>
 
     <div class="badges">
-      <span>PX4</span><span>ROS 2</span><span>Gazebo Harmonic</span><span>Python</span><span>OpenCV</span><span>Three.js</span>
+      <a href="https://px4.io/" target="_blank" rel="noopener noreferrer">PX4</a><a href="https://www.ros.org/" target="_blank" rel="noopener noreferrer">ROS 2</a><a href="https://gazebosim.org/" target="_blank" rel="noopener noreferrer">Gazebo Harmonic</a><a href="https://www.python.org/" target="_blank" rel="noopener noreferrer">Python</a><a href="https://opencv.org/" target="_blank" rel="noopener noreferrer">OpenCV</a><a href="https://threejs.org/" target="_blank" rel="noopener noreferrer">Three.js</a>
     </div>
 
     <div class="actions">

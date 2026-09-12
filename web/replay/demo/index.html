@@ -227,7 +227,7 @@
   .landing-pitch{margin:0 0 22px;font:14px/1.65 var(--display);color:var(--muted);max-width:58ch;}
   .landing-pitch b{color:var(--text);}
   .landing-badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;}
-  .landing-badges span{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);}
+  .landing-badges span,.landing-badges a{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);text-decoration:none;}
   .landing-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin-bottom:26px;}
   .landing-actions button{min-height:50px;padding:0 22px;font-size:13px;}
   .landing-actions a{color:var(--text);text-decoration:none;font:700 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--amber);padding-bottom:3px;white-space:nowrap;}
@@ -386,7 +386,7 @@
       offline flight-log verification that checks every recorded flight against
       the same requirements a real acceptance review would use.</p>
     <div class="landing-badges">
-      <span>PX4</span><span>ROS 2</span><span>Gazebo</span><span>Python</span><span>Three.js</span>
+      <a href="https://px4.io/" target="_blank" rel="noopener noreferrer">PX4</a><a href="https://www.ros.org/" target="_blank" rel="noopener noreferrer">ROS 2</a><a href="https://gazebosim.org/" target="_blank" rel="noopener noreferrer">Gazebo</a><a href="https://www.python.org/" target="_blank" rel="noopener noreferrer">Python</a><a href="https://threejs.org/" target="_blank" rel="noopener noreferrer">Three.js</a>
     </div>
     <div class="landing-actions">
       <button id="landingStory" class="primary">▶ Watch the Story (90s)</button>
