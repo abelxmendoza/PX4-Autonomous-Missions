@@ -18,6 +18,14 @@ Stack: **PX4 v1.15+** · **Gazebo Harmonic** · **ROS 2 Humble** · **Micro XRCE
 
 ---
 
+## Cooperative two-drone survey
+
+Run `python3 scripts/run_swarm_demo.py` from the sourced ROS workspace for a
+cooperative PX4/Gazebo survey, or add `--dropout` to exercise landing-confirmed
+task reassignment. The stack includes shared coordinates, route reservations,
+independent vehicle watchdogs, and synchronized flight verification.
+See [the run guide and scope](docs/multi_vehicle.md).
+
 ## Recruiter Demo Mode
 
 ```bash
@@ -300,6 +308,20 @@ rviz2 -d $(ros2 pkg prefix px4_offboard)/share/px4_offboard/rviz/flight_trail.rv
 ```
 
 Included automatically in `full_stack.launch.py`.
+
+The two-drone swarm runner (`python3 scripts/run_swarm_demo.py --gui`) and
+`swarm_survey.launch.py` also start a trail renderer for each vehicle. Drone 1
+uses a cyan trail and green planned route; drone 2 uses a pink trail and amber
+planned route. Gold spheres mark planned waypoints. Each renderer uses shared
+world coordinates and its own namespaced models, so trails remain aligned and
+can be cleared independently (for example, `/px4_2/px4_offboard/trail_clear`).
+
+The web replay imports its scenery from `worlds/obstacle_world.sdf`, including
+the terrain, course markings, pads, landmarks, sky color and fog. After editing
+the world, run `python3 scripts/export_gazebo_world.py` to refresh the checked-in
+web scenery; CI checks that it stays synchronized. Historical recordings retain
+their recorded obstacle geometry. Gazebo and Three.js use different renderers,
+so lighting may differ slightly.
 
 ### Failsafes
 

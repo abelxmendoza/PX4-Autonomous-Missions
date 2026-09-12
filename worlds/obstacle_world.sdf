@@ -102,7 +102,7 @@
         <visual name="course_surface">
           <pose>0 25 0.012 0 0 0</pose>
           <cast_shadows>false</cast_shadows>
-          <geometry><box><size>30 60 0.02</size></box></geometry>
+          <geometry><box><size>36 60 0.02</size></box></geometry>
           <material>
             <ambient>0.20 0.25 0.27 1</ambient>
             <diffuse>0.24 0.29 0.31 1</diffuse>
@@ -110,15 +110,16 @@
           </material>
         </visual>
 
-        <!-- East/west course boundary lines. -->
+        <!-- East/west course boundaries at +-18 m; both launch pads sit
+             comfortably inside the front of the course. -->
         <visual name="boundary_west">
-          <pose>-14.5 25 0.03 0 0 0</pose>
+          <pose>-18 25 0.03 0 0 0</pose>
           <cast_shadows>false</cast_shadows>
           <geometry><box><size>0.18 60 0.025</size></box></geometry>
           <material><ambient>0.95 0.82 0.10 1</ambient><diffuse>0.95 0.82 0.10 1</diffuse></material>
         </visual>
         <visual name="boundary_east">
-          <pose>14.5 25 0.03 0 0 0</pose>
+          <pose>18 25 0.03 0 0 0</pose>
           <cast_shadows>false</cast_shadows>
           <geometry><box><size>0.18 60 0.025</size></box></geometry>
           <material><ambient>0.95 0.82 0.10 1</ambient><diffuse>0.95 0.82 0.10 1</diffuse></material>
@@ -143,15 +144,26 @@
         <visual name="grid_n_45"><pose>0 45 0.028 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>30 0.055 0.022</size></box></geometry><material><ambient>0.55 0.61 0.63 1</ambient><diffuse>0.55 0.61 0.63 1</diffuse></material></visual>
         <visual name="grid_n_50"><pose>0 50 0.028 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>30 0.055 0.022</size></box></geometry><material><ambient>0.55 0.61 0.63 1</ambient><diffuse>0.55 0.61 0.63 1</diffuse></material></visual>
 
-        <!-- High-contrast launch pad (N=0) and landing pad (N=50). -->
+        <!-- High-contrast launch pad (N=0 E=-3) and landing pad (N=50). -->
         <visual name="launch_pad">
-          <pose>0 0 0.045 0 0 0</pose><cast_shadows>false</cast_shadows>
+          <pose>-3 0 0.045 0 0 0</pose><cast_shadows>false</cast_shadows>
           <geometry><cylinder><radius>2.5</radius><length>0.035</length></cylinder></geometry>
           <material><ambient>0.08 0.10 0.12 1</ambient><diffuse>0.08 0.10 0.12 1</diffuse></material>
         </visual>
-        <visual name="launch_h_crossbar"><pose>0 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>1.7 0.28 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
-        <visual name="launch_h_left"><pose>-0.7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
-        <visual name="launch_h_right"><pose>0.7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+        <visual name="launch_h_crossbar"><pose>-3 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>1.7 0.28 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+        <visual name="launch_h_left"><pose>-3.7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+        <visual name="launch_h_right"><pose>-2.3 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+
+        <!-- Second launch pad (px4_2 home, N=0 E=7), matching the
+             original dark disc and white H markings. -->
+        <visual name="launch_pad_2">
+          <pose>7 0 0.045 0 0 0</pose><cast_shadows>false</cast_shadows>
+          <geometry><cylinder><radius>2.5</radius><length>0.035</length></cylinder></geometry>
+          <material><ambient>0.08 0.10 0.12 1</ambient><diffuse>0.08 0.10 0.12 1</diffuse></material>
+        </visual>
+        <visual name="launch_h2_crossbar"><pose>7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>1.7 0.28 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+        <visual name="launch_h2_left"><pose>6.3 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
+        <visual name="launch_h2_right"><pose>7.7 0 0.07 0 0 0</pose><cast_shadows>false</cast_shadows><geometry><box><size>0.28 1.8 0.025</size></box></geometry><material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material></visual>
 
         <visual name="landing_pad">
           <pose>0 50 0.045 0 0 0</pose><cast_shadows>false</cast_shadows>

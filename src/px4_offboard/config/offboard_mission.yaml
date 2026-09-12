@@ -1,5 +1,7 @@
 /**:
   ros__parameters:
+    target_system_id: 1
+    local_frame_id: "map"
     # waypoints | course | circle
     trajectory_mode: "waypoints"
     hover_alt_m: 5.0

@@ -26,6 +26,19 @@ class Obstacle:
     height: float
 
 
+# Obstacle AABBs (east_m, north_m, size_e, size_n, height_m) matching the
+# physical boxes placed in worlds/obstacle_world.sdf — the single source of
+# truth for both the single-vehicle course planner and the swarm coordinator,
+# so a two-vehicle survey through the same world avoids the same obstacles.
+DEFAULT_OBSTACLE_COURSE = (
+    Obstacle(-6.0, 10.0, 3.0, 3.0, 11.5),  # OB1 red — taller than fence ceiling, climb not an option
+    Obstacle(10.0, 10.0, 3.0, 3.0, 6.0),   # OB2 orange — off to the side, rarely on the flight path
+    Obstacle(-8.0, 24.0, 5.0, 3.0, 4.0),   # OB3 green — widened, tighter corridor with OB4
+    Obstacle(6.0, 24.0, 3.0, 2.0, 5.0),    # OB4 blue — widened, tighter corridor with OB3
+    Obstacle(0.0, 38.0, 5.0, 3.0, 11.5),   # OB5 purple — taller than fence ceiling, climb not an option
+)
+
+
 @dataclass(frozen=True)
 class Fence:
     """NED keep-in bounds with a positive maximum altitude."""

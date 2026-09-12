@@ -188,3 +188,54 @@ def test_gps_denied_failsafe_event_is_captured_in_the_log(tmp_path):
         n.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_two_vehicle_topics_commands_and_logs_are_isolated(tmp_path):
+    from rclpy.parameter import Parameter
+
+    rclpy.init()
+    nodes = []
+    try:
+        for instance in (1, 2):
+            n = OffboardMission(
+                namespace=f"px4_{instance}",
+                parameter_overrides=[Parameter("target_system_id", value=instance + 1),
+                                     Parameter("log_dir", value=str(tmp_path))],
+            )
+            nodes.append(n)
+        first, second = nodes
+        assert first._pub_cmd.topic_name == "/px4_1/fmu/in/vehicle_command"
+        assert second._pub_cmd.topic_name == "/px4_2/fmu/in/vehicle_command"
+        assert first._pub_sp.topic_name != second._pub_sp.topic_name
+        for instance, n in enumerate(nodes, 1):
+            assert n._pub_mission_status.topic_name == f"/px4_{instance}/px4_offboard/mission_status"
+            assert all(s.topic_name.startswith(f"/px4_{instance}/") for s in n.subscriptions)
+        assert first._log_file.name != second._log_file.name
+        captured = []
+        class Capture:
+            def publish(self, message):
+                captured.append(message)
+        for n in nodes:
+            n._pub_cmd = Capture()
+            n._send_land()
+        assert [m.target_system for m in captured] == [2, 3]
+    finally:
+        for n in nodes:
+            n.destroy_node()
+        rclpy.shutdown()
+
+
+def test_zero_radius_mission_transitions_to_landing(tmp_path):
+    rclpy.init(args=["--ros-args", "-p", f"log_dir:={tmp_path}",
+                     "-p", "trajectory_mode:=circle", "-p", "circle_radius_m:=0.0",
+                     "-p", "circle_period_s:=10.0", "-p", "max_orbits:=1.0"])
+    try:
+        n = OffboardMission()
+        n._state_machine.state = State.MOVE
+        assert n._next_target() == [0.0, 0.0, -n.hover_alt]
+        n._mission_t = 10.0
+        n._next_target()
+        assert n._state == State.LANDING
+        n.destroy_node()
+    finally:
+        rclpy.shutdown()

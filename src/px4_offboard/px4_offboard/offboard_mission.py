@@ -62,6 +62,7 @@ from px4_offboard.mission_executive import (
     path_suffix_costs_m,
 )
 from px4_offboard.mission_logic import (
+    DEFAULT_OBSTACLE_COURSE,
     Fence,
     Obstacle,
     blocking_height,
@@ -104,14 +105,10 @@ class TrajectoryMode(Enum):
     CIRCLE = "circle"         # orbit, then land after max_orbits
 
 
-# Obstacle AABB: (east_m, north_m, size_e, size_n, height_m) — matches obstacle_world.sdf
-OBSTACLE_BOXES = (
-    Obstacle(-6.0, 10.0, 3.0, 3.0, 11.5),  # OB1 red — taller than fence ceiling, climb not an option
-    Obstacle(10.0, 10.0, 3.0, 3.0, 6.0),   # OB2 orange — off to the side, rarely on the flight path
-    Obstacle(-8.0, 24.0, 5.0, 3.0, 4.0),   # OB3 green — widened, tighter corridor with OB4
-    Obstacle(6.0, 24.0, 3.0, 2.0, 5.0),    # OB4 blue — widened, tighter corridor with OB3
-    Obstacle(0.0, 38.0, 5.0, 3.0, 11.5),   # OB5 purple — taller than fence ceiling, climb not an option
-)
+# Obstacle AABB: (east_m, north_m, size_e, size_n, height_m) — matches obstacle_world.sdf.
+# Canonical definition lives in mission_logic.py so the swarm coordinator's
+# route planner avoids the same physical boxes.
+OBSTACLE_BOXES = DEFAULT_OBSTACLE_COURSE
 
 # Reactive path: approaches obstacles so AABB avoidance must engage.
 # NED [north, east, down] — z negative = up.
@@ -147,8 +144,8 @@ PLANNER_CHECKPOINTS = ((15.0, -6.0), (31.0, 0.0), (50.0, 0.0))
 
 class OffboardMission(Node):
 
-    def __init__(self):
-        super().__init__("offboard_mission")
+    def __init__(self, **kwargs):
+        super().__init__("offboard_mission", **kwargs)
 
         self._declare_params()
         self._load_params()
@@ -167,37 +164,37 @@ class OffboardMission(Node):
         )
 
         self._pub_ocm = self.create_publisher(
-            OffboardControlMode, "/fmu/in/offboard_control_mode", qos_pub
+            OffboardControlMode, "fmu/in/offboard_control_mode", qos_pub
         )
         self._pub_sp = self.create_publisher(
-            TrajectorySetpoint, "/fmu/in/trajectory_setpoint", qos_pub
+            TrajectorySetpoint, "fmu/in/trajectory_setpoint", qos_pub
         )
         self._pub_cmd = self.create_publisher(
-            VehicleCommand, "/fmu/in/vehicle_command", qos_pub
+            VehicleCommand, "fmu/in/vehicle_command", qos_pub
         )
         self._pub_fence_status = self.create_publisher(
-            String, "/px4_offboard/fence_status", 10
+            String, "px4_offboard/fence_status", 10
         )
-        self._pub_avoiding = self.create_publisher(Bool, "/px4_offboard/avoiding", 10)
+        self._pub_avoiding = self.create_publisher(Bool, "px4_offboard/avoiding", 10)
         self._pub_mission_status = self.create_publisher(
-            String, "/px4_offboard/mission_status", 10
+            String, "px4_offboard/mission_status", 10
         )
         self._pub_executive_status = self.create_publisher(
-            String, "/px4_offboard/executive_status", 10
+            String, "px4_offboard/executive_status", 10
         )
         self._pub_planned_path = self.create_publisher(
-            NavPath, "/px4_offboard/planned_path", qos_pub
+            NavPath, "px4_offboard/planned_path", qos_pub
         )
 
         self.create_subscription(
             VehicleLocalPosition,
-            "/fmu/out/vehicle_local_position",
+            "fmu/out/vehicle_local_position",
             self._position_callback,
             qos_sub,
         )
         self.create_subscription(
             VehicleAttitude,
-            "/fmu/out/vehicle_attitude",
+            "fmu/out/vehicle_attitude",
             self._attitude_callback,
             qos_sub,
         )
@@ -206,14 +203,14 @@ class OffboardMission(Node):
         # stable across the supported SITL checkout.
         self.create_subscription(
             VehicleControlMode,
-            "/fmu/out/vehicle_control_mode",
+            "fmu/out/vehicle_control_mode",
             self._control_mode_callback,
             qos_sub,
         )
         # Optional sensor override: publish "front" | "left" | "right" | "none"
         self.create_subscription(
             String,
-            "/px4_offboard/obstacle_dir",
+            "px4_offboard/obstacle_dir",
             self._sensor_callback,
             10,
         )
@@ -223,26 +220,26 @@ class OffboardMission(Node):
         # whether the *other* side is clear too).
         self.create_subscription(
             Float32MultiArray,
-            "/px4_offboard/lidar_sector_mins",
+            "px4_offboard/lidar_sector_mins",
             self._sensor_mins_callback,
             10,
         )
         self.create_subscription(
-            Bool, "/px4_offboard/geocage_enable", self._geocage_toggle_cb, 10
+            Bool, "px4_offboard/geocage_enable", self._geocage_toggle_cb, 10
         )
         self.create_subscription(
-            Bool, "/px4_offboard/geofence_enable", self._geofence_toggle_cb, 10
+            Bool, "px4_offboard/geofence_enable", self._geofence_toggle_cb, 10
         )
         self.create_subscription(
-            EstimatorStatusFlags, "/fmu/out/estimator_status_flags",
+            EstimatorStatusFlags, "fmu/out/estimator_status_flags",
             self._estimator_flags_callback, qos_sub,
         )
         self.create_subscription(
-            SensorGps, "/fmu/out/vehicle_gps_position",
+            SensorGps, "fmu/out/vehicle_gps_position",
             self._sensor_gps_callback, qos_sub,
         )
         self.create_subscription(
-            Bool, "/px4_offboard/vio_healthy", self._vio_health_callback, 10
+            Bool, "px4_offboard/vio_healthy", self._vio_health_callback, 10
         )
 
         self.current_x = 0.0
@@ -342,6 +339,8 @@ class OffboardMission(Node):
     # ── Parameters ────────────────────────────────────────────────────────────
 
     def _declare_params(self):
+        self.declare_parameter("target_system_id", 1)
+        self.declare_parameter("local_frame_id", "map")
         self.declare_parameter("trajectory_mode", "waypoints")
         self.declare_parameter("hover_alt_m", 5.0)
         self.declare_parameter("preflight_cycles", 20)
@@ -419,6 +418,10 @@ class OffboardMission(Node):
         self.declare_parameter("gps_denied_down_max_m", DEFAULT_GPS_DENIED_ZONE.down_max)
 
     def _load_params(self):
+        self.target_system_id = int(self.get_parameter("target_system_id").value)
+        if not 1 <= self.target_system_id <= 255:
+            raise ValueError("target_system_id must be in [1, 255]; broadcast is forbidden")
+        self.local_frame_id = str(self.get_parameter("local_frame_id").value)
         mode = self.get_parameter("trajectory_mode").value.lower()
         try:
             self.trajectory_mode = TrajectoryMode(mode)
@@ -555,6 +558,10 @@ class OffboardMission(Node):
         self.gps_px4_failure_inject = bool(
             self.get_parameter("gps_px4_failure_inject").value
         )
+        if self.gps_px4_failure_inject and (
+            self.get_namespace() != "/" or self.target_system_id != 1
+        ):
+            raise ValueError("GPS CLI failure injection currently supports only the default vehicle")
         self.px4_dir = str(Path(self.get_parameter("px4_dir").value).expanduser())
         self.ekf2_gps_ctrl_nominal = int(
             self.get_parameter("ekf2_gps_ctrl_nominal").value
@@ -580,6 +587,9 @@ class OffboardMission(Node):
 
     def _open_log(self):
         stamp = time.strftime("%Y%m%d_%H%M%S")
+        namespace = self.get_namespace().strip("/").replace("/", "_")
+        if namespace:
+            stamp = f"{namespace}_sys{self.target_system_id}_{stamp}"
         try:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             path = self.log_dir / f"flight_log_mission_{stamp}.csv"
@@ -1251,7 +1261,7 @@ class OffboardMission(Node):
             return
         path = NavPath()
         path.header.stamp = self.get_clock().now().to_msg()
-        path.header.frame_id = "map"
+        path.header.frame_id = self.local_frame_id
         points = [[0.0, 0.0, -self.hover_alt], *self.waypoints]
         for north, east, down in points:
             pose = PoseStamped()
@@ -1759,7 +1769,7 @@ class OffboardMission(Node):
         msg.command = command
         msg.param1 = param1
         msg.param2 = param2
-        msg.target_system = 1
+        msg.target_system = self.target_system_id
         msg.target_component = 1
         msg.source_system = 1
         msg.source_component = 1

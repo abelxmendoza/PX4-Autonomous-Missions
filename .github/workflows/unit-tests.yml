@@ -19,6 +19,7 @@ jobs:
       - run: python -m pip install pytest opencv-contrib-python-headless numpy
       - run: >-
           python -m pytest -q
+          test/test_swarm_logic.py
           test/test_mission_logic.py
           test/test_mission_state.py
           test/test_mission_executive.py
@@ -47,6 +48,7 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm test
+      - run: python3 ../../scripts/export_gazebo_world.py --check
 
   vv-regression:
     # Offline end-to-end check: replays the real recorded flight logs
@@ -97,4 +99,4 @@ jobs:
           pip install pytest
           # Extend PYTHONPATH, don't replace it — install/setup.bash already
           # put px4_msgs's generated Python modules on it.
-          PYTHONPATH="src/px4_offboard:$PYTHONPATH" python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py -v
+          PYTHONPATH="src/px4_offboard:$PYTHONPATH" python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py src/px4_offboard/test/test_swarm_nodes.py src/px4_offboard/test/test_flight_trail_node.py -v

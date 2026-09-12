@@ -24,6 +24,9 @@ setup(
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [
+            "swarm_vehicle = px4_offboard.swarm_vehicle:main",
+            "swarm_coordinator = px4_offboard.swarm_coordinator:main",
+            "swarm_verify = px4_offboard.swarm_verify:main",
             "offboard_control = px4_offboard.offboard_control:main",
             "offboard_mission = px4_offboard.offboard_mission:main",
             "flight_trail = px4_offboard.flight_trail:main",

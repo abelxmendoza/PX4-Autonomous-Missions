@@ -26,6 +26,8 @@ import os
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
 import math
+import json
+import time
 import threading
 from collections import deque
 
@@ -34,7 +36,7 @@ from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool, ColorRGBA
+from std_msgs.msg import Bool, ColorRGBA, String
 from visualization_msgs.msg import Marker
 
 from px4_msgs.msg import VehicleLocalPosition
@@ -53,9 +55,12 @@ except Exception as exc:  # noqa: BLE001
 
 
 class FlightTrail(Node):
-    def __init__(self):
-        super().__init__("flight_trail")
+    def __init__(self, **kwargs):
+        super().__init__("flight_trail", **kwargs)
 
+        self.declare_parameter("input_mode", "px4")
+        self.declare_parameter("trail_color", [0.1, 0.95, 1.0, 0.9])
+        self.declare_parameter("route_color", [0.15, 1.0, 0.35, 0.85])
         self.declare_parameter("enable", True)
         self.declare_parameter("min_spacing_m", 0.4)
         self.declare_parameter("sphere_radius_m", 0.12)
@@ -74,6 +79,10 @@ class FlightTrail(Node):
         self.use_gz_crumbs = bool(self.get_parameter("gz_crumbs").value)
         self.line_width = float(self.get_parameter("line_width_m").value)
 
+        self.visual_prefix = self.get_namespace().strip("/").replace("/", "_") or "single"
+        self.trail_color = tuple(self.get_parameter("trail_color").value)
+        self.route_color = tuple(self.get_parameter("route_color").value)
+        self._telemetry_session = None
         self._avoiding = False
         self._last_enu: tuple[float, float, float] | None = None
         self._points_enu: list[tuple[float, float, float]] = []
@@ -104,21 +113,20 @@ class FlightTrail(Node):
             depth=1,
         )
 
+        if self.get_parameter("input_mode").value == "swarm":
+            self.create_subscription(String, "swarm/telemetry", self._telemetry_cb, 1)
+        else:
+            self.create_subscription(VehicleLocalPosition, "fmu/out/vehicle_local_position",
+                                     self._position_cb, qos_sub)
+        self.create_subscription(Bool, "px4_offboard/avoiding", self._avoid_cb, 10)
+        self.create_subscription(Bool, "px4_offboard/trail_clear", self._clear_cb, 10)
         self.create_subscription(
-            VehicleLocalPosition,
-            "/fmu/out/vehicle_local_position",
-            self._position_cb,
-            qos_sub,
-        )
-        self.create_subscription(Bool, "/px4_offboard/avoiding", self._avoid_cb, 10)
-        self.create_subscription(Bool, "/px4_offboard/trail_clear", self._clear_cb, 10)
-        self.create_subscription(
-            Path, "/px4_offboard/planned_path", self._planned_path_cb, qos_sub
+            Path, "px4_offboard/planned_path", self._planned_path_cb, qos_sub
         )
 
-        self._pub_path = self.create_publisher(Path, "/px4_offboard/flight_path", 10)
+        self._pub_path = self.create_publisher(Path, "px4_offboard/flight_path", 10)
         self._pub_marker = self.create_publisher(
-            Marker, "/px4_offboard/flight_marker", 10
+            Marker, "px4_offboard/flight_marker", 10
         )
 
         self.get_logger().info(
@@ -142,6 +150,27 @@ class FlightTrail(Node):
         up = float(-msg.z)
         enu = (east, north, up)
 
+        self._record_enu(enu)
+
+    def _telemetry_cb(self, msg):
+        try:
+            from .swarm_logic import Telemetry
+            sample = Telemetry.parse(json.loads(msg.data))
+            if not sample.valid or not 0 <= time.monotonic() - sample.sent <= 0.75:
+                return
+            if sample.vehicle != self.visual_prefix:
+                return
+            if self._telemetry_session not in (None, sample.session):
+                self._clear_trail()
+            self._telemetry_session = sample.session
+            north, east, down = sample.position
+            self._record_enu((east, north, -down))
+        except (ValueError, TypeError, KeyError):
+            return
+
+    def _record_enu(self, enu):
+        if not self.enable:
+            return
         if self._last_enu is not None:
             dn = enu[1] - self._last_enu[1]
             de = enu[0] - self._last_enu[0]
@@ -169,7 +198,7 @@ class FlightTrail(Node):
             return
         self._planned_enu = planned
         self.get_logger().info(
-            f"PLANNED ROUTE | {max(0, len(planned) - 1)} legs rendered in green"
+            f"PLANNED ROUTE | {max(0, len(planned) - 1)} legs for {self.visual_prefix}"
         )
         self._publish_planned_ros()
         # GZ model spawn uses blocking service calls; keep it off the ROS
@@ -183,7 +212,7 @@ class FlightTrail(Node):
         line.action = GzMarker.ADD_MODIFY
         line.type = GzMarker.LINE_STRIP
         line.id = 2
-        line.ns = "planned_route"
+        line.ns = f"{self.visual_prefix}/planned_route"
         line.scale.x = self.line_width * 2.0
         line.material.ambient.r = 0.15
         line.material.ambient.g = 1.0
@@ -205,7 +234,7 @@ class FlightTrail(Node):
                 marker.action = GzMarker.ADD_MODIFY
                 marker.type = GzMarker.SPHERE
                 marker.id = 100 + index
-                marker.ns = "planned_waypoints"
+                marker.ns = f"{self.visual_prefix}/planned_waypoints"
                 marker.pose.position.x = east
                 marker.pose.position.y = north
                 marker.pose.position.z = up
@@ -232,11 +261,14 @@ class FlightTrail(Node):
 
     def _spawn_planned_models(self):
         """Spawn the A* route as static Gazebo models (markers are easy to miss)."""
-        if self._gz is None or len(self._planned_enu) < 2:
+        if self._gz is None:
             return
         self._clear_planned_models()
+        if len(self._planned_enu) < 2:
+            return
+        r, g, b, a = self.route_color
         for index, (east, north, up) in enumerate(self._planned_enu):
-            name = f"planned_wp_{index}"
+            name = f"{self.visual_prefix}_planned_wp_{index}"
             sdf = f"""<?xml version="1.0"?>
 <sdf version="1.9">
   <model name="{name}">
@@ -261,7 +293,7 @@ class FlightTrail(Node):
             length = math.sqrt((e2 - e1) ** 2 + (n2 - n1) ** 2 + (u2 - u1) ** 2)
             if length < 0.25:
                 continue
-            name = f"planned_leg_{index}"
+            name = f"{self.visual_prefix}_planned_leg_{index}"
             sdf = f"""<?xml version="1.0"?>
 <sdf version="1.9">
   <model name="{name}">
@@ -270,17 +302,18 @@ class FlightTrail(Node):
       <visual name="v">
         <geometry><box><size>{length:.3f} 0.16 0.16</size></box></geometry>
         <material>
-          <ambient>0.15 1.0 0.35 1</ambient>
-          <diffuse>0.15 1.0 0.35 1</diffuse>
-          <emissive>0.05 0.40 0.10 1</emissive>
+          <ambient>{r} {g} {b} {a}</ambient>
+          <diffuse>{r} {g} {b} {a}</diffuse>
+          <emissive>{r*0.4} {g*0.4} {b*0.4} 1</emissive>
         </material>
       </visual>
     </link>
   </model>
 </sdf>"""
             yaw = math.atan2(n2 - n1, e2 - e1)
+            pitch = -math.atan2(u2 - u1, math.hypot(e2 - e1, n2 - n1))
             if self._spawn_static(
-                name, sdf, (e1 + e2) / 2.0, (n1 + n2) / 2.0, (u1 + u2) / 2.0, yaw
+                name, sdf, (e1 + e2) / 2.0, (n1 + n2) / 2.0, (u1 + u2) / 2.0, yaw, pitch
             ):
                 self._planned_model_names.append(name)
         self.get_logger().info(
@@ -295,6 +328,7 @@ class FlightTrail(Node):
         y: float,
         z: float,
         yaw: float = 0.0,
+        pitch: float = 0.0,
     ) -> bool:
         req = EntityFactory()
         req.name = name
@@ -303,17 +337,19 @@ class FlightTrail(Node):
         req.pose.position.x = float(x)
         req.pose.position.y = float(y)
         req.pose.position.z = float(z)
-        req.pose.orientation.z = math.sin(yaw / 2.0)
-        req.pose.orientation.w = math.cos(yaw / 2.0)
+        req.pose.orientation.x = -math.sin(yaw / 2.0) * math.sin(pitch / 2.0)
+        req.pose.orientation.y = math.cos(yaw / 2.0) * math.sin(pitch / 2.0)
+        req.pose.orientation.z = math.sin(yaw / 2.0) * math.cos(pitch / 2.0)
+        req.pose.orientation.w = math.cos(yaw / 2.0) * math.cos(pitch / 2.0)
         try:
-            ok, _ = self._gz.request(
+            ok, response = self._gz.request(
                 f"/world/{self.world}/create",
                 req,
                 EntityFactory,
                 Boolean,
                 800,
             )
-            return bool(ok)
+            return bool(ok and response.data)
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warn(
                 f"planned model spawn failed ({name}): {exc}",
@@ -326,17 +362,15 @@ class FlightTrail(Node):
             self._remove_crumb(self._planned_model_names.pop())
 
     def _publish_planned_ros(self):
-        if len(self._planned_enu) < 2:
-            return
         marker = Marker()
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.header.frame_id = "map"
-        marker.ns = "planned_route"
+        marker.ns = f"{self.visual_prefix}/planned_route"
         marker.id = 2
         marker.type = Marker.LINE_STRIP
-        marker.action = Marker.ADD
+        marker.action = Marker.ADD if len(self._planned_enu) >= 2 else Marker.DELETE
         marker.scale.x = self.line_width * 2.0
-        marker.color = ColorRGBA(r=0.15, g=1.0, b=0.35, a=0.85)
+        marker.color = ColorRGBA(**dict(zip(("r", "g", "b", "a"), self.route_color)))
         marker.pose.orientation.w = 1.0
         from geometry_msgs.msg import Point
 
@@ -349,13 +383,13 @@ class FlightTrail(Node):
     def _crumb_color(self) -> tuple[float, float, float, float]:
         if self._avoiding:
             return (1.0, 0.45, 0.05, 0.95)  # orange
-        return (0.1, 0.95, 1.0, 0.9)  # cyan
+        return self.trail_color
 
     def _spawn_crumb(self, enu: tuple[float, float, float]):
         if self._gz is None:
             return
         self._crumb_id += 1
-        name = f"trail_crumb_{self._crumb_id}"
+        name = f"{self.visual_prefix}_trail_crumb_{self._crumb_id}"
         r, g, b, a = self._crumb_color()
         rad = self.sphere_r * (1.35 if self._avoiding else 1.0)
 
@@ -383,14 +417,14 @@ class FlightTrail(Node):
         req.pose.position.z = enu[2]
 
         try:
-            ok, _ = self._gz.request(
+            ok, response = self._gz.request(
                 f"/world/{self.world}/create",
                 req,
                 EntityFactory,
                 Boolean,
                 500,
             )
-            if ok:
+            if ok and response.data:
                 self._crumb_names.append(name)
                 while len(self._crumb_names) > self.max_crumbs:
                     self._remove_crumb(self._crumb_names.popleft())
@@ -422,7 +456,7 @@ class FlightTrail(Node):
         m.action = GzMarker.ADD_MODIFY
         m.type = GzMarker.LINE_STRIP
         m.id = 1
-        m.ns = "flight_trail"
+        m.ns = f"{self.visual_prefix}/flight_trail"
         m.scale.x = self.line_width
         m.material.ambient.r = r
         m.material.ambient.g = g
@@ -461,7 +495,7 @@ class FlightTrail(Node):
         r, g, b, a = self._crumb_color()
         marker = Marker()
         marker.header = path.header
-        marker.ns = "flight_trail"
+        marker.ns = f"{self.visual_prefix}/flight_trail"
         marker.id = 0
         marker.type = Marker.LINE_STRIP
         marker.action = Marker.ADD
@@ -486,7 +520,9 @@ class FlightTrail(Node):
             self._remove_crumb(self._crumb_names.popleft())
         if self._gz_marker_pub is not None:
             clr = GzMarker()
-            clr.action = GzMarker.DELETE_ALL
+            clr.action = GzMarker.DELETE_MARKER
+            clr.ns = f"{self.visual_prefix}/flight_trail"
+            clr.id = 1
             try:
                 self._gz_marker_pub.publish(clr)
             except Exception:
@@ -495,7 +531,7 @@ class FlightTrail(Node):
         marker = Marker()
         marker.header.frame_id = "map"
         marker.header.stamp = self.get_clock().now().to_msg()
-        marker.ns = "flight_trail"
+        marker.ns = f"{self.visual_prefix}/flight_trail"
         marker.id = 0
         marker.action = Marker.DELETE
         self._pub_marker.publish(marker)
@@ -510,7 +546,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

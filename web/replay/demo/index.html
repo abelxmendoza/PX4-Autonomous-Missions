@@ -574,6 +574,9 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineSegments2.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/Line2.js"></script>
 <script src="../lib.js"></script>
+<script src="../gazebo-world.js"></script>
+<script src="../gazebo-scene.js"></script>
+<script src="../swarm-replay.js"></script>
 <script>
 'use strict';
 
@@ -581,7 +584,7 @@
 // Obstacle course — fixed geometry, mirrors worlds/obstacle_world.sdf exactly.
 // sdf local frame: x=east, y=north, z=up. size = (eastExtent, northExtent, height).
 // ---------------------------------------------------------------------------
-const OBSTACLES = COURSE_OBSTACLES;
+const OBSTACLES = GAZEBO_WORLD.obstacles;
 const LEGACY_OBSTACLES = [
   { name:'OB1', east:-6, north:10, sizeE:3, sizeN:3, h:4 },
   { name:'OB2', east:10, north:10, sizeE:3, sizeN:3, h:6 },
@@ -614,8 +617,6 @@ const HUD_MIN_INTERVAL_MS = IS_MOBILE ? 120 : 0;
 // ---------------------------------------------------------------------------
 const container = document.getElementById('scene');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050a0b);
-scene.fog = new THREE.Fog(0x050a0b, IS_MOBILE ? 40 : 55, IS_MOBILE ? 140 : 190);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
@@ -647,7 +648,9 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 if (!IS_MOBILE) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 }
 container.appendChild(renderer.domElement);
 
@@ -686,78 +689,7 @@ function activeControls() {
   return null;
 }
 
-scene.add(new THREE.HemisphereLight(0xcaffef, 0x050a0b, 0.72));
-const sun = new THREE.DirectionalLight(0xffe1ae, 1.05);
-sun.position.set(-15, 40, 20);
-scene.add(sun);
-
-function addBox(east, north, alt, sizeE, sizeH, sizeN, material) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sizeE, sizeH, sizeN), material);
-  mesh.position.set(east, alt, -north);
-  scene.add(mesh);
-  return mesh;
-}
-
-// Dark teal ground around the training pad.
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(220, 220),
-  new THREE.MeshStandardMaterial({ color:0x091412, roughness:0.96, metalness:0.04 })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.position.set(COURSE_SURFACE.east, 0, -COURSE_SURFACE.north);
-scene.add(ground);
-
-const tarmac = addBox(
-  COURSE_SURFACE.east, COURSE_SURFACE.north, 0.012,
-  COURSE_SURFACE.sizeE, 0.02, COURSE_SURFACE.sizeN,
-  new THREE.MeshStandardMaterial({ color:0x3d4a4f, roughness:0.92, metalness:0.04 })
-);
-const goldLine = new THREE.MeshStandardMaterial({ color:0xf2d119, roughness:0.55, metalness:0.08 });
-addBox(-14.5, 25, 0.03, 0.18, 0.025, 60, goldLine);
-addBox(14.5, 25, 0.03, 0.18, 0.025, 60, goldLine);
-const gridMat = new THREE.MeshStandardMaterial({ color:0x8c979c, roughness:0.7 });
-const gridCenter = new THREE.MeshStandardMaterial({ color:0xe1e4e6, roughness:0.55 });
-for (const east of [-10, -5, 5, 10]) addBox(east, 25, 0.028, 0.055, 0.022, 60, gridMat);
-addBox(0, 25, 0.029, 0.12, 0.024, 60, gridCenter);
-for (let north = 5; north <= 50; north += 5) addBox(0, north, 0.028, 30, 0.022, 0.055, gridMat);
-
-const beaconMat = new THREE.MeshStandardMaterial({
-  color:0xff5905, emissive:0x4d1400, roughness:0.4, metalness:0.1,
-});
-for (const beacon of COURSE_BEACONS) {
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.3, 10), beaconMat);
-  post.position.set(beacon.east, 0.65, -beacon.north);
-  scene.add(post);
-}
-
-function addHelipad(pad, ringColor, markColor) {
-  const disc = new THREE.Mesh(
-    new THREE.CylinderGeometry(pad.radius, pad.radius, 0.05, 32),
-    new THREE.MeshStandardMaterial({ color:0x10201f, metalness:0.6, roughness:0.38 })
-  );
-  disc.position.set(pad.east, 0.03, -pad.north);
-  scene.add(disc);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(pad.radius + 0.2, pad.radius + 0.32, 64),
-    new THREE.MeshBasicMaterial({ color:ringColor, transparent:true, opacity:0.82, side:THREE.DoubleSide })
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.set(pad.east, 0.065, -pad.north);
-  scene.add(ring);
-  const hMat = new THREE.MeshBasicMaterial({ color: markColor });
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.025, 0.28), hMat);
-  bar.position.set(pad.east, 0.07, -pad.north);
-  scene.add(bar);
-  const left = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.025, 1.8), hMat);
-  left.position.set(pad.east - 0.7, 0.07, -pad.north);
-  scene.add(left);
-  const right = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.025, 1.8), hMat);
-  right.position.set(pad.east + 0.7, 0.07, -pad.north);
-  scene.add(right);
-  return ring;
-}
-const padRing = addHelipad(COURSE_PADS.launch, 0x69f7cd, 0xf2f2f2);
-const landingRing = addHelipad(COURSE_PADS.landing, 0xffb547, 0xffd27a);
+const gazeboEnvironment = buildGazeboEnvironment(THREE, scene, GAZEBO_WORLD);
 
 const deniedBox = gpsDeniedWorldBox();
 const deniedFill = new THREE.Mesh(
@@ -792,6 +724,8 @@ for (const ob of OBSTACLES) {
   const mat = new THREE.MeshLambertMaterial({ color: rgb01ToHex(ob.color) });
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(ob.sizeE, ob.h, ob.sizeN), mat);
   mesh.position.set(ob.east, ob.h / 2, -ob.north);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   scene.add(mesh);
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(ob.roof.sizeE, ob.roof.h, ob.roof.sizeN),
@@ -1014,6 +948,7 @@ drone.add(droneLight);
 // are produced (scripts/run_demo.sh).
 // ---------------------------------------------------------------------------
 const MISSIONS = [
+  {id:'swarm', label:'Two-Drone Swarm — Far Pad Delivery', file:'../data/swarm.json', swarm:true},
   {
     id: 'full', file: '../data/mission_full_avoidance.csv',
     label: 'Reactive Avoidance — Full Course',
@@ -1033,6 +968,31 @@ const MISSIONS = [
 ];
 
 let rows = [];
+let swarmData = null, swarmReplay = null, missionLoadId = 0;
+const swarmPanel = document.createElement('div');
+swarmPanel.id = 'swarmPanel';
+swarmPanel.hidden = true;
+document.getElementById('hudPanel').prepend(swarmPanel);
+function showSwarmPanel(active) {
+  for (const child of document.getElementById('hudPanel').children) {
+    child.style.display = (child === swarmPanel) === active ? '' : 'none';
+  }
+  swarmPanel.hidden = !active;
+}
+function updateSwarmFrame(index) {
+  swarmReplay.update(index, viewMode === VIEW_CAM);
+  const f = swarmData.frames[index];
+  const vehicles = ['px4_1', 'px4_2'].map((id, k) => {
+    const v = f.vehicles[id];
+    return `DRONE ${k + 1} · ${v.valid ? v.state : 'TELEMETRY UNAVAILABLE'}\nAltitude ${(-v.position[2]).toFixed(1)} m`;
+  });
+  swarmPanel.textContent = `TWO-DRONE SWARM\nRecorded Gazebo flight\n\n${f.phase} · ${f.time.toFixed(1)} s\n${f.completed} / ${swarmData.taskCount} delivery tasks complete\n\n${vehicles.join('\n\n')}\n\nCyan: Drone 1 · Pink: Drone 2\n\n${swarmData.verification?.passed ? 'Flight verification passed' : 'Incomplete run — verification did not pass'}\n${f.reason}\n\nPads show this recording’s original launch positions.\nRecording: ${swarmData.source}`;
+  swarmPanel.style.whiteSpace = 'pre-line';
+  swarmPanel.style.lineHeight = '1.8';
+  hud.decision.textContent = `SWARM · ${f.phase} — ${f.reason}`;
+  hud.range.textContent = `${f.time.toFixed(1)} s / ${swarmData.frames.at(-1).time.toFixed(1)} s`;
+  if (!dragging) hud.scrub.value = index;
+}
 let waypointObjects = []; // meshes + label sprites, cleared between missions
 let trailLine, trailGeo, trailColors, trailPositions, nominalRoute;
 let trailBuiltTo = -1;
@@ -1129,7 +1089,22 @@ missionSelect.addEventListener('change', () => {
   loadMission(m);
 });
 
+function positionReplayPads(homes) {
+  const visuals = GAZEBO_WORLD.models.find(m => m.name === 'training_course').links.flatMap(l => l.visuals);
+  gazeboEnvironment.traverse(obj => {
+    if (!obj.isMesh || !obj.name.startsWith('launch_')) return;
+    const second = obj.name === 'launch_pad_2' || obj.name === 'launch_ring_2' || obj.name.startsWith('launch_h2_');
+    const original = visuals.find(v => v.name === obj.name);
+    const pad = visuals.find(v => v.name === (second ? 'launch_pad_2' : 'launch_pad'));
+    const home = homes?.[second ? 'px4_2' : 'px4_1'];
+    obj.position.x = original.pose[0] + (home ? home[1] - pad.pose[0] : 0);
+    obj.position.y = original.pose[1] + (home ? home[0] - pad.pose[1] : 0);
+  });
+}
 function clearMissionObjects() {
+  positionReplayPads(null);
+  if (swarmReplay) { swarmReplay.dispose(); swarmReplay = null; }
+  swarmData = null;
   for (const obj of waypointObjects) scene.remove(obj);
   waypointObjects = [];
   if (trailLine) scene.remove(trailLine);
@@ -1183,6 +1158,8 @@ function summarizeMission(data) {
 }
 
 function loadMission(m) {
+  const loadId = ++missionLoadId;
+  missionSelect.value = m.id;
   document.getElementById('loading').style.display = 'flex';
   document.getElementById('loading').textContent = 'Loading flight log…';
   playing = false;
@@ -1194,7 +1171,32 @@ function loadMission(m) {
       return r.text();
     })
     .then(text => {
+      if (loadId !== missionLoadId) return;
       clearMissionObjects();
+      acc = 0;
+      showSwarmPanel(Boolean(m.swarm));
+      lidarGroup.visible = !m.swarm && hud.toggleLidar.checked;
+      if (m.swarm) {
+        swarmData = parseSwarmReplay(text);
+        positionReplayPads(swarmData.homes);
+        rows = swarmData.frames.map(f => {
+          const p = f.vehicles.px4_1.position;
+          return {north:p[0], east:p[1], down:p[2]};
+        });
+        trailPositions = null;
+        setCourseGeometry(OBSTACLES);
+        swarmReplay = createSwarmReplay(THREE, scene, drone, swarmData, trailResolution());
+        trailLineMaterials.push(...swarmReplay.materials);
+        fitCamera();
+        hud.scrub.max = rows.length - 1;
+        document.getElementById('loading').style.display = 'none';
+        updateFrame(0, true);
+        playing = !introShowing;
+        document.getElementById('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play';
+        if (!animating) { animating = true; animate(); }
+        return;
+      }
+      drone.visible = viewMode !== VIEW_CAM;
       rows = parseCsv(text);
       setCourseGeometry(
         rows.some(r => r.obstacle_source) ? OBSTACLES : LEGACY_OBSTACLES
@@ -1220,6 +1222,7 @@ function loadMission(m) {
       if (!animating) { animating = true; animate(); }
     })
     .catch(err => {
+      if (loadId !== missionLoadId) return;
       document.getElementById('loading').textContent =
         'Failed to load flight log: ' + err.message;
     });
@@ -1475,6 +1478,11 @@ function fitCamera() {
   } else {
     for (const r of rows) _tmpBox.expandByPoint(toWorld(r.north, r.east, r.down));
   }
+  if (swarmData) {
+    for (const f of swarmData.frames) for (const v of Object.values(f.vehicles)) {
+      _tmpBox.expandByPoint(toWorld(...v.position));
+    }
+  }
   for (const ob of activeObstacles) {
     _tmpExpand.set(ob.east, 0, -ob.north);
     _tmpBox.expandByPoint(_tmpExpand);
@@ -1516,6 +1524,7 @@ function setText(el, value) {
 
 function updateFrame(idx, snapToo) {
   frameIndex = Math.max(0, Math.min(idx, rows.length - 1));
+  if (swarmReplay) { updateSwarmFrame(frameIndex); return; }
   const r = rows[frameIndex];
   const pos = toWorld(r.north, r.east, r.down);
   drone.position.copy(pos);
@@ -1626,8 +1635,6 @@ function animate() {
 
   const now = performance.now() * 0.001;
   if (!IS_MOBILE) {
-    padRing.material.opacity = 0.55 + Math.sin(now * 2.4) * 0.22;
-    landingRing.material.opacity = 0.55 + Math.sin(now * 2.4 + 1.1) * 0.22;
     droneLight.intensity = 1.35 + Math.sin(now * 5) * 0.2;
     deniedFill.material.opacity = gpsDeniedInside ? 0.34 : 0.16;
     deniedEdges.material.opacity = gpsDeniedInside ? 1.0 : 0.85;
@@ -1681,7 +1688,8 @@ function applyViewMode() {
   const overlay = document.getElementById('camOverlay');
   const lidarOn = document.getElementById('toggleLidar').checked;
   drone.visible = viewMode !== VIEW_CAM;
-  lidarGroup.visible = viewMode !== VIEW_CAM && lidarOn;
+  lidarGroup.visible = !swarmReplay && viewMode !== VIEW_CAM && lidarOn;
+  if (swarmReplay) swarmReplay.update(frameIndex, viewMode === VIEW_CAM);
   controls.enabled = viewMode === VIEW_ORBIT;
   orthoControls.enabled = viewMode === VIEW_MAP;
   if (overlay) overlay.hidden = viewMode !== VIEW_CAM;

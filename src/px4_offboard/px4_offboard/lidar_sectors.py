@@ -63,6 +63,7 @@ class LidarSectors(Node):
             "gz_topic",
             "/world/obstacle_world/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan",
         )
+        self.declare_parameter("frame_id", "lidar_2d_link")
         self.declare_parameter("trigger_m", 4.0)
         self.declare_parameter("side_trigger_m", 2.0)
         self.declare_parameter("ignore_inside_m", 0.6)
@@ -95,10 +96,10 @@ class LidarSectors(Node):
         self._scan_count = 0
         self._gz = None
 
-        self._pub_dir = self.create_publisher(String, "/px4_offboard/obstacle_dir", 10)
-        self._pub_scan = self.create_publisher(RosLaserScan, "/px4_offboard/scan", 10)
+        self._pub_dir = self.create_publisher(String, "px4_offboard/obstacle_dir", 10)
+        self._pub_scan = self.create_publisher(RosLaserScan, "px4_offboard/scan", 10)
         self._pub_mins = self.create_publisher(
-            Float32MultiArray, "/px4_offboard/lidar_sector_mins", 10
+            Float32MultiArray, "px4_offboard/lidar_sector_mins", 10
         )
 
         if not _GZ_OK:
@@ -177,7 +178,7 @@ class LidarSectors(Node):
         # ROS LaserScan for RViz
         ros = RosLaserScan()
         ros.header.stamp = self.get_clock().now().to_msg()
-        ros.header.frame_id = "lidar_2d_link"
+        ros.header.frame_id = str(self.get_parameter("frame_id").value)
         ros.angle_min = float(msg.angle_min)
         ros.angle_max = float(msg.angle_max)
         ros.angle_increment = float(msg.angle_step)
