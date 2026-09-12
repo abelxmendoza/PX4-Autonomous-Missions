@@ -49,7 +49,10 @@
     fence_east_min_m: -23.0
     fence_east_max_m: 17.0
     fence_alt_max_m: 12.0
-    geocage_margin_m: 1.0
+    geocage_margin_m: 3.0     # was 1.0 — too tight: a real avoidance sidestep
+                              # overshot a 1.0m-inset setpoint by ~1.4m near
+                              # the west fence edge and tripped the hard
+                              # geofence failsafe (2026-09-11 SITL run)
     geofence_action: "land"   # land | hold | rtl
     px4_fence_cmd: false      # also send VEHICLE_CMD_DO_FENCE_ENABLE to PX4
 

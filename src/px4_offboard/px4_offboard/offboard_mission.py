@@ -270,6 +270,13 @@ class OffboardMission(Node):
         self._sensor_advance_target = None
         self._sensor_leg_origin = None
         self._sensor_leg_target = None
+        # Closest valid LiDAR range at the moment the current blind bypass
+        # was planned, and when that bypass last triggered an emergency
+        # replan. Being close to the obstacle mid-bypass is expected -- only
+        # a reading that has gotten measurably closer *since the plan was
+        # made* (a second, unanticipated obstacle) should tear it up.
+        self._bypass_sensor_ref: float | None = None
+        self._last_emergency_replan_t = 0.0
         self._bypassed_obstacles = set()
         self._last_bypass_distance = float("inf")
         # Climb/lateral avoidance: decided once per obstacle encounter and
@@ -375,6 +382,7 @@ class OffboardMission(Node):
         self.declare_parameter("planner_replan_cooldown_s", 5.0)
         self.declare_parameter("planner_emergency_range_m", 1.5)
         self.declare_parameter("planner_sensor_replan_enable", False)
+        self.declare_parameter("emergency_replan_cooldown_s", 2.0)
         self.declare_parameter("log_dir", ".")
 
         # Geo-cage (soft keep-in: clamp setpoints) / geofence (hard: breach → action)
@@ -385,7 +393,7 @@ class OffboardMission(Node):
         self.declare_parameter("fence_east_min_m", -23.0)
         self.declare_parameter("fence_east_max_m", 17.0)
         self.declare_parameter("fence_alt_max_m", 12.0)
-        self.declare_parameter("geocage_margin_m", 1.0)
+        self.declare_parameter("geocage_margin_m", 3.0)
         self.declare_parameter("geofence_action", "land")  # land | hold | rtl
         self.declare_parameter("px4_fence_cmd", False)  # also send VEHICLE_CMD_DO_FENCE_ENABLE
 
@@ -478,6 +486,9 @@ class OffboardMission(Node):
         )
         self.planner_emergency_range = float(
             self.get_parameter("planner_emergency_range_m").value
+        )
+        self.emergency_replan_cooldown = float(
+            self.get_parameter("emergency_replan_cooldown_s").value
         )
         self.planner_sensor_replan_enable = bool(
             self.get_parameter("planner_sensor_replan_enable").value
@@ -1394,6 +1405,48 @@ class OffboardMission(Node):
         adjusted = list(target)
 
         if self.avoidance_strategy == "sidestep" or self.obstacle_source == "sensor_only":
+            if (
+                self._bypass_target is not None
+                and self._bypass_obstacle is None
+                and self._sensor_mins is not None
+                and self._bypass_sensor_ref is not None
+                and (time.monotonic() - self._last_emergency_replan_t)
+                >= self.emergency_replan_cooldown
+            ):
+                valid_mins = [r for r in self._sensor_mins if r >= 0.0]
+                current_min = min(valid_mins) if valid_mins else None
+                # A blind, map-free bypass (sensor_only: no known geometry to
+                # plan around) is committed to a single target computed once,
+                # from whatever the sensor showed at that moment. Being close
+                # to *that* obstacle for the rest of the maneuver is expected
+                # and not itself a reason to replan -- re-triggering on mere
+                # proximity thrashed the plan every tick and never let the
+                # vehicle actually move (confirmed in SITL: repeated replans
+                # within seconds, altitude climbing into the geofence
+                # ceiling, mission stuck at the same waypoint). Only tear up
+                # the plan when a sensor reading has gotten measurably closer
+                # than it was *when the plan was made* -- a second obstacle
+                # the original plan couldn't have known about. Real SITL
+                # flight showed this failure mode too: a locked bypass
+                # carried the vehicle to sub-1m LiDAR ranges from multiple
+                # directions, with position telemetry afterward consistent
+                # with an actual Gazebo collision.
+                if (
+                    current_min is not None
+                    and current_min < self.planner_emergency_range
+                    and current_min < self._bypass_sensor_ref - 0.4
+                ):
+                    self._bypass_target = None
+                    self._sensor_advance_target = None
+                    self._sensor_leg_origin = None
+                    self._sensor_leg_target = None
+                    self._bypass_sensor_ref = None
+                    self._last_emergency_replan_t = time.monotonic()
+                    self.get_logger().error(
+                        "AVOID emergency replan -> sensor reads closer than "
+                        "planned bypass anticipated",
+                        throttle_duration_sec=1.0,
+                    )
             if self._bypass_target is None and obs is not None:
                 remaining = (
                     []
@@ -1450,6 +1503,8 @@ class OffboardMission(Node):
                     ]
                     self._sensor_leg_target = list(target)
                     self._bypass_obstacle = None
+                    valid_mins = [r for r in (self._sensor_mins or ()) if r >= 0.0]
+                    self._bypass_sensor_ref = min(valid_mins) if valid_mins else None
                 if self.geocage_enable:
                     self._bypass_target, _ = self.fence.clamp(
                         self._bypass_target, self.geocage_margin
@@ -1509,6 +1564,7 @@ class OffboardMission(Node):
                     self._sensor_advance_target = None
                     self._sensor_leg_origin = None
                     self._sensor_leg_target = None
+                    self._bypass_sensor_ref = None
                     self._last_bypass_distance = float("inf")
                     self._avoid_active_t = 0.0
                     self._last_wp_progress_t = time.monotonic()

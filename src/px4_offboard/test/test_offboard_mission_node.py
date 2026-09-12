@@ -143,6 +143,67 @@ def test_climb_avoidance_target_is_locked_not_recomputed_each_tick(node):
     assert node._climb_target is None
 
 
+def test_sensor_only_bypass_replans_on_emergency_close_reading(node):
+    # Regression for a real SITL bug: obstacle_source="sensor_only" plans a
+    # single blind bypass target once (no known obstacle map to consult,
+    # by design) and then rigidly streams it every tick. Real flight showed
+    # this carrying the vehicle to sub-1m LiDAR ranges from multiple
+    # directions — a second obstacle the original blind plan had no way to
+    # anticipate — with the position telemetry afterward consistent with an
+    # actual Gazebo collision, not just a bad setpoint. The fix detects an
+    # emergency-close live reading while a bypass is active and forces a
+    # replan instead of rigidly continuing toward the stale target.
+    node.obstacle_source = "sensor_only"
+    node.current_x, node.current_y, node.current_z = 0.0, 0.0, -3.0
+    node._sensor_mins = (5.0, 5.0, 5.0)  # nothing close yet
+    target = [20.0, 0.0, -3.0]
+
+    node._apply_avoidance(list(target), "front")
+    first_bypass = node._bypass_target
+    assert first_bypass is not None
+
+    # Vehicle advances partway toward the bypass; live LiDAR now reads
+    # emergency-close on a side the original blind plan never saw.
+    node.current_x, node.current_y = 4.0, 1.0
+    node._sensor_mins = (5.0, 0.5, 5.0)
+    node._apply_avoidance(list(target), "left")
+
+    assert node._bypass_target is not None
+    assert node._bypass_target != first_bypass, "expected a fresh replan, not the stale target"
+
+
+def test_sensor_only_bypass_does_not_thrash_on_expected_proximity(node):
+    # Regression for a bug the emergency-replan fix itself introduced: a
+    # blind sensor-only bypass is, by design, executed close to the obstacle
+    # it is sidestepping. Triggering the emergency replan on absolute
+    # closeness alone (rather than on getting *closer than the plan
+    # anticipated*) tore up the plan every tick even when nothing had
+    # changed. Real SITL showed the result: dozens of replans within
+    # seconds, the vehicle never actually moving away, altitude climbing
+    # into the geofence ceiling, and the mission stuck at the same
+    # waypoint until it FAILSAFEd. A steady, unchanged close reading must
+    # not repeatedly invalidate the plan.
+    node.obstacle_source = "sensor_only"
+    node.current_x, node.current_y, node.current_z = 0.0, 0.0, -3.0
+    node._sensor_mins = (1.0, 1.0, 1.0)  # close from the very start, by design
+    target = [20.0, 0.0, -3.0]
+
+    node._apply_avoidance(list(target), "front")
+    first_bypass = node._bypass_target
+    assert first_bypass is not None
+
+    # Same close-but-unchanged reading on the next several ticks, with the
+    # vehicle inching forward as it would in real flight -- expected while
+    # executing the bypass, not a new threat. If the plan were being torn
+    # down and rebuilt each tick, recomputing from the new position would
+    # produce a numerically different target, not merely an unchanged one.
+    for i in range(5):
+        node.current_x = 0.1 * (i + 1)
+        node._apply_avoidance(list(target), "front")
+
+    assert node._bypass_target == first_bypass, "steady proximity must not thrash the plan"
+
+
 def test_log_row_disables_logging_on_write_failure(node):
     # Regression test for the OSError guard added around _log_writer.writerow
     # / _log_file.flush() — a full-disk mid-flight must not propagate out of
