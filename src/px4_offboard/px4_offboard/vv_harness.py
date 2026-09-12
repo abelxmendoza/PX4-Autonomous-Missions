@@ -133,15 +133,15 @@ REQUIREMENTS: tuple[Requirement, ...] = (
     ),
     Requirement(
         id="REQ-GPS-ACTUAL-01",
-        title="PX4 GPS sensor actually becomes unavailable",
+        title="PX4 GPS aiding becomes unavailable",
         severity=Severity.MUST,
-        description="After failure injection settles, raw GPS health must be false.",
+        description="After aiding-loss injection settles, logged GPS navigation health must be false; this is a fusion-health proxy, not proof of physical sensor failure.",
     ),
     Requirement(
         id="REQ-VIO-FUSION-01",
-        title="External vision sustains GPS-denied flight",
+        title="Simulated external odometry remains fused during GPS-aiding loss",
         severity=Severity.MUST,
-        description="PX4 EKF must fuse external-vision position while GPS is unavailable.",
+        description="PX4 EKF must fuse external-position input from Gazebo pose with modeled noise/drift while GPS aiding is unavailable.",
     ),
 )
 
@@ -691,7 +691,7 @@ def check_vio_fusion(trace: FlightTrace, settle_s: float = 1.5) -> CheckResult:
     required = {"gps_failure_active", "raw_gps_healthy", "vio_stream_healthy", "ev_pos_fused"}
     if not required.issubset(trace.columns):
         return CheckResult(req.id, req.title, req.severity, True,
-                           "legacy log has no VIO fusion evidence", skipped=True)
+                           "legacy log has no external-odometry fusion evidence", skipped=True)
     active = [s for s in trace.samples if s.gps_failure_active]
     if not active:
         return CheckResult(req.id, req.title, req.severity, True,

@@ -49,14 +49,21 @@
     fence_east_min_m: -23.0
     fence_east_max_m: 17.0
     fence_alt_max_m: 12.0
-    geocage_margin_m: 1.0
+    geocage_margin_m: 3.0     # was 1.0 — too tight: a real avoidance sidestep
+                              # overshot a 1.0m-inset setpoint by ~1.4m near
+                              # the west fence edge and tripped the hard
+                              # geofence failsafe (2026-09-11 SITL run)
     geofence_action: "land"   # land | hold | rtl
     px4_fence_cmd: false      # also send VEHICLE_CMD_DO_FENCE_ENABLE to PX4
 
-    # Mission executive / resource manager — NOMINAL → DEGRADED → SAFE → ABORT
-    # as battery/link/propellant budgets are consumed. See mission_executive.py.
+    # CSV flight log directory (relative to cwd unless absolute)
+    log_dir: "."
+
+    # Mission executive / resource manager
+    # Modes: NOMINAL → DEGRADED (skip science WPs) → SAFE (hold) → ABORT (land)
+    # Inspect: ros2 topic echo /px4_offboard/executive_status
     executive_enable: true
-    science_waypoints: [2, 4, 6]
+    science_waypoints: [2, 4, 6]   # optional waypoints skipped when DEGRADED
     initial_battery: 1.0
     initial_propellant_s: 180.0
     battery_degraded: 0.45
@@ -70,11 +77,15 @@
     propellant_safe_s: 45.0
     propellant_abort_s: 20.0
 
-    # GPS-denied zone. Logical injection is retained for unit/policy tests;
-    # gps_px4_failure_inject disables the simulated sensor inside the zone.
+    # GPS-denied zone. gps_px4_failure_inject zeros EKF2_GPS_CTRL inside the
+    # prism (Gazebo ignores INJECT_FAILURE). GNSS is restored only after the
+    # vehicle is continuously north of the far face. run_demo.sh gps-denied
+    # also enables simulated external-odometry fusion.
     gps_denied_enable: true
     gps_deny_inject: false
     gps_px4_failure_inject: false
+    ekf2_gps_ctrl_nominal: 7
+    gps_failure_exit_dwell_s: 1.5
     gps_fix_timeout_s: 1.0
     gps_denied_action: "hold"
     gps_denied_north_min_m: 15.5
@@ -83,6 +94,3 @@
     gps_denied_east_max_m: 8.0
     gps_denied_down_min_m: -12.0
     gps_denied_down_max_m: 0.5
-
-    # CSV flight log directory (relative to cwd unless absolute)
-    log_dir: "."

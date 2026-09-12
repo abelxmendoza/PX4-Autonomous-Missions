@@ -30,7 +30,12 @@ def main() -> int:
         trace = load_flight_log(csv_path)
         report = run_vv(trace, fence=DEFAULT_FENCE)
         out_path = csv_path.with_suffix(".vv.json")
-        out_path.write_text(json.dumps(report.to_dict(), indent=2) + "\n")
+        data = report.to_dict()
+        # Portable provenance: avoid embedding this workstation's home path.
+        data["source"] = data["summary"]["source"] = str(
+            csv_path.relative_to(DATA_DIR.parents[2])
+        )
+        out_path.write_text(json.dumps(data, indent=2) + "\n")
         verdict = "PASS" if report.passed else "FAIL"
         print(f"{csv_path.name} -> {out_path.name}  [{verdict}]")
     return 0

@@ -126,23 +126,6 @@ class SurveyCoordinator:
         self.telemetry: dict[str, Telemetry] = {}
         self.routes: dict[str, list[Point]] = {v: [] for v in HOMES}
         self.active: dict[str, str | None] = {v: None for v in HOMES}
-        # East offsets -2, 1, 4 thread the gap between OB1 (east ~[-7.5,-4.5])
-        # and OB2 (east ~[8.5,11.5]) in worlds/obstacle_world.sdf with
-        # >=1.5 m margin either side — see DEFAULT_OBSTACLE_COURSE. lane_3
-        # (east=16) sits on the far side of OB2 instead, deliberately: px4_2
-        # must cross OB2's clearance-expanded footprint to reach it and again
-        # to reach lane_2 or home afterward, so the same A* machinery that
-        # dodges a retired vehicle visibly dodges the physical course too,
-        # as part of the active mission rather than only on the final return
-        # leg. OB1 has no equivalent far-side lane: its far side (east<-11)
-        # lies outside FENCE's east_min=-6, which would need widening.
-        # The survey band (north 4-14) stops 1.5 m short of the GPS-denied
-        # zone at north=15.5 (localization_logic.py) — this swarm has no
-        # GPS-denial handling, so flying into that zone would just be a
-        # visually confusing no-op. Extending further north to also thread
-        # OB3/OB4/OB5 needs per-band east offsets, since a single
-        # constant-east lane can't clear all three obstacle bands at once —
-        # left for a future pass rather than a cramped, unsafe fit.
         # Coordinated transit to the far landing pad: A* plans the whole
         # commute (task start == end), avoiding obstacles + GPS-denied keep-out.
         # Staggered east corridors so both can move in parallel (not serialized
@@ -270,7 +253,14 @@ class SurveyCoordinator:
         # Consume reached route points only from fresh position and low speed.
         for v in healthy:
             t = self.telemetry[v]
-            if self.routes[v] and math.dist(t.position, self.routes[v][0]) < 1.0 and math.dist(t.velocity, (0, 0, 0)) < 4.0:
+            # Transit corners may be consumed early, but a task endpoint must
+            # actually be visited. The evidence verifier requires <0.6 m;
+            # 0.5 m leaves sampling margin before turning toward the next task.
+            # Using the transit radius here completed recovery tasks ~0.9 m
+            # away, so COMPLETE did not imply independently observed coverage.
+            task_endpoint = self.active[v] is not None and len(self.routes[v]) == 1
+            acceptance_m = 0.5 if task_endpoint else 1.0
+            if self.routes[v] and math.dist(t.position, self.routes[v][0]) < acceptance_m and math.dist(t.velocity, (0, 0, 0)) < 4.0:
                 self.routes[v].pop(0)
                 self.last_progress = now
                 if not self.routes[v] and self.active[v]:

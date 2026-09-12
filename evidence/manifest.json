@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "baseline_commit": "662b72e14190e7eca2bed8fd06a41577b6c745c9",
+  "cases": [
+    {
+      "id": "nominal",
+      "kind": "flight",
+      "path": "web/replay/data/mission_clean_pass.csv",
+      "report": "evidence/nominal/report.json",
+      "expected_pass": true,
+      "provenance": "Previously committed SITL excerpt; original raw filename not recorded. MOVE through LANDING only.",
+      "required_checks": [
+        "REQ-STATE-01",
+        "REQ-ALT-01"
+      ],
+      "sha256": "396185dbec4803260a4fb54fd990e448c7b646ae2e9659ede8e91e2ae5e3d471"
+    },
+    {
+      "id": "obstacle_avoidance",
+      "kind": "flight",
+      "path": "web/replay/data/mission_full_avoidance.csv",
+      "report": "evidence/obstacle_avoidance/report.json",
+      "expected_pass": true,
+      "provenance": "Previously committed SITL excerpt; original raw filename not recorded. Legacy schema has no sensor freshness or clearance evidence.",
+      "required_checks": [
+        "REQ-STATE-01",
+        "REQ-WP-01"
+      ],
+      "sha256": "4c9da200ce7bd0909e0f505c42d0ce5ba0f0a2d025274cf96ca194b8371f3183"
+    },
+    {
+      "id": "gps_denied",
+      "kind": "flight",
+      "path": "evidence/gps_denied/flight.csv.gz",
+      "report": "evidence/gps_denied/report.json",
+      "expected_pass": true,
+      "provenance": "flight_log_mission_20260906_234914.csv; exact raw bytes, gzip only. Historical config not archived; current verifier defaults used. Gaps and missing early phases prevent full-flight certification.",
+      "required_checks": [
+        "REQ-GPS-ACTUAL-01",
+        "REQ-VIO-FUSION-01",
+        "REQ-CLEARANCE-01"
+      ],
+      "sha256": "d0ec7c716a2ab948061fe659f92bb483dfd7120f4e7a5d07345e8789b54bec72"
+    },
+    {
+      "id": "swarm_nominal",
+      "kind": "swarm",
+      "path": "evidence/swarm/nominal.jsonl.gz",
+      "report": "evidence/swarm/nominal_report.json",
+      "expected_pass": true,
+      "provenance": "demo_artifacts/swarm/20260911_205508_e073e2/swarm_dddc1b481ffa4e79a9db641787f4790c.jsonl; exact raw bytes, gzip only. Current gate/landing task geometry.",
+      "sha256": "d7bc5f743a0500d2b9da87943307e762e4709a0859fc4971042ad30a19997c06",
+      "replay": "web/replay/data/swarm.json"
+    },
+    {
+      "id": "recovery_before",
+      "kind": "swarm",
+      "path": "evidence/failure_case/recovery_before.jsonl.gz",
+      "report": "evidence/failure_case/before_report.json",
+      "expected_pass": false,
+      "expected_errors": [
+        "survey transects not independently observed"
+      ],
+      "provenance": "Kinematic test fixture simulate(dropout=True, speed=1.0), baseline 662b72e14190e7eca2bed8fd06a41577b6c745c9; not a PX4 flight.",
+      "sha256": "5def7f23360130b43639966a7b86956745ab4102bc39056da8b24150cafd0709"
+    },
+    {
+      "id": "recovery_after",
+      "kind": "swarm",
+      "path": "evidence/failure_case/recovery_after.jsonl.gz",
+      "report": "evidence/failure_case/after_report.json",
+      "expected_pass": true,
+      "provenance": "Same kinematic fixture and inputs after coordinator endpoint acceptance fix; not a PX4 flight.",
+      "sha256": "8d1af9cea8a25d4f22d69fbe01680f284879f7516b940c6b5e71a8f52f8b7187"
+    },
+    {
+      "id": "golden_recovery",
+      "kind": "swarm",
+      "path": "evidence/swarm/golden_recovery.jsonl.gz",
+      "report": "evidence/swarm/golden_report.json",
+      "expected_pass": true,
+      "sha256": "ea268126c11b977e808b585df2380bdea4745a191c1407a7976e2de2b38b6566",
+      "provenance": "demo_artifacts/swarm/20260912_102427_4fb25c/swarm_1f644f9e1aa049789c4d1441835817b8.jsonl; fresh PX4/Gazebo SITL run after endpoint fix, --dropout. Raw bytes preserved with gzip.",
+      "replay": "web/replay/data/golden_recovery.json"
+    }
+  ]
+}

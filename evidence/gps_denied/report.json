@@ -1,0 +1,148 @@
+{
+  "source": "evidence/gps_denied/flight.csv.gz",
+  "summary": {
+    "source": "evidence/gps_denied/flight.csv.gz",
+    "samples": 468,
+    "duration_s": 129.0,
+    "state_sequence": [
+      "MOVE",
+      "LANDING"
+    ],
+    "max_altitude_m": 8.11,
+    "final_wp_index": 7,
+    "avoidance_samples": 0,
+    "geofence_breach_samples": 0,
+    "has_executive": true,
+    "sensor_evidence_samples": 468,
+    "minimum_mapped_clearance_m": 1.982
+  },
+  "passed": true,
+  "results": [
+    {
+      "requirement_id": "REQ-STATE-01",
+      "title": "Legal mission state sequence",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "all transitions legal",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-WP-01",
+      "title": "Waypoint index monotonic",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "wp_index non-decreasing",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GEOCAGE-01",
+      "title": "Geo-cage clamps setpoints",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no caged samples (N/A \u2014 treated as pass)",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GEOFENCE-01",
+      "title": "Hard geofence \u2192 FAILSAFE",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no airborne geofence breaches observed",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-ALT-01",
+      "title": "Altitude keep-in",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "altitude within keep-in",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-TERM-01",
+      "title": "Terminal state finality",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no post-terminal MOVE",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-EXEC-01",
+      "title": "Executive abort consistency",
+      "severity": "should",
+      "passed": true,
+      "skipped": true,
+      "detail": "no executive ABORT in log",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-AVOID-SENSOR-01",
+      "title": "Avoidance backed by live sensor evidence",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "0 direct avoidance sample(s) backed by LiDAR",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-CLEARANCE-01",
+      "title": "No mapped-obstacle intersection",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "minimum mapped clearance 1.982m",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-ZONE-01",
+      "title": "GPS-denied zone flag consistency",
+      "severity": "should",
+      "passed": true,
+      "skipped": false,
+      "detail": "58 in-zone sample(s); flag matches AABB",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-INJECT-01",
+      "title": "Injected deny does not claim healthy GPS",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "58 injected-deny sample(s); sources healthy",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-POLICY-01",
+      "title": "Localization failsafe reaches terminal/hold",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "no LOC_FAILSAFE events in log",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-GPS-ACTUAL-01",
+      "title": "PX4 GPS aiding becomes unavailable",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "GPS unavailable in 91 settled failure sample(s)",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-VIO-FUSION-01",
+      "title": "Simulated external odometry remains fused during GPS-aiding loss",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "external vision fused in 91 GPS-denied sample(s)",
+      "evidence": []
+    }
+  ]
+}

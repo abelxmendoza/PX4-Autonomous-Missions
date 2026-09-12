@@ -3,6 +3,10 @@
 import argparse
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src/px4_offboard'))
+from px4_offboard.swarm_verify import verify
 
 
 def export(path):
@@ -14,8 +18,14 @@ def export(path):
     frames = []
     index = 0
     start = samples[0]['time']
-    for tick in range(int((samples[-1]['time'] - start) * 10) + 1):
-        stamp = start + tick / 10
+    duration = samples[-1]['time'] - start
+    offsets = [tick / 10 for tick in range(int(duration * 10) + 1)]
+    # The exact terminal sample usually lies between 10 Hz playback frames.
+    # Preserve it rather than rounding down and losing COMPLETE/landed flags.
+    if offsets[-1] < duration:
+        offsets.append(duration)
+    for offset in offsets:
+        stamp = start + offset
         while index + 1 < len(samples) and samples[index + 1]['time'] <= stamp:
             index += 1
         s = samples[index]
@@ -23,12 +33,11 @@ def export(path):
         for name, v in s['vehicles'].items():
             vehicles[name] = {'position': v['position'], 'state': v['state'],
                               'valid': v['valid'] and 0 <= stamp - v['sent'] <= .75}
-        frames.append({'time': tick / 10, 'phase': s['phase'], 'reason': s['reason'],
+        frames.append({'time': offset, 'phase': s['phase'], 'reason': s['reason'],
                        'completed': len(s['completed']), 'vehicles': vehicles})
-    proof = path.parent / 'verification.json'
     return {'schema': 1, 'source': path.parent.name, 'homes': header['homes_ned'],
             'taskCount': len(header['expected_tasks']),
-            'verification': json.loads(proof.read_text()) if proof.exists() else None,
+            'verification': verify(path),
             'frames': frames}
 
 

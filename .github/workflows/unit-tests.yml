@@ -1,42 +1,73 @@
-name: Unit tests
+name: Autonomy verification
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  pure-python-tests:
+  unit-and-verification:
     runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: src/px4_offboard
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-      # cv2.aruco lives in opencv's contrib modules, not the base package.
+          python-version: '3.10'
       - run: python -m pip install pytest opencv-contrib-python-headless numpy
-      - run: >-
-          python -m pytest -q
-          test/test_swarm_logic.py
-          test/test_mission_logic.py
-          test/test_mission_state.py
-          test/test_mission_executive.py
-          test/test_flight_vv.py
-          test/test_path_planner.py
-          test/test_lidar_sectors.py
-          test/test_localization_logic.py
-          test/test_vio_bridge.py
-          test/test_vio_noise.py
-          test/test_camera_frame.py
-          test/test_vision_marker.py
-          test/test_vision_marker_detect.py
+      - name: Logic, verifier and negative regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src/px4_offboard python -m pytest src/px4_offboard/test -q --junitxml=test-results/python.xml | tee python-results.txt
+      - name: Test summary
+        if: always()
+        run: tail -n 3 python-results.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-test-results
+          path: |
+            test-results/
+            python-results.txt
 
-  web-tests:
-    # JS unit tests for web/replay/lib.js (toWorld/parseCsv) — the logic the
-    # page actually loads, not a reimplementation. Was only running locally;
-    # nothing wired this into CI until now.
+  recorded-flight-regression:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Curated evidence, expected failures and replay consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify_evidence.py | tee evidence-results.md
+      - name: Legacy browser flight regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for log in web/replay/data/*.csv; do
+            PYTHONPATH=src/px4_offboard python -m px4_offboard.vv_replay "$log"
+          done
+      - name: Configuration and world consistency
+        run: |
+          cmp config/offboard_mission.yaml src/px4_offboard/config/offboard_mission.yaml
+          cmp config/mavros_params.yaml src/px4_offboard/config/mavros_params.yaml
+          python scripts/export_gazebo_world.py --check
+      - name: Evidence summary
+        if: always()
+        run: cat evidence-results.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recorded-verification-results
+          path: |
+            evidence-results.md
+            evidence/**/*report.json
+
+  browser-replay:
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -45,58 +76,55 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
       - run: npm ci
-      - run: npm test
-      - run: python3 ../../scripts/export_gazebo_world.py --check
-
-  vv-regression:
-    # Offline end-to-end check: replays the real recorded flight logs
-    # committed for the web viewer against the formal V&V requirements
-    # (vv_harness.py) — catches a regression in state-machine legality,
-    # fence containment, or avoidance behavior without needing a live
-    # Gazebo/PX4 SITL run in CI.
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Replay and scene tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test | tee browser-results.txt
+      - name: Browser summary
+        if: always()
+        run: tail -n 6 browser-results.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          python-version: "3.10"
-      - run: |
-          for log in web/replay/data/*.csv; do
-            echo "::group::vv_replay $log"
-            PYTHONPATH=src/px4_offboard python3 -m px4_offboard.vv_replay "$log"
-            echo "::endgroup::"
-          done
+          name: browser-test-results
+          path: web/replay/browser-results.txt
 
-  ros-node-tests:
-    # Node-level tests for offboard_mission.py (test_offboard_mission_node.py)
-    # need a real rclpy + built px4_msgs, unlike the pure-Python job above.
-    # px4_msgs isn't vendored in this repo (see README "ROS 2 workspace") —
-    # cloned fresh here, matching the documented local setup exactly.
+  ros-adapters:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: humble
-      - run: git clone --depth 1 https://github.com/PX4/px4_msgs.git src/px4_msgs
-      - name: Build px4_msgs
+      # Pin the message checkout used by the recorded golden-run workstation.
+      - run: |
+          git clone https://github.com/PX4/px4_msgs.git src/px4_msgs
+          git -C src/px4_msgs checkout 392e831c1f659429ca83902e66820d7094591410
+      - name: Build PX4 messages
         run: |
-          set +e; source /opt/ros/humble/setup.bash; set -e
+          set +e
+          source /opt/ros/humble/setup.bash
+          set -e
           colcon build --symlink-install --packages-select px4_msgs
-      - name: Run node-level tests
+      - name: ROS node tests (no simulator)
+        shell: bash
         run: |
-          # ROS's generated setup.bash scripts can return non-zero from
-          # internal checks even on a normal, successful source — GitHub
-          # Actions' default `set -e` shell then aborts the whole step.
-          # scripts/run_full_stack.sh hit the equivalent issue with `set -u`;
-          # same fix here, just for `-e`.
           set +e
           source /opt/ros/humble/setup.bash
           source install/setup.bash
-          set -e
-          pip install pytest
-          # Extend PYTHONPATH, don't replace it — install/setup.bash already
-          # put px4_msgs's generated Python modules on it.
-          PYTHONPATH="src/px4_offboard:$PYTHONPATH" python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py src/px4_offboard/test/test_swarm_nodes.py src/px4_offboard/test/test_flight_trail_node.py -v
+          set -euo pipefail
+          python3 -m pip install pytest
+          PYTHONPATH="src/px4_offboard:$PYTHONPATH" python3 -m pytest src/px4_offboard/test/test_offboard_mission_node.py src/px4_offboard/test/test_swarm_nodes.py src/px4_offboard/test/test_flight_trail_node.py -q --junitxml=test-results/ros.xml | tee ros-results.txt
+      - name: ROS summary
+        if: always()
+        run: tail -n 3 ros-results.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ros-test-results
+          path: |
+            test-results/
+            ros-results.txt

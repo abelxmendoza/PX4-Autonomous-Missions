@@ -1,0 +1,32 @@
+{
+  "date": "2026-09-12",
+  "source": "Actual local JUnit and Vitest JSON reports; ROS uses local DDS but no simulation in these tests.",
+  "results": [
+    {
+      "suite": "python_ros",
+      "command": "source /opt/ros/humble/setup.bash; source install/setup.bash; PYTHONPATH=\"src/px4_offboard:$PYTHONPATH\" python3 -m pytest src/px4_offboard/test -q",
+      "tests": 166,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 166
+    },
+    {
+      "suite": "python_light",
+      "command": "PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -q",
+      "tests": 141,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "passed": 138
+    },
+    {
+      "suite": "browser",
+      "command": "cd web/replay && npm test",
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}
