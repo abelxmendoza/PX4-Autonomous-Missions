@@ -18,3 +18,21 @@ src/px4_ros_com/
 # macOS local dev venv (no ROS/Gazebo — see pure-python dev setup)
 .venv-mac/
 web/replay/node_modules/
+
+# Local tools and test outputs (curated evidence stays explicitly tracked)
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+test-results/
+node_modules/
+.DS_Store
+.idea/
+.claude/
+.codex/
+.agents/
+/flight_plot*.png
+/flight_report*.png
+*.log

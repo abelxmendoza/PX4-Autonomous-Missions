@@ -80,7 +80,7 @@
     # GPS-denied zone. gps_px4_failure_inject zeros EKF2_GPS_CTRL inside the
     # prism (Gazebo ignores INJECT_FAILURE). GNSS is restored only after the
     # vehicle is continuously north of the far face. run_demo.sh gps-denied
-    # also enables VIO fusion.
+    # also enables simulated external-odometry fusion.
     gps_denied_enable: true
     gps_deny_inject: false
     gps_px4_failure_inject: false

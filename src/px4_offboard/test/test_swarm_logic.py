@@ -101,6 +101,20 @@ def test_airborne_fault_does_not_release_tasks():
     assert c.reassignments == 0
 
 
+def test_interrupted_landing_confirmation_restarts_reassignment_dwell():
+    c = SurveyCoordinator()
+    for v in HOMES:
+        c.update(sample(v), 0)
+    c.step(0)
+    for now, confirmed, expected in [(0.1, True, 0), (0.6, False, 0),
+                                     (0.7, True, 0), (1.6, True, 0), (1.8, True, 2)]:
+        c.update(sample("px4_1", now, state="READY", armed=True, landed=False), now)
+        c.update(sample("px4_2", now, state="LANDED" if confirmed else "LANDING",
+                        armed=not confirmed, landed=confirmed, fault="test dropout"), now)
+        c.step(now)
+        assert c.reassignments == expected
+
+
 def simulate(path, dropout=False, speed=1.0):
     """Kinematic integration of the real coordinator; not PX4 flight evidence."""
     from dataclasses import asdict
@@ -184,3 +198,37 @@ def test_recovery_budget_allows_measured_sitl_tracking_speed(tmp_path):
     assert coordinator.reassignments == 2
     assert minimum >= 2.5
     assert verify(path)["passed"]
+
+
+def test_task_endpoint_requires_observable_visit():
+    """A transit-sized near miss must not count as completed task coverage."""
+    c = SurveyCoordinator()
+    task = c.tasks[0]
+    c.phase = "SURVEY"
+    c.active["px4_1"] = task.name
+    c.routes["px4_1"] = [task.end]
+    c.update(sample("px4_1", position=(task.end[0] - 0.8, *task.end[1:]),
+                    state="MOVING", armed=True, landed=False), 0)
+    c.update(sample("px4_2", state="READY", armed=True, landed=False), 0)
+    c.step(0)
+    assert not task.completed
+    assert c.active["px4_1"] == task.name
+    c.update(sample("px4_1", 0.1, position=(task.end[0] - 0.4, *task.end[1:]),
+                    state="MOVING", armed=True, landed=False), 0.1)
+    c.update(sample("px4_2", 0.1, state="READY", armed=True, landed=False), 0.1)
+    c.step(0.1)
+    assert task.completed
+
+
+def test_verifier_rejects_completion_without_observed_task_visits(tmp_path):
+    path = tmp_path / "false_completion.jsonl"
+    simulate(path, dropout=True)
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    # Keep COMPLETE and all completion flags, but remove evidence of travel.
+    for row in rows[1:]:
+        for vehicle, telemetry in row["vehicles"].items():
+            telemetry["position"] = HOMES[vehicle]
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    result = verify(path)
+    assert not result["passed"]
+    assert "survey transects not independently observed" in result["errors"]

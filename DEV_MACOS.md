@@ -1,8 +1,8 @@
 # Developing this repo from macOS
 
 No ROS 2 / Gazebo / PX4 SITL here — that's Linux-only. This covers the parts
-of the stack that run fully on macOS, mirroring the `pure-python-tests`,
-`web-tests`, and `vv-regression` jobs in `.github/workflows/unit-tests.yml`.
+of the stack that run fully on macOS, mirroring the `unit-and-verification`,
+`browser-replay`, and `recorded-flight-regression` jobs in `.github/workflows/unit-tests.yml`.
 
 ## One-time setup
 
@@ -17,31 +17,15 @@ cd web/replay && npm install
 
 ## Day to day
 
-Pure-Python logic + avoidance/state-machine tests (no ROS import needed):
+Logic and verifier tests (ROS-dependent modules explicitly skip):
 
 ```bash
 source .venv-mac/bin/activate
-cd src/px4_offboard
-python3 -m pytest -q test/test_mission_logic.py test/test_mission_state.py \
-  test/test_mission_executive.py test/test_flight_vv.py test/test_path_planner.py \
-  test/test_lidar_sectors.py test/test_localization_logic.py test/test_vio_bridge.py \
-  test/test_vio_noise.py test/test_camera_frame.py test/test_vision_marker.py \
-  test/test_vision_marker_detect.py
+PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -q
+python3 scripts/verify_evidence.py
 ```
 
-`test/test_offboard_mission_node.py` is skipped here on purpose — it needs a
-real rclpy + built px4_msgs (Linux only); it self-skips via
-`pytest.importorskip`.
-
-V&V regression against the recorded flight logs (validates state-machine /
-fence / avoidance requirements without a live SITL run):
-
-```bash
-source .venv-mac/bin/activate
-for log in web/replay/data/*.csv; do
-  PYTHONPATH=src/px4_offboard python3 -m px4_offboard.vv_replay "$log"
-done
-```
+Run these from the repository root. The evidence command needs only the Python standard library and includes preserved before/after failures, GPS-aiding-loss evidence and current cooperative recordings. It compares raw input hashes, verifier reports and browser exports. Skips are not flight validation.
 
 Web flight-replay viewer + its unit tests:
 

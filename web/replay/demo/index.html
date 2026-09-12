@@ -7,18 +7,18 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="mobile-web-app-capable" content="yes"/>
-<title>PX4 Autonomous Mission — Flight Replay</title>
+<title>PX4 Autonomy & Verification — Flight Replay</title>
 <meta name="description" content="Real recorded PX4 v1.15 + Gazebo Harmonic SITL flight replayed in the browser — reactive obstacle avoidance, geofencing, and failsafes, no backend required."/>
 <link rel="icon" href="../favicon.png" type="image/png"/>
 <link rel="apple-touch-icon" href="../apple-touch-icon.png"/>
 
 <meta property="og:type" content="website"/>
-<meta property="og:title" content="PX4 Autonomous Mission — Flight Replay"/>
+<meta property="og:title" content="PX4 Autonomy & Verification — Flight Replay"/>
 <meta property="og:description" content="Real recorded PX4 + Gazebo Harmonic SITL flight, replayed in the browser. Reactive obstacle avoidance, geofencing, and failsafes — no backend required."/>
 <meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <meta property="og:url" content="https://replay-sepia-tau.vercel.app/demo/"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="PX4 Autonomous Mission — Flight Replay"/>
+<meta name="twitter:title" content="PX4 Autonomy & Verification — Flight Replay"/>
 <meta name="twitter:description" content="Real recorded PX4 + Gazebo Harmonic SITL flight, replayed in the browser."/>
 <meta name="twitter:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <style>
@@ -379,25 +379,20 @@
 <div id="landingHero" class="landing-hero">
   <div class="landing-card">
     <div class="landing-eyebrow">Autonomy Lab / 001 · Portfolio Demo</div>
-    <h1 class="landing-title">Autonomous drone flight, <span>replayed in your browser.</span></h1>
-    <p class="landing-pitch">This is a <b>real recorded flight</b> from PX4 + Gazebo Harmonic —
-      not a live simulation — showing reactive obstacle avoidance, sensor fusion, and
-      geofencing end to end. Backed by a real automated test suite, including
-      offline flight-log verification that checks every recorded flight against
-      the same requirements a real acceptance review would use.</p>
+    <h1 class="landing-title">A flight fault, <span>tested and verified.</span></h1>
+    <p class="landing-pitch">A <b>64-second recorded PX4/Gazebo recovery flight</b>. One vehicle is commanded to land; the coordinator waits for landing and disarming before reassigning its work. The remaining vehicle completes four point visits. Inspect the replay and the independently computed post-flight verdict.</p>
     <div class="landing-badges">
       <span>PX4</span><span>ROS 2</span><span>Gazebo</span><span>Python</span><span>Three.js</span>
     </div>
     <div class="landing-actions">
-      <button id="landingStory" class="primary">▶ Watch the Story (90s)</button>
+      <button id="landingStory" class="primary">▶ Watch recovery (64s)</button>
       <button id="landingLaunch">Explore Freely</button>
       <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
       <a href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
     </div>
     <div class="landing-tips">
       <p><b>Once inside:</b> press play, switch missions from the top-right
-        dropdown, or toggle <b>Top-Down</b> for a map view. Trail color shows
-        when the reactive avoidance controller took over.</p>
+        dropdown, or toggle <b>Top-Down</b> for a map view. Cyan and pink trails identify the two vehicles. This scenario uses known-map routes; it does not use LiDAR or camera navigation.</p>
       <p class="landing-mobile-note"><b>Built desktop-first</b> — this runs on
         phones as a fallback, but drag-to-orbit and the full HUD are made for
         a bigger screen. On iPhone: starts in Top-Down map view — pinch to
@@ -470,7 +465,7 @@
       <div class="row"><span class="k">Evidence source</span><span id="hudSource" class="v">legacy log</span></div>
       <div class="row"><span class="k">Localization</span>
         <span id="hudLoc" class="badge avoid-none">GPS</span></div>
-      <div class="row"><span class="k">EKF fusion</span><span id="hudFusion" class="v">GNSS — · VIO —</span></div>
+      <div class="row"><span class="k">EKF fusion</span><span id="hudFusion" class="v">GNSS — · External odometry —</span></div>
       <div class="sensor-array" aria-label="LiDAR sector minimum ranges">
         <div class="sensor-cell"><span>FRONT</span><b id="hudLidarFront">—</b></div>
         <div class="sensor-cell"><span>LEFT</span><b id="hudLidarLeft">—</b></div>
@@ -948,7 +943,8 @@ drone.add(droneLight);
 // are produced (scripts/run_demo.sh).
 // ---------------------------------------------------------------------------
 const MISSIONS = [
-  {id:'swarm', label:'Two-Drone Swarm — Far Pad Delivery', file:'../data/swarm.json', swarm:true},
+  {id:'golden', label:'Flagship — Fault, Recovery, Verification (64s)', file:'../data/golden_recovery.json', swarm:true},
+  {id:'swarm', label:'Two-Drone Nominal — Gate / Landing Visits', file:'../data/swarm.json', swarm:true},
   {
     id: 'full', file: '../data/mission_full_avoidance.csv',
     label: 'Reactive Avoidance — Full Course',
@@ -973,8 +969,12 @@ const swarmPanel = document.createElement('div');
 swarmPanel.id = 'swarmPanel';
 swarmPanel.hidden = true;
 document.getElementById('hudPanel').prepend(swarmPanel);
+// Keep story re-entry available after the introductory overlay is dismissed,
+// including when the single-vehicle cards are hidden for a swarm recording.
+document.getElementById('hudPanel').prepend(document.getElementById('hudStoryBtn'));
 function showSwarmPanel(active) {
   for (const child of document.getElementById('hudPanel').children) {
+    if (child.id === 'hudStoryBtn') { child.style.display = ''; continue; }
     child.style.display = (child === swarmPanel) === active ? '' : 'none';
   }
   swarmPanel.hidden = !active;
@@ -982,14 +982,18 @@ function showSwarmPanel(active) {
 function updateSwarmFrame(index) {
   swarmReplay.update(index, viewMode === VIEW_CAM);
   const f = swarmData.frames[index];
+  const reason = f.phase === 'COMPLETE' ? 'Both vehicles confirmed landed; retired vehicle remains at its landing location.' : f.reason;
   const vehicles = ['px4_1', 'px4_2'].map((id, k) => {
     const v = f.vehicles[id];
     return `DRONE ${k + 1} · ${v.valid ? v.state : 'TELEMETRY UNAVAILABLE'}\nAltitude ${(-v.position[2]).toFixed(1)} m`;
   });
-  swarmPanel.textContent = `TWO-DRONE SWARM\nRecorded Gazebo flight\n\n${f.phase} · ${f.time.toFixed(1)} s\n${f.completed} / ${swarmData.taskCount} delivery tasks complete\n\n${vehicles.join('\n\n')}\n\nCyan: Drone 1 · Pink: Drone 2\n\n${swarmData.verification?.passed ? 'Flight verification passed' : 'Incomplete run — verification did not pass'}\n${f.reason}\n\nPads show this recording’s original launch positions.\nRecording: ${swarmData.source}`;
+  swarmPanel.textContent = `AUTONOMY & VERIFICATION\nRecorded PX4 / Gazebo flight\n\n${f.phase} · ${f.time.toFixed(1)} s\n${f.completed} / ${swarmData.taskCount} point visits complete\n\n${vehicles.join('\n\n')}\n\nCyan: Drone 1 · Pink: Drone 2\n\n${swarmData.verification?.passed ? 'Post-flight verification: PASS' : 'Post-flight verification: FAIL'}\n${swarmData.verification?.samples ?? 0} evidence samples · ${swarmData.verification?.reassignments ?? 0} reassignments\nMinimum separation: ${swarmData.verification?.minimum_horizontal_separation_m?.toFixed(2) ?? '—'} m (limit 2.50 m)\n${reason}\n\nPads show this recording’s original launch positions.\nRecording: ${swarmData.source}`;
   swarmPanel.style.whiteSpace = 'pre-line';
-  swarmPanel.style.lineHeight = '1.8';
-  hud.decision.textContent = `SWARM · ${f.phase} — ${f.reason}`;
+  swarmPanel.style.lineHeight = '1.55';
+  swarmPanel.style.fontSize = '13px';
+  swarmPanel.style.padding = '14px';
+  swarmPanel.style.background = 'rgba(8,20,21,.94)';
+  hud.decision.textContent = `SWARM · ${f.phase} — ${reason}`;
   hud.range.textContent = `${f.time.toFixed(1)} s / ${swarmData.frames.at(-1).time.toFixed(1)} s`;
   if (!dragging) hud.scrub.value = index;
 }
@@ -1178,6 +1182,7 @@ function loadMission(m) {
       lidarGroup.visible = !m.swarm && hud.toggleLidar.checked;
       if (m.swarm) {
         swarmData = parseSwarmReplay(text);
+        document.getElementById('missionLabel').textContent = m.label;
         positionReplayPads(swarmData.homes);
         rows = swarmData.frames.map(f => {
           const p = f.vehicles.px4_1.position;
@@ -1287,24 +1292,26 @@ function loadVvReport(m) {
 // found by inspecting the actual recorded obstacle/wp_index transitions —
 // not arbitrary timestamps, so the narration stays true to what's on screen.
 // ---------------------------------------------------------------------------
-const STORY_MISSION_ID = 'full';
+const STORY_MISSION_ID = 'golden';
+// Times are observed events in the immutable golden SITL recording, not a
+// fabricated mission sequence. Raw evidence and acceptance live in evidence/.
 const STORY_BEATS = [
-  { atFrame: 0, title: 'Mission Start',
-    text: "This is a real recorded flight — not a live simulation. Watch the drone navigate 9 waypoints autonomously, reacting to obstacles it discovers along the way." },
-  { atFrame: 15, title: 'Closing In',
-    text: "It's approaching an obstacle it can't see yet — its onboard sensor only detects what's directly ahead, within a few meters." },
-  { atFrame: 23, title: 'Obstacle Detected',
-    text: "There it is. The avoidance controller reacts immediately, steering around it while still tracking its original destination." },
-  { atFrame: 109, title: 'Path Clear',
-    text: "Once clear, it confirms the way ahead is safe and hands back to normal waypoint tracking — that whole detect → avoid → resume cycle took about 9 seconds." },
-  { atFrame: 205, title: 'Cruising',
-    text: "Covering ground toward waypoint 6. The same reactive logic keeps running continuously in the background, even when nothing is happening." },
-  { atFrame: 217, title: 'Second Obstacle',
-    text: "Another obstacle, same playbook: detect, avoid, resume — proven, repeatable behavior, not a one-off." },
-  { atFrame: 331, title: 'Final Approach',
-    text: "Clear again, and heading for the last waypoint." },
-  { atFrame: 400, title: 'Landing',
-    text: "Touchdown. Every second of this flight was checked afterward against a formal requirements checklist — see the Requirements panel to the right." },
+  {atFrame: 0, title: 'Preflight: wait for both vehicles',
+    text: 'PX4 controls stabilization. Abel’s ROS 2 coordinator assigns tasks and records synchronized evidence. This is a recorded simulation, not hardware flight.'},
+  {atFrame: 113, title: 'Arm and take off',
+    text: 'Both PX4 vehicles enter takeoff. Independent controllers stream targets and monitor local command and telemetry health.'},
+  {atFrame: 178, title: 'Fault injected: vehicle 2 must land',
+    text: 'An explicit simulated dropout commands vehicle 2 to land. The coordinator holds vehicle 1 and keeps the failed vehicle’s work reserved.'},
+  {atFrame: 283, title: 'Landed and disarmed — wait for confirmation',
+    text: 'A landing flag alone is insufficient. Fresh landed and disarmed evidence must persist for at least one second before tasks are released.'},
+  {atFrame: 294, title: 'Two tasks reassigned',
+    text: 'Vehicle 1 takes over the unfinished work. A* transit routes use the known obstacle map and reserve clearance around the retired vehicle. No LiDAR or camera navigation is used in this scenario.'},
+  {atFrame: 411, title: 'Verify visits, not completion flags',
+    text: 'The surviving vehicle reaches the task points. Testing found that a one-metre near miss used to count as completion; the fix requires a closer observed visit.'},
+  {atFrame: 540, title: 'All four visits complete — land',
+    text: 'The surviving vehicle enters landing. COMPLETE still requires both vehicles to be observed landed and disarmed.'},
+  {atFrame: 639, title: 'Evidence result: PASS',
+    text: '641 synchronized samples; two reassignments; minimum separation 8.10 m against a 2.50 m limit. Raw telemetry is checked independently. This proves sampled task visits and landing, not continuous collision freedom or landing-pad accuracy.'},
 ];
 
 let storyModeActive = false;
@@ -1524,7 +1531,7 @@ function setText(el, value) {
 
 function updateFrame(idx, snapToo) {
   frameIndex = Math.max(0, Math.min(idx, rows.length - 1));
-  if (swarmReplay) { updateSwarmFrame(frameIndex); return; }
+  if (swarmReplay) { updateSwarmFrame(frameIndex); updateStoryPanel(frameIndex); return; }
   const r = rows[frameIndex];
   const pos = toWorld(r.north, r.east, r.down);
   drone.position.copy(pos);
@@ -1609,7 +1616,7 @@ function updateFrame(idx, snapToo) {
     const short = denied
       ? (r.gps_injected_deny ? `DENY · ${src}` : `ZONE · ${src}`)
       : src;
-    hud.loc.textContent = short;
+    hud.loc.textContent = short.replace('VIO', 'SIM ODOM');
     hud.loc.className = 'badge ' + (
       src.includes('VIO') ? 'loc-vio'
         : denied || src.includes('DENIED') ? 'loc-denied'
@@ -1617,7 +1624,7 @@ function updateFrame(idx, snapToo) {
     );
     const gnss = Boolean(r.gnss_pos_fused || r.gnss_vel_fused);
     const vio = Boolean(r.ev_pos_fused || r.ev_vel_fused);
-    setText(hud.fusion, `GNSS ${gnss ? '●' : '○'} · VIO ${vio ? '●' : '○'}`);
+    setText(hud.fusion, `GNSS ${gnss ? '●' : '○'} · Sim odometry ${vio ? '●' : '○'}`);
   }
 
   hud.dotCage.className = 'dot ' + (r.geocage ? 'on' : 'off');

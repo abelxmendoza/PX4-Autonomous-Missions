@@ -1,0 +1,9 @@
+{
+  "passed": false,
+  "errors": [
+    "survey transects not independently observed"
+  ],
+  "samples": 780,
+  "minimum_horizontal_separation_m": 8.035713653740501,
+  "reassignments": 2
+}

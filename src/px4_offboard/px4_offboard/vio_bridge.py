@@ -1,4 +1,4 @@
-"""Gazebo pose-backed visual odometry for PX4 GPS-denied SITL demos.
+"""Gazebo pose-backed simulated external odometry for PX4 aiding-loss demos.
 
 Gazebo's LiDAR ``LaserScan.world_pose`` is the sensor pose in the vehicle
 frame (≈ origin), not the world.  This node reads the x500 model pose from

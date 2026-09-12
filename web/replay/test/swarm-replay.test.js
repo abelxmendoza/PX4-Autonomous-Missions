@@ -3,6 +3,7 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const {parseSwarmReplay} = require('../swarm-replay.js');
 const recording = require('../data/swarm.json');
+const golden = require('../data/golden_recovery.json');
 describe('synchronized swarm recording', () => {
   it('contains independent moving tracks and verified completion', () => {
     const data = parseSwarmReplay(JSON.stringify(recording));
@@ -20,5 +21,18 @@ describe('synchronized swarm recording', () => {
     expect(() => parseSwarmReplay(JSON.stringify(bad))).toThrow();
     delete bad.frames[0].vehicles.px4_2;
     expect(() => parseSwarmReplay(JSON.stringify(bad))).toThrow();
+  });
+  it('shows the golden recovery verdict and both final landed states', () => {
+    const data = parseSwarmReplay(JSON.stringify(golden));
+    expect(data.verification.passed).toBe(true);
+    expect(data.verification.reassignments).toBe(2);
+    expect(data.frames.at(-1).phase).toBe('COMPLETE');
+    expect(data.frames.at(-1).completed).toBe(data.taskCount);
+    expect(data.frames.at(-1).time).toBeGreaterThanOrEqual(60);
+    expect(data.frames.at(-1).time).toBeLessThanOrEqual(120);
+    for (const vehicle of Object.values(data.frames.at(-1).vehicles)) {
+      expect(vehicle.state).toBe('LANDED');
+      expect(vehicle.valid).toBe(true);
+    }
   });
 });

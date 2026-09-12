@@ -1,7 +1,7 @@
 {
-  "source": "/home/azrael/Desktop/px4-autonomous-mission/web/replay/data/mission_course_attitude.csv",
+  "source": "web/replay/data/mission_course_attitude.csv",
   "summary": {
-    "source": "/home/azrael/Desktop/px4-autonomous-mission/web/replay/data/mission_course_attitude.csv",
+    "source": "web/replay/data/mission_course_attitude.csv",
     "samples": 320,
     "duration_s": 32.0,
     "state_sequence": [
@@ -128,7 +128,7 @@
     },
     {
       "requirement_id": "REQ-GPS-ACTUAL-01",
-      "title": "PX4 GPS sensor actually becomes unavailable",
+      "title": "PX4 GPS aiding becomes unavailable",
       "severity": "must",
       "passed": true,
       "skipped": true,
@@ -137,11 +137,11 @@
     },
     {
       "requirement_id": "REQ-VIO-FUSION-01",
-      "title": "External vision sustains GPS-denied flight",
+      "title": "Simulated external odometry remains fused during GPS-aiding loss",
       "severity": "must",
       "passed": true,
       "skipped": true,
-      "detail": "legacy log has no VIO fusion evidence",
+      "detail": "legacy log has no external-odometry fusion evidence",
       "evidence": []
     }
   ]

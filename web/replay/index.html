@@ -4,18 +4,18 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="theme-color" content="#050a0b"/>
-<title>Abel Mendoza — PX4 Autonomous Mission</title>
-<meta name="description" content="A GPS-denied PX4 + Gazebo Harmonic drone autonomy stack, verified against real recorded flight logs — built by Abel Mendoza."/>
+<title>Abel Mendoza — PX4 Autonomy & Verification</title>
+<meta name="description" content="PX4 / ROS 2 Autonomy & Verification Platform — fault testing, recorded SITL evidence and requirement-based checks, built by Abel Mendoza."/>
 <link rel="icon" href="favicon.png" type="image/png"/>
 <link rel="apple-touch-icon" href="apple-touch-icon.png"/>
 
 <meta property="og:type" content="website"/>
-<meta property="og:title" content="Abel Mendoza — PX4 Autonomous Mission"/>
-<meta property="og:description" content="A GPS-denied PX4 + Gazebo Harmonic drone autonomy stack, verified against real recorded flight logs."/>
+<meta property="og:title" content="Abel Mendoza — PX4 Autonomy & Verification"/>
+<meta property="og:description" content="Fault testing, recorded SITL evidence and requirement-based verification."/>
 <meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <meta property="og:url" content="https://replay-sepia-tau.vercel.app/"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="Abel Mendoza — PX4 Autonomous Mission"/>
+<meta name="twitter:title" content="Abel Mendoza — PX4 Autonomy & Verification"/>
 <meta name="twitter:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 
 <style>
@@ -99,7 +99,7 @@
 <header>
   <div class="brand">
     <div class="brand-mark" aria-hidden="true">PX</div>
-    <h1>PX4 Mission <span class="dim">Autonomy Lab</span></h1>
+    <h1>PX4 <span class="dim">Autonomy & Verification</span></h1>
   </div>
   <nav>
     <a href="/demo/">Demo</a>
@@ -113,8 +113,8 @@
     <div class="eyebrow">Autonomy Lab / 001 · Portfolio Project</div>
     <p class="who"><b>Abel Mendoza</b> — building autonomy software for drones and robotics, aiming at defense, autonomous-flight, and robotics engineering roles.</p>
 
-    <h2 class="title">A drone that flies itself<br/><span>through GPS denial.</span></h2>
-    <p class="pitch">This project is a real PX4 + Gazebo Harmonic autonomy stack — reactive obstacle avoidance, geofencing, and a GPS-denied navigation pipeline that hands off to simulated visual odometry mid-flight. It's backed by an offline verification harness that replays every recorded flight against named, testable requirements — <b>the same discipline a real acceptance review would use</b>, not a demo that just happened to work once.</p>
+    <h2 class="title">Autonomous flight.<br/><span>Inspectable evidence.</span></h2>
+    <p class="pitch">A software-in-the-loop UAV platform built with ROS 2, PX4, Gazebo, MAVSDK and MAVLink for developing, fault-testing, replaying and verifying autonomous behavior. Abel implemented the mission logic, sensor integration, fault handling, telemetry and verification around PX4’s flight controller. Start with a 64-second recovery flight: a commanded landing, confirmed task reassignment, and an independently checked result.</p>
 
     <div class="badges">
       <span>PX4</span><span>ROS 2</span><span>Gazebo Harmonic</span><span>Python</span><span>OpenCV</span><span>Three.js</span>
@@ -122,21 +122,21 @@
 
     <div class="actions">
       <a class="btn primary" href="/demo/">▶ Watch the flight replay</a>
-      <a class="btn" href="/writeup/">Read the verification log</a>
+      <a class="btn" href="/writeup/">Read the engineering case study</a>
       <a class="textlink" href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
     </div>
     <p class="mobile-note">Built desktop-first — the replay works on phones as a fallback, but it's made for a bigger screen.</p>
 
     <div class="proof">
-      <div><span class="k">Requirements</span><span class="v">14 named checks</span></div>
-      <div><span class="k">Test suite</span><span class="v">100+ automated tests</span></div>
-      <div><span class="k">Verified against</span><span class="v">Real recorded flights</span></div>
+      <div><span class="k">Requirements</span><span class="v">21 catalog requirements</span></div>
+      <div><span class="k">Test suite</span><span class="v">166 Python · 24 browser tests</span></div>
+      <div><span class="k">Verified against</span><span class="v">SITL + negative regression cases</span></div>
     </div>
   </div>
 </main>
 
 <footer>
-  <span>PX4 v1.15 · ROS 2 Humble · Gazebo Harmonic</span>
+  <span>PX4 SITL · ROS 2 Humble · Gazebo Harmonic</span>
   <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">github.com/abelxmendoza</a>
 </footer>
 

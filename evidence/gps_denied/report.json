@@ -1,20 +1,20 @@
 {
-  "source": "web/replay/data/mission_full_avoidance.csv",
+  "source": "evidence/gps_denied/flight.csv.gz",
   "summary": {
-    "source": "web/replay/data/mission_full_avoidance.csv",
-    "samples": 410,
-    "duration_s": 41.0,
+    "source": "evidence/gps_denied/flight.csv.gz",
+    "samples": 468,
+    "duration_s": 129.0,
     "state_sequence": [
       "MOVE",
       "LANDING"
     ],
-    "max_altitude_m": 5.24,
-    "final_wp_index": 9,
-    "avoidance_samples": 214,
+    "max_altitude_m": 8.11,
+    "final_wp_index": 7,
+    "avoidance_samples": 0,
     "geofence_breach_samples": 0,
-    "has_executive": false,
-    "sensor_evidence_samples": 0,
-    "minimum_mapped_clearance_m": null
+    "has_executive": true,
+    "sensor_evidence_samples": 468,
+    "minimum_mapped_clearance_m": 1.982
   },
   "passed": true,
   "results": [
@@ -86,8 +86,8 @@
       "title": "Avoidance backed by live sensor evidence",
       "severity": "must",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no sensor-evidence columns",
+      "skipped": false,
+      "detail": "0 direct avoidance sample(s) backed by LiDAR",
       "evidence": []
     },
     {
@@ -95,8 +95,8 @@
       "title": "No mapped-obstacle intersection",
       "severity": "must",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no mapped-clearance column",
+      "skipped": false,
+      "detail": "minimum mapped clearance 1.982m",
       "evidence": []
     },
     {
@@ -104,8 +104,8 @@
       "title": "GPS-denied zone flag consistency",
       "severity": "should",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no GPS-denied zone column",
+      "skipped": false,
+      "detail": "58 in-zone sample(s); flag matches AABB",
       "evidence": []
     },
     {
@@ -113,8 +113,8 @@
       "title": "Injected deny does not claim healthy GPS",
       "severity": "must",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no GPS-inject columns",
+      "skipped": false,
+      "detail": "58 injected-deny sample(s); sources healthy",
       "evidence": []
     },
     {
@@ -122,8 +122,8 @@
       "title": "Localization failsafe reaches terminal/hold",
       "severity": "must",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no loc_event column",
+      "skipped": false,
+      "detail": "no LOC_FAILSAFE events in log",
       "evidence": []
     },
     {
@@ -131,8 +131,8 @@
       "title": "PX4 GPS aiding becomes unavailable",
       "severity": "must",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no PX4 GPS-failure evidence",
+      "skipped": false,
+      "detail": "GPS unavailable in 91 settled failure sample(s)",
       "evidence": []
     },
     {
@@ -140,8 +140,8 @@
       "title": "Simulated external odometry remains fused during GPS-aiding loss",
       "severity": "must",
       "passed": true,
-      "skipped": true,
-      "detail": "legacy log has no external-odometry fusion evidence",
+      "skipped": false,
+      "detail": "external vision fused in 91 GPS-denied sample(s)",
       "evidence": []
     }
   ]
