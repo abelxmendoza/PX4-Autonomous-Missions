@@ -1,15 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Local override of PX4's stock x500_lidar_2d: adds a forward mono camera
-     (PX4's stock mono_cam, mount pose copied from x500_mono_cam/model.sdf)
-     alongside the existing 2D lidar. See README "Installation" for the
-     install-into-PX4-Autopilot step. -->
+<!-- Local override of PX4's stock x500_lidar_2d: 2D LiDAR plus a forward
+     stereo pair defined as first-class links (not nested include-merge).
+     Nested camera models advertised gz.msgs.Image topics but never emitted
+     a rendered frame on this host; inlining matches how the working GPU
+     lidar sensor is attached.
+
+     Stereo baseline: camera_link at y=.03, camera_right_link at y=-.03
+     (0.06 m). Intrinsics must stay identical: 640x480, hfov 1.74, 10 Hz.
+     If those change, update stereo_depth.py IMAGE_WIDTH_PX /
+     IMAGE_HEIGHT_PX / HORIZONTAL_FOV_RAD / BASELINE_M. -->
 <sdf version='1.9'>
   <model name='x500_lidar_2d'>
     <include merge='true'>
       <uri>x500</uri>
     </include>
     <include merge='true'>
-      <!-- <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Lidar 2d v2</uri> -->
       <uri>model://lidar_2d_v2</uri>
       <pose>.12 0 .26 0 0 0</pose>
     </include>
@@ -18,14 +23,87 @@
       <child>link</child>
       <pose relative_to="base_link">-.1 0 .26 0 0 0</pose>
     </joint>
-    <include merge='true'>
-      <uri>model://mono_cam</uri>
+
+    <link name="camera_link">
       <pose>.12 .03 .242 0 0 0</pose>
-    </include>
+      <inertial>
+        <mass>0.01</mass>
+        <inertia>
+          <ixx>1e-6</ixx>
+          <iyy>1e-6</iyy>
+          <izz>1e-6</izz>
+        </inertia>
+      </inertial>
+      <visual name="camera_left_housing">
+        <geometry>
+          <box>
+            <size>0.02 0.04 0.04</size>
+          </box>
+        </geometry>
+      </visual>
+      <sensor name="imager" type="camera">
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>80</far>
+          </clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+    </link>
     <joint name="CameraJoint" type="fixed">
       <parent>base_link</parent>
       <child>camera_link</child>
-      <pose relative_to="base_link">.12 .03 .242 0 0 0</pose>
+    </joint>
+
+    <link name="camera_right_link">
+      <pose>.12 -.03 .242 0 0 0</pose>
+      <inertial>
+        <mass>0.01</mass>
+        <inertia>
+          <ixx>1e-6</ixx>
+          <iyy>1e-6</iyy>
+          <izz>1e-6</izz>
+        </inertia>
+      </inertial>
+      <visual name="camera_right_housing">
+        <geometry>
+          <box>
+            <size>0.02 0.04 0.04</size>
+          </box>
+        </geometry>
+      </visual>
+      <sensor name="imager" type="camera">
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>80</far>
+          </clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+    </link>
+    <joint name="CameraRightJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_right_link</child>
     </joint>
   </model>
 </sdf>

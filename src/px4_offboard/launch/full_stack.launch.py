@@ -36,6 +36,28 @@ def _repo_root() -> str:
     return os.path.expanduser("~/Desktop/px4-autonomous-mission")
 
 
+def _ensure_gz_cam_sub(root: str) -> str:
+    """Build the C++ Image subscriber that wakes Gazebo camera sensors."""
+    import subprocess
+
+    binary = os.path.join(root, "scripts", "gz_cam_sub")
+    src = binary + ".cpp"
+    if (
+        os.path.isfile(binary)
+        and os.path.isfile(src)
+        and os.path.getmtime(binary) >= os.path.getmtime(src)
+    ):
+        return binary
+    cflags = subprocess.check_output(
+        ["pkg-config", "--cflags", "--libs", "gz-transport13", "gz-msgs10"],
+        text=True,
+    ).split()
+    subprocess.check_call(
+        ["g++", "-O2", "-std=c++17", "-o", binary, src, *cflags]
+    )
+    return binary
+
+
 def _launch_setup(context, *args, **kwargs):
     px4_dir = os.path.expanduser(LaunchConfiguration("px4_dir").perform(context))
     headless = LaunchConfiguration("headless").perform(context).lower() == "true"
@@ -163,12 +185,67 @@ def _launch_setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration("use_vio")),
     )
 
+    # Gazebo camera sensors only render while a C++ gz-transport subscriber
+    # is connected. Python camera_bridge subscribe() returns True but does
+    # not increment that count (LiDAR is fine because PX4's gz_bridge is
+    # already subscribed). This process is the missing C++ client.
+    left_cam_topic = (
+        "/world/obstacle_world/model/x500_lidar_2d_0/link/"
+        "camera_link/sensor/imager/image"
+    )
+    right_cam_topic = (
+        "/world/obstacle_world/model/x500_lidar_2d_0/link/"
+        "camera_right_link/sensor/imager/image"
+    )
+    gz_cam_sub = ExecuteProcess(
+        cmd=[
+            _ensure_gz_cam_sub(root),
+            left_cam_topic,
+            right_cam_topic,
+        ],
+        output="screen",
+        name="gz_cam_sub",
+        condition=IfCondition(LaunchConfiguration("use_camera")),
+    )
+
     camera_node = Node(
         package="px4_offboard",
         executable="camera_bridge",
         name="camera_bridge",
         output="screen",
         condition=IfCondition(LaunchConfiguration("use_camera")),
+        parameters=[{"gz_topic": left_cam_topic}],
+    )
+
+    camera_secondary_node = Node(
+        package="px4_offboard",
+        executable="camera_bridge",
+        name="camera_bridge_secondary",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("use_stereo")),
+        parameters=[
+            {
+                "gz_topic": (
+                    "/world/obstacle_world/model/x500_lidar_2d_0/link/"
+                    "camera_right_link/sensor/imager/image"
+                ),
+                "frame_id": "camera_right_link",
+                "output_topic": "/px4_offboard/camera_secondary/image_raw",
+                "healthy_topic": "/px4_offboard/camera_secondary_healthy",
+            }
+        ],
+    )
+
+    # Not gated by use_vio: this is the real sensor-fusion alternative to
+    # vio_bridge.py's ground-truth-based approach (see ekf_fusion_node.py's
+    # module docstring), opt-in separately until it has a live SITL
+    # verification pass of its own.
+    ekf_fusion_node = Node(
+        package="px4_offboard",
+        executable="ekf_fusion_node",
+        name="ekf_fusion_node",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("use_sensor_fusion_vio")),
     )
 
     vision_marker_node = Node(
@@ -220,8 +297,11 @@ def _launch_setup(context, *args, **kwargs):
     )
     delayed_lidar = TimerAction(period=14.0, actions=[lidar_node])
     delayed_vio = TimerAction(period=14.0, actions=[vio_node])
+    delayed_gz_cam_sub = TimerAction(period=13.0, actions=[gz_cam_sub])
     delayed_camera = TimerAction(period=14.0, actions=[camera_node])
+    delayed_camera_secondary = TimerAction(period=14.0, actions=[camera_secondary_node])
     delayed_vision_marker = TimerAction(period=15.0, actions=[vision_marker_node])
+    delayed_ekf_fusion = TimerAction(period=15.0, actions=[ekf_fusion_node])
     delayed_ekf_config = TimerAction(
         period=18.0,
         actions=[ExecuteProcess(
@@ -256,8 +336,11 @@ def _launch_setup(context, *args, **kwargs):
         delayed_gcs,
         delayed_lidar,
         delayed_vio,
+        delayed_gz_cam_sub,
         delayed_camera,
+        delayed_camera_secondary,
         delayed_vision_marker,
+        delayed_ekf_fusion,
         delayed_ekf_config,
         delayed_failure_config,
         delayed_trail,
@@ -354,6 +437,27 @@ def generate_launch_description():
                 "use_vision_marker",
                 default_value="false",
                 description="Detect an ArUco marker in the camera feed (requires use_camera:=true)",
+            ),
+            DeclareLaunchArgument(
+                "use_stereo",
+                default_value="false",
+                description=(
+                    "Also bridge the second (right) camera for stereo "
+                    "(requires use_camera:=true)"
+                ),
+            ),
+            DeclareLaunchArgument(
+                "use_sensor_fusion_vio",
+                default_value="false",
+                description=(
+                    "Run ekf_fusion_node: real IMU + real stereo visual "
+                    "odometry fused into a side-channel pose "
+                    "(/px4_offboard/vo_pose). Does not feed PX4 unless "
+                    "the node's publish_to_px4 parameter is also true. "
+                    "Requires use_camera:=true and use_stereo:=true. "
+                    "Independent of use_vio, which still runs the "
+                    "ground-truth-based vio_bridge.py."
+                ),
             ),
             DeclareLaunchArgument(
                 "gps_px4_failure_inject",

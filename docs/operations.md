@@ -181,16 +181,17 @@ ros2 launch px4_offboard full_stack.launch.py obstacle_source:=sensor_only
 ros2 topic echo /px4_offboard/obstacle_dir
 ```
 
-### Forward camera
+### Forward stereo camera
 
 `models/x500_lidar_2d/model.sdf` (this repo's tracked override of PX4's stock
-`x500_lidar_2d`) merges in PX4's stock `mono_cam` sensor alongside the 2D
-LiDAR, so the vehicle carries a real forward-facing Gazebo camera — an actual
-rendered sensor, not the web replay's FPV viewing angle (see below). Install
-it like the LiDAR override (step 1):
+`x500_lidar_2d`) merges in PX4's stock `mono_cam` plus this repo's
+`mono_cam_right` (identical intrinsics, 0.06m baseline) alongside the 2D
+LiDAR, so the vehicle carries a real forward-facing stereo pair in Gazebo —
+actual rendered sensors, not the web replay's FPV viewing angle (see below).
+Install it like the LiDAR override (step 1):
 
 ```bash
-cp -r models/lidar_2d_v2 models/x500_lidar_2d \
+cp -r models/lidar_2d_v2 models/x500_lidar_2d models/mono_cam_right \
   ~/PX4-Autopilot/Tools/simulation/gz/models/
 ```
 

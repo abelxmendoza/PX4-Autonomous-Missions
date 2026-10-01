@@ -19,6 +19,10 @@ src/px4_ros_com/
 .venv-mac/
 web/replay/node_modules/
 
+# Built by full_stack.launch.py from scripts/gz_cam_sub.cpp (C++ gz-transport
+# subscriber that wakes Gazebo camera sensors; not a source file).
+scripts/gz_cam_sub
+
 # Local tools and test outputs (curated evidence stays explicitly tracked)
 .venv/
 venv/

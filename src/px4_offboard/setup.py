@@ -36,6 +36,7 @@ setup(
             "vio_bridge = px4_offboard.vio_bridge:main",
             "camera_bridge = px4_offboard.camera_bridge:main",
             "vision_marker_node = px4_offboard.vision_marker_node:main",
+            "ekf_fusion_node = px4_offboard.ekf_fusion_node:main",
         ],
     },
 )
