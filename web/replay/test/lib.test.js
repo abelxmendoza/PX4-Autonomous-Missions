@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE, gpsDeniedWorldBox,
-  gpsDeniedLabelPos, COURSE_OBSTACLES, rgb01ToHex,
+  gpsDeniedLabelPos, COURSE_OBSTACLES, rgb01ToHex, hasFusionData, fusionSummary,
 } from '../lib.js';
 
 const FULL_HEADER =
@@ -205,5 +205,57 @@ describe('parseCsv — malformed input is rejected, not silently corrupted', () 
 
   it('does not throw on a completely empty string', () => {
     expect(() => parseCsv('')).not.toThrow();
+  });
+});
+
+describe('parseCsv — control and fusion columns', () => {
+  const header = FULL_HEADER + ',ctrl_mode,pos_source,vel_cmd_n,vel_cmd_e,vel_cmd_d,' +
+    'vo_healthy,vo_n,vo_e,vo_d,vo_err_m,vo_err_down_m,vo_path_m,vo_drift_frac,vo_inliers';
+  const fusionRow = (overrides = {}) => {
+    const base = fullRow();
+    const cols = FULL_HEADER.split(',').map(k => base[k] ?? '');
+    const extra = {
+      ctrl_mode: 'velocity_pid', pos_source: 'px4', vel_cmd_n: '1.5', vel_cmd_e: '-0.5',
+      vel_cmd_d: '0.1', vo_healthy: '1', vo_n: '4.0', vo_e: '5.0', vo_d: '-3.0',
+      vo_err_m: '0.7', vo_err_down_m: '0.1', vo_path_m: '25.0', vo_drift_frac: '0.028',
+      vo_inliers: '42', ...overrides,
+    };
+    return [...cols, ...Object.values(extra)].join(',');
+  };
+
+  it('parses control mode, velocity command and fusion telemetry as typed values', () => {
+    const [row] = parseCsv(header + '\n' + fusionRow());
+    expect(row.ctrl_mode).toBe('velocity_pid');
+    expect(row.pos_source).toBe('px4');
+    expect(row.vel_cmd_n).toBe(1.5);
+    expect(row.vo_healthy).toBe(true);
+    expect(row.vo_err_m).toBeCloseTo(0.7);
+    expect(row.vo_drift_frac).toBeCloseTo(0.028);
+    expect(row.vo_inliers).toBe(42);
+  });
+
+  it('leaves fusion fields NaN/false on logs recorded before they existed', () => {
+    const [row] = parseCsv(FULL_HEADER + '\n' + Object.values(
+      Object.fromEntries(FULL_HEADER.split(',').map(k => [k, fullRow()[k] ?? '']))).join(','));
+    expect(row.ctrl_mode).toBe('');
+    expect(row.vo_healthy).toBe(false);
+    expect(Number.isNaN(row.vo_n)).toBe(true);
+    expect(hasFusionData([row])).toBe(false);
+  });
+
+  it('fusionSummary reports availability while moving and the last healthy drift', () => {
+    const rows = [
+      ...Array.from({ length: 8 }, () => ({ state: 'MOVE', vo_healthy: true,
+        vo_drift_frac: 0.03, vo_err_m: 0.9, vo_path_m: 30, vo_n: 1 })),
+      ...Array.from({ length: 2 }, () => ({ state: 'MOVE', vo_healthy: false,
+        vo_drift_frac: 0.5, vo_err_m: 9, vo_path_m: 31, vo_n: 1 })),
+      { state: 'LANDING', vo_healthy: true, vo_drift_frac: 0.04, vo_err_m: 1.2, vo_path_m: 32, vo_n: 1 },
+    ];
+    const s = fusionSummary(rows);
+    expect(s.availability).toBeCloseTo(0.8);
+    // the unhealthy MOVE rows' large drift must not be reported as the result
+    expect(s.finalDriftFrac).toBeCloseTo(0.04);
+    expect(s.pathM).toBe(32);
+    expect(hasFusionData(rows)).toBe(true);
   });
 });

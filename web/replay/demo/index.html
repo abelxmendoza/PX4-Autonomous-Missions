@@ -123,7 +123,7 @@
   .legend .item{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--muted);}.legend .sw{width:12px;height:3px;flex:none;}
   .toggle-row{display:flex;align-items:center;gap:8px;padding:4px 0;min-height:36px;cursor:pointer;user-select:none;}
   .toggle-row input{accent-color:var(--mint);width:18px;height:18px;flex:none;cursor:pointer;}.toggle-row .sw{width:11px;height:4px;flex:none;}
-  .toggle-row span.label{flex:1;color:var(--text);}.toggle-row span.hint{color:var(--muted);font-size:9px;}
+  .toggle-row span.label{flex:1;color:var(--text);}.toggle-row span.hint{position:static;transform:none;max-width:none;padding:0;letter-spacing:0;text-transform:none;opacity:1;text-align:right;color:var(--muted);font-size:9px;}
 
   .transport{position:fixed;left:max(12px, env(safe-area-inset-left));right:max(12px, env(safe-area-inset-right));
     bottom:max(12px, env(safe-area-inset-bottom));max-width:940px;margin:0 auto;z-index:6;}
@@ -455,6 +455,17 @@
         <div class="sensor-cell"><span>RIGHT</span><b id="hudLidarRight">—</b></div>
       </div>
     </div>
+    <div class="card" id="fusionCard" hidden>
+      <h2>Control &amp; sensor fusion</h2>
+      <div class="row"><span class="k">Outer loop</span><span id="hudCtrl" class="v">—</span></div>
+      <div class="row"><span class="k">Velocity command</span><span id="hudVelCmd" class="v">—</span></div>
+      <div class="row"><span class="k">Stereo + IMU</span>
+        <span id="hudVoState" class="badge avoid-none">—</span></div>
+      <div class="row"><span class="k">Features tracked</span><span id="hudVoInliers" class="v">—</span></div>
+      <div class="row"><span class="k">Error vs PX4</span><span id="hudVoErr" class="v">—</span></div>
+      <div class="row"><span class="k">Drift</span><span id="hudVoDrift" class="v">—</span></div>
+      <div class="row"><span class="k">Availability (MOVE)</span><span id="hudVoAvail" class="v">—</span></div>
+    </div>
     <div class="card">
       <h2>Overlays</h2>
       <label class="toggle-row">
@@ -474,6 +485,12 @@
         <span class="sw" style="background:transparent;border:1.5px solid #7CFC00;"></span>
         <span class="label">LiDAR range</span>
         <span class="hint">4.0m</span>
+      </label>
+      <label class="toggle-row" id="toggleFusionRow" hidden>
+        <input type="checkbox" id="toggleFusion" checked/>
+        <span class="sw" style="background:transparent;border:1.5px solid #ff7a59;"></span>
+        <span class="label">Fusion estimate</span>
+        <span class="hint">stereo+IMU</span>
       </label>
       <label class="toggle-row">
         <input type="checkbox" id="toggleDenied" checked/>
@@ -936,6 +953,10 @@ const MISSIONS = [
     id: 'course', file: '../data/mission_course_attitude.csv',
     label: 'Pre-Planned Course — Real Attitude',
   },
+  {
+    id: 'stereo', file: '../data/mission_stereo_vo.csv',
+    label: 'Stereo+IMU Fusion + Velocity PID — Live Flight',
+  },
 ];
 
 let rows = [];
@@ -1008,6 +1029,14 @@ const hud = {
   source: document.getElementById('hudSource'),
   loc: document.getElementById('hudLoc'),
   fusion: document.getElementById('hudFusion'),
+  fusionCard: document.getElementById('fusionCard'),
+  ctrl: document.getElementById('hudCtrl'),
+  velCmd: document.getElementById('hudVelCmd'),
+  voState: document.getElementById('hudVoState'),
+  voInliers: document.getElementById('hudVoInliers'),
+  voErr: document.getElementById('hudVoErr'),
+  voDrift: document.getElementById('hudVoDrift'),
+  voAvail: document.getElementById('hudVoAvail'),
   cage: document.getElementById('hudCage'),
   fence: document.getElementById('hudFence'),
   range: document.getElementById('hudRange'),
@@ -1088,6 +1117,65 @@ function positionReplayPads(homes) {
     obj.position.y = original.pose[1] + (home ? home[0] - pad.pose[1] : 0);
   });
 }
+// ── Fusion-estimate overlay ────────────────────────────────────────────────
+// The stereo+IMU estimate drawn next to PX4's own flown path, so drift is
+// visible as a gap between the two lines rather than only a number.
+let fusionLine = null, fusionGeo = null, fusionFrameToVert = null, fusionSummaryCache = null;
+function clearFusionOverlay() {
+  if (fusionLine) scene.remove(fusionLine);
+  fusionLine = fusionGeo = fusionFrameToVert = null;
+}
+function buildFusionOverlay() {
+  clearFusionOverlay();
+  const positions = [];
+  fusionFrameToVert = new Int32Array(rows.length);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (Number.isFinite(r.vo_n) && Number.isFinite(r.vo_e) && Number.isFinite(r.vo_d)) {
+      const p = toWorld(r.vo_n, r.vo_e, r.vo_d);
+      positions.push(p.x, p.y, p.z);
+    }
+    fusionFrameToVert[i] = positions.length / 3 - 1;
+  }
+  if (positions.length < 6) return;
+  fusionGeo = new THREE.LineGeometry();
+  fusionGeo.setPositions(positions);
+  fusionGeo.instanceCount = 0;
+  const mat = new THREE.LineMaterial({ color: 0xff7a59, linewidth: 3, resolution: trailResolution() });
+  trailLineMaterials.push(mat);
+  fusionLine = new THREE.Line2(fusionGeo, mat);
+  fusionLine.computeLineDistances();
+  fusionLine.visible = document.getElementById('toggleFusion').checked;
+  scene.add(fusionLine);
+}
+document.getElementById('toggleFusion').addEventListener('change', e => {
+  if (fusionLine) fusionLine.visible = e.target.checked;
+});
+function syncFusionOverlay(idx) {
+  if (!fusionGeo || !fusionFrameToVert) return;
+  fusionGeo.instanceCount = Math.max(0, fusionFrameToVert[idx]);
+}
+function updateFusionCard(r) {
+  if (!fusionSummaryCache) { hud.fusionCard.hidden = true; return; }
+  hud.fusionCard.hidden = false;
+  const velocityMode = r.ctrl_mode === 'velocity_pid';
+  setText(hud.ctrl, velocityMode
+    ? `velocity PID · ${r.pos_source || 'px4'} estimate`
+    : (r.ctrl_mode ? 'position setpoints (PX4)' : '—'));
+  setText(hud.velCmd, velocityMode && Number.isFinite(r.vel_cmd_n)
+    ? `${Math.hypot(r.vel_cmd_n, r.vel_cmd_e).toFixed(1)} m/s horiz · ${(-r.vel_cmd_d).toFixed(1)} m/s up`
+    : '—');
+  const live = Number.isFinite(r.vo_n);
+  hud.voState.textContent = !live ? 'no data' : r.vo_healthy ? 'tracking' : 'lost';
+  hud.voState.className = 'badge ' + (!live ? 'avoid-none' : r.vo_healthy ? 'loc-gps' : 'loc-denied');
+  setText(hud.voInliers, live && Number.isFinite(r.vo_inliers) ? String(r.vo_inliers) : '—');
+  setText(hud.voErr, live && Number.isFinite(r.vo_err_m) ? `${r.vo_err_m.toFixed(2)} m` : '—');
+  setText(hud.voDrift, live && Number.isFinite(r.vo_drift_frac) && r.vo_path_m > 1
+    ? `${(100 * r.vo_drift_frac).toFixed(1)}% of ${r.vo_path_m.toFixed(0)} m`
+    : '—');
+  setText(hud.voAvail, `${(100 * fusionSummaryCache.availability).toFixed(0)}% whole flight`);
+}
+
 function clearMissionObjects() {
   positionReplayPads(null);
   if (swarmReplay) { swarmReplay.dispose(); swarmReplay = null; }
@@ -1096,6 +1184,8 @@ function clearMissionObjects() {
   waypointObjects = [];
   if (trailLine) scene.remove(trailLine);
   if (nominalRoute) scene.remove(nominalRoute);
+  clearFusionOverlay();
+  fusionSummaryCache = null;
   trailLineMaterials = [];
 }
 
@@ -1193,6 +1283,11 @@ function loadMission(m, onLoaded) {
       buildWaypoints();
       buildTrail();
       buildNominalRoute();
+      if (hasFusionData(rows)) {
+        fusionSummaryCache = fusionSummary(rows);
+        buildFusionOverlay();
+      }
+      document.getElementById('toggleFusionRow').hidden = !fusionSummaryCache;
       fitCamera();
       document.getElementById('missionLabel').textContent = m.label;
       const { maneuvers, minClearance, breaches } = summarizeMission(rows);
@@ -1570,6 +1665,8 @@ function updateFrame(idx, snapToo) {
   setText(hud.cage, r.geocage ? 'active' : 'off');
   hud.dotFence.className = 'dot ' + (r.geofence ? 'on' : 'off');
   setText(hud.fence, r.geofence ? 'active' : 'off');
+  updateFusionCard(r);
+  syncFusionOverlay(frameIndex);
 
   setText(hud.range, `frame ${frameIndex} / ${rows.length - 1}`);
   if (!dragging) hud.scrub.value = frameIndex;

@@ -143,6 +143,51 @@
       "skipped": true,
       "detail": "legacy log has no external-odometry fusion evidence",
       "evidence": []
+    },
+    {
+      "requirement_id": "REQ-VO-DRIFT-01",
+      "title": "Stereo+IMU position error stays bounded relative to distance flown",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "log has no fusion columns",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-VO-AVAIL-01",
+      "title": "Stereo visual odometry is available while moving",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "log has no fusion columns",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-CTRL-01",
+      "title": "Velocity PID loop stays within its envelope",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "log has no control-mode column",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-ATT-01",
+      "title": "No loss of control while airborne",
+      "severity": "must",
+      "passed": true,
+      "skipped": false,
+      "detail": "maximum tilt 40 deg over 319 airborne sample(s)",
+      "evidence": []
+    },
+    {
+      "requirement_id": "REQ-CLEARANCE-02",
+      "title": "Airframe never touches a mapped obstacle",
+      "severity": "must",
+      "passed": true,
+      "skipped": true,
+      "detail": "legacy log has no mapped-clearance column",
+      "evidence": []
     }
   ]
 }

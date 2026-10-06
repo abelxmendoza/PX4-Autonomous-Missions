@@ -132,6 +132,15 @@ function parseCsv(text) {
       'ev_vel_fused', 'gnss_pos_fused', 'gnss_vel_fused', 'gps_failure_active']) {
       o[key] = o[key] === '1';
     }
+    // Outer-loop control + stereo/IMU fusion telemetry (absent on older logs,
+    // so every numeric field is NaN there and callers must check isFinite).
+    o.ctrl_mode = o.ctrl_mode || '';
+    o.pos_source = o.pos_source || '';
+    o.vo_healthy = o.vo_healthy === '1';
+    for (const key of ['vel_cmd_n', 'vel_cmd_e', 'vel_cmd_d', 'vo_n', 'vo_e', 'vo_d',
+      'vo_err_m', 'vo_err_down_m', 'vo_path_m', 'vo_drift_frac', 'vo_inliers']) {
+      o[key] = parseFloat(o[key]);
+    }
     out.push(o);
   }
   if (skipped > 0) {
@@ -140,8 +149,28 @@ function parseCsv(text) {
   return out;
 }
 
+/** True when the recording carries fusion telemetry from a running node. */
+function hasFusionData(rows) {
+  return rows.some(r => Number.isFinite(r.vo_n));
+}
+
+/** Whole-flight fusion summary (final drift, availability while moving). */
+function fusionSummary(rows) {
+  const moving = rows.filter(r => r.state === 'MOVE');
+  const healthyMoving = moving.filter(r => r.vo_healthy).length;
+  let last = null;
+  for (const r of rows) if (r.vo_healthy && Number.isFinite(r.vo_drift_frac)) last = r;
+  return {
+    availability: moving.length ? healthyMoving / moving.length : 0,
+    finalDriftFrac: last ? last.vo_drift_frac : NaN,
+    finalErrM: last ? last.vo_err_m : NaN,
+    pathM: last ? last.vo_path_m : NaN,
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    hasFusionData, fusionSummary,
     toWorld, parseCsv, COURSE_PADS, GPS_DENIED_ZONE,
     COURSE_SURFACE, COURSE_BEACONS, COURSE_OBSTACLES, rgb01ToHex,
     gpsDeniedWorldBox, gpsDeniedLabelPos,
