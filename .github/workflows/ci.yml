@@ -1,0 +1,126 @@
+name: ci
+
+# Fast, deterministic validation only: no Gazebo or PX4 flights. Every job runs
+# the same `make` targets a developer runs locally (see docs/CI.md).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests (no ROS)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+      - run: make test-fast
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-unit
+          path: artifacts/junit/unit.xml
+
+  validation:
+    name: Replay, fault-injection and requirement validation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - run: pip install -r requirements-ci.txt
+      - name: Fast and integration tests (JUnit)
+        run: |
+          make test-fast
+          make test-integration
+      - name: Curated evidence, golden vectors and world export are current
+        run: make evidence
+      - name: Fault-injection scenarios
+        run: make faults
+      - name: Requirement registry (fails on any unexplained requirement failure)
+        run: make validate
+      - name: Regression comparator runs end to end
+        run: make compare-selfcheck
+      - name: Publish the validation report in the job summary
+        if: always()
+        run: |
+          if [ -f artifacts/validation/validation_report.md ]; then
+            cat artifacts/validation/validation_report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-artifacts
+          path: artifacts/
+          if-no-files-found: warn
+
+  cpp:
+    name: C++ build and tests (CMake/CTest)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake build-essential
+      - run: make cpp-test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-cpp
+          path: artifacts/junit/cpp.xml
+
+  ros2:
+    # Builds the ament package against px4_msgs and runs the ROS-node tests that
+    # the jobs above skip. NOT yet proven on a GitHub runner (it needs px4_msgs
+    # from the network); it is non-blocking until its first green run -- see
+    # docs/CI.md before relying on it.
+    name: ROS 2 Humble build and node tests
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    timeout-minutes: 45
+    container: ros:humble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git python3-pip python3-colcon-common-extensions
+          pip3 install -r requirements-ci.txt
+      - name: px4_msgs (release/1.16, the version this repository was developed against)
+        run: git clone --depth 1 --branch release/1.16 https://github.com/PX4/px4_msgs.git src/px4_msgs
+      - name: colcon build
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --packages-select px4_msgs px4_offboard
+      - name: Full pytest with ROS available (nothing skipped for lack of rclpy)
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          mkdir -p artifacts/junit
+          python3 -m pytest -q --junitxml=artifacts/junit/ros.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-ros2
+          path: artifacts/junit/ros.xml

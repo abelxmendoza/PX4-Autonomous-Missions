@@ -26,13 +26,32 @@ flowchart LR
 | --- | --- |
 | Fresh recovery flight: **641 samples**, **2 reassignments**, **8.095491 m** minimum horizontal separation against a **2.5 m** requirement | [Report](evidence/swarm/golden_report.json) · [raw log](evidence/swarm/golden_recovery.jsonl.gz) |
 | **26 catalog requirements**, mapped to 19 single-vehicle verifier checks (incl. stereo/IMU fusion, velocity PID, loss-of-control) and cooperative acceptance behavior | [Requirements](docs/REQUIREMENTS.md) · [verification matrix](docs/verification_matrix.md) |
-| **7 curated cases**: 5 SITL recordings and 2 kinematic before/after traces; all expected outcomes reproduced, including an intentional failure | [Evidence manifest](evidence/manifest.json) |
-| **166 Python tests** with ROS enabled; **24 browser tests** | [Commands, results and scope](docs/engineering_results.md) |
+| **9 curated cases**: 7 SITL recordings (two are live stereo flights pinned as expected failures) and 2 kinematic before/after traces; all expected outcomes reproduced | [Evidence manifest](evidence/manifest.json) |
+| **450 Python tests** with ROS (402 run in the ROS-free CI configuration); **27 browser tests**; C++ CTest with 41 checks against shared golden vectors | [Commands, results and scope](docs/engineering_results.md) |
 | **2 documented defects**: premature task completion and dropped terminal replay evidence | [Coordinator case study](docs/case_studies/swarm-endpoint-acceptance.md) · [replay boundary case](docs/case_studies/replay-terminal-sample.md) |
 
 **Why verification matters:** two recovery tests reported COMPLETE while the drone had only passed within about 0.8–0.9 m of task points. Position-based verification rejected them. The coordinator now requires a closer endpoint visit; the original tests pass unchanged, and the preserved faulty recording must still fail.
 
-**Scope and limits:** fixed two-vehicle, single-host SITL; no hardware or HIL validation. GPS-loss work is **PX4 estimator integration using simulated external odometry under GPS-aiding loss**: Gazebo pose plus modeled noise/drift, not visual SLAM or camera localization. ArUco detection is perception infrastructure and does not control the primary mission. A PASS applies only to documented checks; skipped checks, incomplete single-vehicle logs and unexercised faults are not proof of full mission success. Sampled separation does not prove continuous collision freedom or landing-pad accuracy.
+**Scope and limits:** fixed two-vehicle, single-host SITL; no hardware or HIL validation (a hardware-vehicle class and test architecture exist, but no physical flight controller has been connected). GPS-loss work is **PX4 estimator integration using simulated external odometry under GPS-aiding loss**: Gazebo pose plus modeled noise/drift, not visual SLAM or camera localization. ArUco detection is perception infrastructure and does not control the primary mission. A PASS applies only to documented checks; skipped checks, incomplete single-vehicle logs and unexercised faults are not proof of full mission success. Sampled separation does not prove continuous collision freedom or landing-pad accuracy.
+
+## Validation platform
+
+Beyond the autonomy stack, the repository is a firmware-validation harness. Each piece says what has and has not been executed:
+
+| Piece | What it is | Docs |
+| --- | --- | --- |
+| **CI** | GitHub Actions: ROS-free unit tests, replay/fault/requirement validation with JUnit and report artifacts, C++ CMake/CTest, non-blocking ROS 2 job. `make ci` reproduces it locally | [CI.md](docs/CI.md) |
+| **Requirement registry** | 22 requirements (EST/CTRL/SAFE/COMMS/RECOVERY/HIL) evaluated into JSON + Markdown with Requirement -> Test -> Evidence -> Result. No evidence, no PASS; 3 are declared known-open and fail | [REQUIREMENTS.md](docs/REQUIREMENTS.md) |
+| **Fault injection** | YAML scenarios (VO dropout, delay, jitter, corruption, frozen sensors, estimator reset, MAVLink loss, disconnect) with per-fault expected/observed/recovery evidence. Found and fixed a frozen-VO acceptance bug | [FAULT_INJECTION.md](docs/FAULT_INJECTION.md) |
+| **Vehicle abstraction** | `VehicleInterface` over simulation, PX4 SITL (verified live) and PX4 hardware (mock only, telemetry-only by default) | [HIL_ARCHITECTURE.md](docs/HIL_ARCHITECTURE.md) |
+| **Comms** | MAVLink v2 codec byte-checked against pymavlink and a C++ port, serial/UDP transports, link supervision, I2C/SPI mocks | [HIL_ARCHITECTURE.md](docs/HIL_ARCHITECTURE.md) |
+| **Regression comparison** | `python tools/compare_runs.py baseline.csv candidate.csv` with explicit run-to-run variance handling | [TEST_PLAN.md](docs/TEST_PLAN.md) |
+| **Test plan** | Levels, pass/fail criteria, what was executed and what needs hardware | [TEST_PLAN.md](docs/TEST_PLAN.md) |
+
+```bash
+pip install -r requirements-ci.txt && make ci     # everything the blocking CI jobs run
+python tools/validation_report.py                  # requirement report -> artifacts/validation/
+```
 
 ## Inspect or reproduce
 
