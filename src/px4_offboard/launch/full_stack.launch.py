@@ -36,6 +36,14 @@ def _repo_root() -> str:
     return os.path.expanduser("~/Desktop/px4-autonomous-mission")
 
 
+# PX4's startup runs the Gazebo server with GZ_IP=127.0.0.1. gz-transport only
+# registers a subscriber with a publisher (what Gazebo's camera sensors check
+# before rendering a frame) when both ends are on the same interface, so any
+# process that consumes camera images must run with the same GZ_IP -- without
+# it the subscribe call succeeds but the cameras never render. See BUG-017.
+GZ_SIM_ENV = {"GZ_IP": "127.0.0.1"}
+
+
 def _ensure_gz_cam_sub(root: str) -> str:
     """Build the C++ Image subscriber that wakes Gazebo camera sensors."""
     import subprocess
@@ -72,6 +80,8 @@ def _launch_setup(context, *args, **kwargs):
     obstacle_source = LaunchConfiguration("obstacle_source").perform(context)
     use_vio = LaunchConfiguration("use_vio").perform(context).lower() == "true"
     gps_failure = LaunchConfiguration("gps_px4_failure_inject").perform(context).lower() == "true"
+    control_mode = LaunchConfiguration("control_mode").perform(context)
+    position_source = LaunchConfiguration("position_source").perform(context)
 
     root = _repo_root()
     worlds_dir = os.path.join(root, "worlds")
@@ -133,6 +143,8 @@ def _launch_setup(context, *args, **kwargs):
                 "gps_px4_failure_inject": gps_failure,
                 "px4_dir": px4_dir,
                 "gps_denied_action": "continue" if use_vio else "hold",
+                "control_mode": control_mode,
+                "position_source": position_source,
                 "log_dir": root,
             },
         ],
@@ -205,6 +217,7 @@ def _launch_setup(context, *args, **kwargs):
         ],
         output="screen",
         name="gz_cam_sub",
+        additional_env=GZ_SIM_ENV,
         condition=IfCondition(LaunchConfiguration("use_camera")),
     )
 
@@ -214,6 +227,7 @@ def _launch_setup(context, *args, **kwargs):
         name="camera_bridge",
         output="screen",
         condition=IfCondition(LaunchConfiguration("use_camera")),
+        additional_env=GZ_SIM_ENV,
         parameters=[{"gz_topic": left_cam_topic}],
     )
 
@@ -223,6 +237,7 @@ def _launch_setup(context, *args, **kwargs):
         name="camera_bridge_secondary",
         output="screen",
         condition=IfCondition(LaunchConfiguration("use_stereo")),
+        additional_env=GZ_SIM_ENV,
         parameters=[
             {
                 "gz_topic": (
@@ -245,6 +260,13 @@ def _launch_setup(context, *args, **kwargs):
         executable="ekf_fusion_node",
         name="ekf_fusion_node",
         output="screen",
+        parameters=[
+            {
+                "debug_csv_path": os.environ.get("VO_DEBUG_CSV", ""),
+                "debug_frames_dir": os.environ.get("VO_DEBUG_FRAMES", ""),
+                "vo_attitude_blend": float(os.environ.get("VO_ATTITUDE_BLEND", "0.0")),
+            }
+        ],
         condition=IfCondition(LaunchConfiguration("use_sensor_fusion_vio")),
     )
 
@@ -437,6 +459,16 @@ def generate_launch_description():
                 "use_vision_marker",
                 default_value="false",
                 description="Detect an ArUco marker in the camera feed (requires use_camera:=true)",
+            ),
+            DeclareLaunchArgument(
+                "control_mode",
+                default_value="position",
+                description="position (PX4 chases position setpoints) | velocity_pid (outer-loop PID streams velocity setpoints in MOVE)",
+            ),
+            DeclareLaunchArgument(
+                "position_source",
+                default_value="px4",
+                description="Estimate the velocity PID closes on: px4 | fusion (stereo+IMU, falls back to px4 when unhealthy)",
             ),
             DeclareLaunchArgument(
                 "use_stereo",

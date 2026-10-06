@@ -37,6 +37,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool
 
+from .camera_frame import sensor_stamp
 from .camera_frame import UnsupportedPixelFormat, gz_pixel_format_to_ros_fields
 
 try:
@@ -60,7 +61,7 @@ class CameraBridge(Node):
         self.declare_parameter("stale_timeout_s", 1.0)
         self.declare_parameter("output_topic", "/px4_offboard/camera/image_raw")
         self.declare_parameter("healthy_topic", "/px4_offboard/camera_healthy")
-        self.declare_parameter("publish_hz", 10.0)
+        self.declare_parameter("publish_hz", 40.0)
 
         self.gz_topic = str(self.get_parameter("gz_topic").value)
         self.frame_id = str(self.get_parameter("frame_id").value)
@@ -69,7 +70,9 @@ class CameraBridge(Node):
         healthy_topic = str(self.get_parameter("healthy_topic").value)
         publish_hz = float(self.get_parameter("publish_hz").value)
         self._lock = threading.Lock()
-        self._latest: tuple[int, int, object, bytes] | None = None
+        # (width, height, fields, payload, sensor_stamp or None, sequence)
+        self._latest: tuple | None = None
+        self._last_published_seq = -1
         self._last_frame_t: float | None = None
         self._gz_cb_errors = 0
 
@@ -116,7 +119,10 @@ class CameraBridge(Node):
 
         payload = bytes(msg.data)
         with self._lock:
-            self._latest = (int(msg.width), int(msg.height), fields, payload)
+            stamp = sensor_stamp(msg.header.stamp.sec, msg.header.stamp.nsec)
+            self._latest = (
+                int(msg.width), int(msg.height), fields, payload, stamp, self._frame_count
+            )
             self._frame_count += 1
             self._last_frame_t = time.monotonic()
 
@@ -130,10 +136,17 @@ class CameraBridge(Node):
         healthy = last is not None and now - last <= self.stale_timeout
         self._healthy_pub.publish(Bool(data=healthy))
 
-        if latest is not None:
-            width, height, fields, payload = latest
+        # Publish each frame once. Re-sending the latest frame on every timer
+        # tick duplicated or skipped frames, so downstream VO saw zero motion
+        # between "different" stamps and wrong time gaps between real ones.
+        if latest is not None and latest[5] != self._last_published_seq:
+            width, height, fields, payload, stamp, seq = latest
+            self._last_published_seq = seq
             out = Image()
-            out.header.stamp = self.get_clock().now().to_msg()
+            if stamp is not None:
+                out.header.stamp.sec, out.header.stamp.nanosec = stamp
+            else:  # sensor gave no timestamp: fall back to receive time
+                out.header.stamp = self.get_clock().now().to_msg()
             out.header.frame_id = self.frame_id
             out.height = height
             out.width = width

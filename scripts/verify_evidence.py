@@ -45,7 +45,12 @@ def evaluate(case, write_replays=False):
             raise ValueError("unknown recording kind")
     if report["passed"] is not case["expected_pass"]:
         raise ValueError(f"unexpected verdict: {report}")
-    if not case["expected_pass"] and report.get("errors") != case["expected_errors"]:
+    if not case["expected_pass"] and case["kind"] == "flight":
+        failed = sorted(r["requirement_id"] for r in report["results"]
+                        if not r["passed"] and not r["skipped"])
+        if failed != sorted(case["expected_failed_checks"]):
+            raise ValueError(f"unexpected failing checks: {failed}")
+    elif not case["expected_pass"] and report.get("errors") != case["expected_errors"]:
         raise ValueError(f"unexpected failure reason: {report}")
     return report
 

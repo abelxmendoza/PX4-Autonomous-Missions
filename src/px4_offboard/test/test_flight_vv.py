@@ -350,3 +350,206 @@ def test_gps_fields_roundtrip_csv(tmp_path: Path):
     assert loaded.gps_xy_valid is False
     assert loaded.loc_source == "GPS_DENIED_INJECTED"
     assert loaded.eph_m == 2.5
+
+
+# ── Stereo/IMU fusion, velocity PID, attitude and contact requirements ───────
+
+import pytest  # noqa: E402
+
+from px4_offboard.vv_harness import (  # noqa: E402
+    check_airframe_contact,
+    check_attitude_envelope,
+    check_velocity_pid_envelope,
+    check_vo_availability,
+    check_vo_drift,
+)
+
+
+def _trace_of(tmp_path, samples) -> FlightTrace:
+    path = tmp_path / "t.csv"
+    write_flight_log(path, samples)
+    return load_flight_log(path)
+
+
+def _vo_flight(drift_at_end: float, healthy: bool = True, path_end: float = 60.0):
+    """A MOVE flight whose fusion drift grows linearly to ``drift_at_end``."""
+    out = []
+    for i in range(61):
+        path = path_end * i / 60
+        frac = drift_at_end * i / 60
+        out.append(
+            _sample(
+                t_s=i * 0.5,
+                vo_healthy=healthy,
+                vo_n=path,
+                vo_e=0.0,
+                vo_d=-5.0,
+                vo_path_m=path,
+                vo_drift_frac=frac,
+                vo_err_m=frac * path,
+                vo_inliers=40,
+            )
+        )
+    return out
+
+
+def test_vo_drift_passes_when_error_is_small_relative_to_distance(tmp_path):
+    result = check_vo_drift(_trace_of(tmp_path, _vo_flight(0.04)))
+    assert result.passed and not result.skipped
+    assert "4.0%" in result.detail
+
+
+def test_vo_drift_fails_when_error_is_a_large_fraction_of_distance(tmp_path):
+    result = check_vo_drift(_trace_of(tmp_path, _vo_flight(0.15)))
+    assert not result.passed
+    assert any("final drift 15.0%" in e for e in result.evidence)
+
+
+def test_vo_drift_peak_limit_catches_a_transient_even_if_it_recovers(tmp_path):
+    flight = _vo_flight(0.04)
+    flight[40] = _sample(
+        t_s=20.0, vo_healthy=True, vo_n=40.0, vo_e=0.0, vo_d=-5.0,
+        vo_path_m=40.0, vo_drift_frac=0.35, vo_err_m=14.0, vo_inliers=40,
+    )
+    result = check_vo_drift(_trace_of(tmp_path, flight))
+    assert not result.passed
+    assert any("peak drift 35.0%" in e for e in result.evidence)
+
+
+def test_vo_drift_is_skipped_not_passed_when_too_little_distance(tmp_path):
+    result = check_vo_drift(_trace_of(tmp_path, _vo_flight(0.5, path_end=5.0)))
+    assert result.skipped
+
+
+def test_vo_drift_ignores_unhealthy_estimates(tmp_path):
+    # A wildly drifting estimate that the node itself flagged unhealthy is
+    # not evidence about the healthy estimate.
+    result = check_vo_drift(_trace_of(tmp_path, _vo_flight(0.9, healthy=False)))
+    assert result.skipped
+
+
+def test_vo_availability_fails_when_the_cameras_go_dark(tmp_path):
+    # Fusion node publishing (vo_n present) but never healthy: the BUG-017
+    # signature -- cameras advertised, no frames.
+    result = check_vo_availability(_trace_of(tmp_path, _vo_flight(0.0, healthy=False)))
+    assert not result.passed and not result.skipped
+    assert "0/61" in result.detail
+
+
+def test_vo_availability_passes_when_healthy_most_of_the_flight(tmp_path):
+    flight = _vo_flight(0.02)
+    for i in range(0, 61, 10):  # 7 of 61 dropouts -> 88% available
+        flight[i] = _sample(t_s=i * 0.5, vo_healthy=False, vo_n=1.0, vo_e=0.0, vo_d=-5.0)
+    assert check_vo_availability(_trace_of(tmp_path, flight)).passed
+
+
+def test_vo_availability_is_skipped_when_fusion_node_was_not_running(tmp_path):
+    flight = [_sample(t_s=i * 0.5) for i in range(20)]
+    assert check_vo_availability(_trace_of(tmp_path, flight)).skipped
+
+
+def test_velocity_pid_envelope_passes_for_bounded_commands(tmp_path):
+    flight = [
+        _sample(t_s=i * 0.1, ctrl_mode="velocity_pid",
+                vel_cmd_n=2.0, vel_cmd_e=-1.5, vel_cmd_d=-0.5)
+        for i in range(10)
+    ]
+    assert check_velocity_pid_envelope(_trace_of(tmp_path, flight)).passed
+
+
+@pytest.mark.parametrize(
+    "overrides, needle",
+    [
+        (dict(vel_cmd_n=3.0, vel_cmd_e=3.0, vel_cmd_d=0.0), "horiz"),
+        (dict(vel_cmd_n=1.0, vel_cmd_e=0.0, vel_cmd_d=2.5), "vert"),
+        (dict(vel_cmd_n=None, vel_cmd_e=None, vel_cmd_d=None), "no command"),
+        (dict(state="HOVER", vel_cmd_n=1.0, vel_cmd_e=0.0, vel_cmd_d=0.0), "HOVER"),
+    ],
+)
+def test_velocity_pid_envelope_flags_out_of_bounds_samples(tmp_path, overrides, needle):
+    base = dict(t_s=0.0, ctrl_mode="velocity_pid")
+    base.update(overrides)
+    result = check_velocity_pid_envelope(_trace_of(tmp_path, [_sample(**base)]))
+    assert not result.passed
+    assert any(needle in e for e in result.evidence)
+
+
+def test_velocity_pid_envelope_skipped_in_position_mode(tmp_path):
+    assert check_velocity_pid_envelope(_trace_of(tmp_path, [_sample(ctrl_mode="position")])).skipped
+
+
+def test_attitude_envelope_flags_a_tumble_before_the_failsafe(tmp_path):
+    # Shape of the BUG-016 crashes: normal flight, then roll/pitch swinging
+    # past 60 deg in MOVE, and only later a geofence FAILSAFE.
+    flight = [
+        _sample(t_s=0.0, roll_deg=5.0, pitch_deg=-3.0),
+        _sample(t_s=0.1, roll_deg=-44.0, pitch_deg=16.0),
+        _sample(t_s=0.2, roll_deg=71.0, pitch_deg=-24.0),
+        _sample(t_s=0.3, state="FAILSAFE", roll_deg=84.0, pitch_deg=-28.0),
+    ]
+    result = check_attitude_envelope(_trace_of(tmp_path, flight))
+    assert not result.passed
+    assert len(result.evidence) == 1 and "roll=71" in result.evidence[0]
+
+
+def test_attitude_envelope_passes_for_aggressive_but_controlled_flight(tmp_path):
+    flight = [_sample(t_s=i * 0.1, roll_deg=40.0, pitch_deg=-35.0) for i in range(5)]
+    assert check_attitude_envelope(_trace_of(tmp_path, flight)).passed
+
+
+def test_airframe_contact_catches_a_graze_that_clearance_01_passes(tmp_path):
+    # The 1.3 cm approach from the first BUG-016 log: positive clearance, so
+    # REQ-CLEARANCE-01 is satisfied, but the airframe is touching the wall.
+    flight = [_sample(t_s=0.0, mapped_clearance_m=0.013)]
+    trace = _trace_of(tmp_path, flight)
+    assert check_obstacle_clearance(trace).passed
+    contact = check_airframe_contact(trace)
+    assert not contact.passed
+    assert "0.013" in contact.evidence[0]
+
+
+def test_airframe_contact_passes_with_real_standoff(tmp_path):
+    flight = [_sample(t_s=i * 0.1, mapped_clearance_m=1.2 + i * 0.1) for i in range(5)]
+    assert check_airframe_contact(_trace_of(tmp_path, flight)).passed
+
+
+def test_run_vv_reports_the_new_requirements(tmp_path):
+    report = run_vv(_trace_of(tmp_path, _vo_flight(0.04)))
+    ids = {r.requirement_id for r in report.results}
+    assert {"REQ-VO-DRIFT-01", "REQ-VO-AVAIL-01", "REQ-CTRL-01",
+            "REQ-ATT-01", "REQ-CLEARANCE-02"} <= ids
+
+
+def test_fusion_columns_roundtrip_through_the_csv(tmp_path):
+    sample = _sample(
+        ctrl_mode="velocity_pid", pos_source="fusion",
+        vel_cmd_n=1.0, vel_cmd_e=-0.5, vel_cmd_d=0.1, vo_healthy=True,
+        vo_n=4.0, vo_e=5.0, vo_d=-3.0, vo_err_m=0.7, vo_err_down_m=0.1,
+        vo_path_m=25.0, vo_drift_frac=0.028, vo_inliers=42,
+    )
+    back = load_flight_log(_write(tmp_path, [sample])).samples[0]
+    assert (back.ctrl_mode, back.pos_source) == ("velocity_pid", "fusion")
+    assert back.vo_healthy and back.vo_inliers == 42
+    assert back.vo_drift_frac == pytest.approx(0.028)
+
+
+def _write(tmp_path, samples):
+    path = tmp_path / "rt.csv"
+    write_flight_log(path, samples)
+    return path
+
+
+def test_velocity_pid_envelope_allows_only_the_move_to_landing_handover_tick(tmp_path):
+    # The row is logged after the state flips, so the hand-over tick carries
+    # velocity_pid with state LANDING. That single tick is fine; a second
+    # consecutive velocity_pid row in LANDING is not.
+    def pid(t, state):
+        return _sample(t_s=t, state=state, ctrl_mode="velocity_pid",
+                       vel_cmd_n=1.0, vel_cmd_e=0.0, vel_cmd_d=0.0)
+
+    ok = [pid(0.0, "MOVE"), pid(0.1, "MOVE"), pid(0.2, "LANDING")]
+    assert check_velocity_pid_envelope(_trace_of(tmp_path, ok)).passed
+
+    bad = ok + [pid(0.3, "LANDING")]
+    result = check_velocity_pid_envelope(_trace_of(tmp_path, bad))
+    assert not result.passed and "t=0.30s" in result.evidence[0]

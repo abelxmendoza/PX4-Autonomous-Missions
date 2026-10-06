@@ -40,6 +40,42 @@ MIN_DISPARITY_PX = 0.5  # below this, depth blows up / is unreliable
 MIN_TRACKED_POINTS = 8  # solvePnPRansac needs >=4; require margin for RANSAC
 
 
+@dataclass(frozen=True)
+class VoConfig:
+    """Tunable stereo-VO parameters, chosen by offline evaluation against a
+    recorded flight (scripts/vo_offline_eval.py), not guessed.
+
+    Against PX4's velocity over 619 updates, moving from the original
+    (4 px reprojection threshold, 8 min inliers) to the values below cut
+    gross outliers from 12.3% to 5.3%, absurd (>15 m/s) outputs from 5.4% to
+    0.9%, and p90 velocity error from 4.9 to 1.5 m/s. Restricting the depth
+    range made every metric worse (it starves PnP of features), so no depth
+    limit is applied. Tuned on a single recording -- treat the numbers as
+    evidence for the direction, and re-check on any new flight.
+
+    Matcher: block matching (window 9) was as accurate as semi-global
+    matching on the same recording (median velocity error 0.24 vs 0.28 m/s,
+    gross outliers 3.4% vs 5.3%) at roughly a third of the cost (~11 ms vs
+    ~36 ms per frame). That matters live: under simulator load the slower
+    matcher kept the node near 5 updates/s of a possible 10, and longer gaps
+    between processed frames make feature tracking harder.
+    """
+
+    num_disparities: int = 64
+    block_size: int = 9
+    matcher: str = "bm"  # "bm" | "sgbm"; see the note on this class
+    min_depth_m: float = 0.0
+    max_depth_m: float = float("inf")
+    reprojection_error_px: float = 1.5
+    min_inliers: int = 15
+    max_corners: int = 200
+    quality_level: float = 0.01
+    min_distance_px: float = 7.0
+
+
+DEFAULT_VO_CONFIG = VoConfig()
+
+
 def focal_length_px(width_px: int, horizontal_fov_rad: float) -> float:
     """Pinhole focal length in pixels from image width and horizontal FOV."""
     if width_px <= 0 or not (0.0 < horizontal_fov_rad < math.pi):
@@ -65,7 +101,8 @@ def compute_disparity(
     right_gray: np.ndarray,
     num_disparities: int = 64,
     block_size: int = 9,
-) -> np.ndarray:
+    matcher: str = "sgbm",
+) -> np.ndarray:  # noqa: D417
     """Dense disparity map (float32, pixels) via semi-global block matching.
 
     Positive disparity means the feature appears further right in the left
@@ -79,6 +116,11 @@ def compute_disparity(
         raise RuntimeError("OpenCV is required for compute_disparity")
     if left_gray.shape != right_gray.shape:
         raise ValueError("left/right frames must have matching shape")
+    if matcher == "bm":
+        bm = cv2.StereoBM_create(numDisparities=num_disparities, blockSize=block_size)
+        return bm.compute(left_gray, right_gray).astype(np.float32) / 16.0
+    if matcher != "sgbm":
+        raise ValueError(f"unknown matcher {matcher!r}")
     matcher = cv2.StereoSGBM_create(
         minDisparity=0,
         numDisparities=num_disparities,
@@ -129,6 +171,7 @@ def track_features(
     max_corners: int = 200,
     quality_level: float = 0.01,
     min_distance: float = 7.0,
+    min_points: int = MIN_TRACKED_POINTS,
 ) -> TrackedFeatures | None:
     """Sparse frame-to-frame feature tracking (goodFeaturesToTrack + LK)."""
     if not _CV2_OK:
@@ -139,7 +182,7 @@ def track_features(
         qualityLevel=quality_level,
         minDistance=min_distance,
     )
-    if prev_pts is None or len(prev_pts) < MIN_TRACKED_POINTS:
+    if prev_pts is None or len(prev_pts) < min_points:
         return None
     curr_pts, status, _err = cv2.calcOpticalFlowPyrLK(
         prev_gray, curr_gray, prev_pts, None
@@ -147,7 +190,7 @@ def track_features(
     if curr_pts is None:
         return None
     mask = status.reshape(-1).astype(bool)
-    if mask.sum() < MIN_TRACKED_POINTS:
+    if mask.sum() < min_points:
         return None
     return TrackedFeatures(
         prev_points=prev_pts.reshape(-1, 2)[mask],
@@ -155,17 +198,40 @@ def track_features(
     )
 
 
+# Camera optical axes (x right, y down, z forward) -> vehicle body FRD
+# (x forward, y right, z down). The cameras are mounted forward-facing with
+# no tilt (models/x500_lidar_2d/model.sdf), so this is a pure axis relabel.
+CAMERA_TO_BODY = np.array(
+    [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64
+)
+
+
 @dataclass
 class RelativeMotion:
     rotation_matrix: np.ndarray  # 3x3, camera frame at t -> camera frame at t+dt
     translation_m: np.ndarray  # 3-vector, metres, in the t-frame camera axes
     inlier_count: int
+    # Time between the two image stamps this motion spans. Zero until
+    # StereoOdometry.process fills it in from the actual frame timestamps --
+    # not from processing time, which differs whenever frames are dropped.
+    dt_s: float = 0.0
+
+    def in_body_frame(self) -> tuple[np.ndarray, np.ndarray]:
+        """(rotation, translation) re-expressed in body FRD axes.
+
+        The camera-frame result is in optical axes (z forward); the EKF
+        integrates body-FRD quantities, so feeding it camera axes directly
+        would turn forward motion into sideways/downward motion.
+        """
+        c = CAMERA_TO_BODY
+        return c @ self.rotation_matrix @ c.T, c @ self.translation_m
 
 
 def estimate_relative_motion(
     tracked: TrackedFeatures,
     prev_depth_map: np.ndarray,
     camera_matrix_: np.ndarray,
+    config: VoConfig = DEFAULT_VO_CONFIG,
 ) -> RelativeMotion | None:
     """3D-2D PnP pose estimate: lift tracked points to 3D via stereo depth
     at the previous frame, solve for the pose of the current camera frame
@@ -182,11 +248,16 @@ def estimate_relative_motion(
         depth = depth_at(prev_depth_map, px, py)
         if depth is None or depth <= 0.0:
             continue
+        # Stereo depth error grows with depth squared (disparity is only
+        # ~1-2 px beyond ~8 m at this baseline), so distant points can be
+        # excluded rather than allowed to corrupt the scale of the pose.
+        if depth < config.min_depth_m or depth > config.max_depth_m:
+            continue
         x = (px - cx) * depth / f
         y = (py - cy) * depth / f
         object_points.append((x, y, depth))
         image_points.append((qx, qy))
-    if len(object_points) < MIN_TRACKED_POINTS:
+    if len(object_points) < config.min_inliers:
         return None
     object_points = np.array(object_points, dtype=np.float64)
     image_points = np.array(image_points, dtype=np.float64)
@@ -195,11 +266,11 @@ def estimate_relative_motion(
         image_points,
         camera_matrix_,
         None,
-        reprojectionError=4.0,
+        reprojectionError=config.reprojection_error_px,
         confidence=0.99,
         iterationsCount=200,
     )
-    if not ok or inliers is None or len(inliers) < MIN_TRACKED_POINTS:
+    if not ok or inliers is None or len(inliers) < config.min_inliers:
         return None
     rot_matrix, _ = cv2.Rodrigues(rvec)
     # solvePnP gives the pose of the *previous* points' frame as seen from
@@ -217,7 +288,12 @@ def estimate_relative_motion(
 class StereoOdometry:
     """Stateful frame-to-frame visual odometry over a stream of stereo pairs."""
 
-    def __init__(self, camera_matrix_: np.ndarray | None = None):
+    def __init__(
+        self,
+        camera_matrix_: np.ndarray | None = None,
+        config: VoConfig = DEFAULT_VO_CONFIG,
+    ):
+        self.config = config
         self.camera_matrix = (
             camera_matrix_ if camera_matrix_ is not None else camera_matrix()
         )
@@ -245,16 +321,37 @@ class StereoOdometry:
         ):
             self.camera_matrix = camera_matrix(width_px=width, height_px=height)
 
-        disparity = compute_disparity(left_gray, right_gray)
+        disparity = compute_disparity(
+            left_gray,
+            right_gray,
+            self.config.num_disparities,
+            self.config.block_size,
+            self.config.matcher,
+        )
         depth = disparity_to_depth(disparity, self.camera_matrix[0, 0])
 
         motion: RelativeMotion | None = None
-        if self._prev_left_gray is not None and self._prev_depth is not None:
-            tracked = track_features(self._prev_left_gray, left_gray)
+        if (
+            self._prev_left_gray is not None
+            and self._prev_depth is not None
+            and self._prev_stamp is not None
+        ):
+            tracked = track_features(
+                self._prev_left_gray,
+                left_gray,
+                self.config.max_corners,
+                self.config.quality_level,
+                self.config.min_distance_px,
+                self.config.min_inliers,
+            )
             if tracked is not None:
                 motion = estimate_relative_motion(
-                    tracked, self._prev_depth, self.camera_matrix
+                    tracked, self._prev_depth, self.camera_matrix, self.config
                 )
+                if motion is not None:
+                    motion.dt_s = stamp_s - self._prev_stamp
+                    if motion.dt_s <= 0.0:
+                        motion = None
 
         self._prev_left_gray = left_gray
         self._prev_depth = depth

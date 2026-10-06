@@ -12,6 +12,26 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
+# Appended after the original schema so older logs (without them) still load:
+# outer-loop control mode / position source / PID velocity command, plus the
+# stereo+IMU fusion estimate and its measured error against PX4's estimate.
+CONTROL_VO_COLUMNS = (
+    "ctrl_mode",
+    "pos_source",
+    "vel_cmd_n",
+    "vel_cmd_e",
+    "vel_cmd_d",
+    "vo_healthy",
+    "vo_n",
+    "vo_e",
+    "vo_d",
+    "vo_err_m",
+    "vo_err_down_m",
+    "vo_path_m",
+    "vo_drift_frac",
+    "vo_inliers",
+)
+
 AIRBORNE_STATES = frozenset({"TAKEOFF", "HOVER", "MOVE"})
 TERMINAL_STATES = frozenset({"LANDING", "FAILSAFE"})
 
@@ -67,6 +87,20 @@ class FlightSample:
     gnss_pos_fused: bool = False
     gnss_vel_fused: bool = False
     gps_failure_active: bool = False
+    ctrl_mode: str | None = None
+    pos_source: str | None = None
+    vel_cmd_n: float | None = None
+    vel_cmd_e: float | None = None
+    vel_cmd_d: float | None = None
+    vo_healthy: bool = False
+    vo_n: float | None = None
+    vo_e: float | None = None
+    vo_d: float | None = None
+    vo_err_m: float | None = None
+    vo_err_down_m: float | None = None
+    vo_path_m: float | None = None
+    vo_drift_frac: float | None = None
+    vo_inliers: int | None = None
 
     @property
     def altitude_m(self) -> float:
@@ -260,10 +294,32 @@ def load_flight_log(path: str | Path) -> FlightTrace:
                 gnss_pos_fused=_as_bool(row.get("gnss_pos_fused", 0)),
                 gnss_vel_fused=_as_bool(row.get("gnss_vel_fused", 0)),
                 gps_failure_active=_as_bool(row.get("gps_failure_active", 0)),
+                ctrl_mode=(row.get("ctrl_mode") or None),
+                pos_source=(row.get("pos_source") or None),
+                vel_cmd_n=_as_optional_float(row.get("vel_cmd_n")),
+                vel_cmd_e=_as_optional_float(row.get("vel_cmd_e")),
+                vel_cmd_d=_as_optional_float(row.get("vel_cmd_d")),
+                vo_healthy=_as_bool(row.get("vo_healthy", 0)),
+                vo_n=_as_optional_float(row.get("vo_n")),
+                vo_e=_as_optional_float(row.get("vo_e")),
+                vo_d=_as_optional_float(row.get("vo_d")),
+                vo_err_m=_as_optional_float(row.get("vo_err_m")),
+                vo_err_down_m=_as_optional_float(row.get("vo_err_down_m")),
+                vo_path_m=_as_optional_float(row.get("vo_path_m")),
+                vo_drift_frac=_as_optional_float(row.get("vo_drift_frac")),
+                vo_inliers=(
+                    None
+                    if _as_optional_float(row.get("vo_inliers")) is None
+                    else int(_as_optional_float(row.get("vo_inliers")))
+                ),
             )
         )
 
     return FlightTrace(samples=samples, source=str(path), columns=columns)
+
+
+def _blank(value: object) -> object:
+    return "" if value is None else value
 
 
 def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
@@ -317,6 +373,7 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
         "gnss_pos_fused",
         "gnss_vel_fused",
         "gps_failure_active",
+        *CONTROL_VO_COLUMNS,
     ]
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -384,6 +441,20 @@ def write_flight_log(path: str | Path, samples: Sequence[FlightSample]) -> None:
                     "gnss_pos_fused": int(sample.gnss_pos_fused),
                     "gnss_vel_fused": int(sample.gnss_vel_fused),
                     "gps_failure_active": int(sample.gps_failure_active),
+                    "ctrl_mode": sample.ctrl_mode or "",
+                    "pos_source": sample.pos_source or "",
+                    "vel_cmd_n": _blank(sample.vel_cmd_n),
+                    "vel_cmd_e": _blank(sample.vel_cmd_e),
+                    "vel_cmd_d": _blank(sample.vel_cmd_d),
+                    "vo_healthy": int(sample.vo_healthy),
+                    "vo_n": _blank(sample.vo_n),
+                    "vo_e": _blank(sample.vo_e),
+                    "vo_d": _blank(sample.vo_d),
+                    "vo_err_m": _blank(sample.vo_err_m),
+                    "vo_err_down_m": _blank(sample.vo_err_down_m),
+                    "vo_path_m": _blank(sample.vo_path_m),
+                    "vo_drift_frac": _blank(sample.vo_drift_frac),
+                    "vo_inliers": _blank(sample.vo_inliers),
                 }
             )
 

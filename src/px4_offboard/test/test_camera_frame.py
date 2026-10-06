@@ -27,3 +27,12 @@ def test_rgba_int8_maps_to_4_bytes_per_pixel():
 def test_unsupported_pixel_format_raises_instead_of_guessing():
     with pytest.raises(UnsupportedPixelFormat):
         gz_pixel_format_to_ros_fields("BAYER_RGGB8", width=640)
+
+
+def test_sensor_stamp_prefers_the_gz_header_and_rejects_unset_values():
+    from px4_offboard.camera_frame import sensor_stamp
+
+    assert sensor_stamp(12, 345_000_000) == (12, 345_000_000)
+    assert sensor_stamp(0, 100) == (0, 100)  # sim just started: still a real stamp
+    assert sensor_stamp(0, 0) is None  # unset header
+    assert sensor_stamp(-1, 5) is None

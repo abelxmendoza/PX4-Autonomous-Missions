@@ -85,6 +85,8 @@ from px4_offboard.localization_logic import (
     gps_failure_desired,
 )
 from px4_offboard.path_planner import plan_path, plan_path_via
+from px4_offboard.flight_replay import CONTROL_VO_COLUMNS
+from px4_offboard.pid_control import PidGains, VelocityPidController
 from px4_offboard.mission_state import (
     FailsafeInputs,
     MissionStateMachine,
@@ -191,6 +193,21 @@ class OffboardMission(Node):
             "fmu/out/vehicle_local_position",
             self._position_callback,
             qos_sub,
+        )
+        # Fusion-node status: [n, e, d, healthy, inliers, err_horiz, err_down,
+        # path_len, drift_frac, vo_updates]; logged, and optionally the
+        # position source for the velocity PID loop.
+        self._vo_status: list[float] | None = None
+        self._vo_status_t = 0.0
+        self._vel_mode = False
+        self._vel_cmd: list[float] | None = None
+        self._pos_source_used = "px4"
+        self._pid_last_t: float | None = None
+        self.create_subscription(
+            Float32MultiArray,
+            "px4_offboard/vo_status",
+            self._vo_status_callback,
+            10,
         )
         self.create_subscription(
             VehicleAttitude,
@@ -352,6 +369,22 @@ class OffboardMission(Node):
     # ── Parameters ────────────────────────────────────────────────────────────
 
     def _declare_params(self):
+        # Outer-loop guidance: "position" streams position setpoints (PX4's
+        # own controller closes the loop); "velocity_pid" streams velocity
+        # setpoints from a PID on (target - estimated position) during MOVE.
+        self.declare_parameter("control_mode", "position")
+        # Estimate the PID loop closes on: PX4's own, or the stereo+IMU
+        # fusion estimate (falls back to PX4's whenever fusion is unhealthy).
+        self.declare_parameter("position_source", "px4")
+        self.declare_parameter("fusion_max_age_s", 0.5)
+        self.declare_parameter("pid_xy_kp", 0.8)
+        self.declare_parameter("pid_xy_ki", 0.02)
+        self.declare_parameter("pid_xy_kd", 0.25)
+        self.declare_parameter("pid_z_kp", 1.0)
+        self.declare_parameter("pid_z_ki", 0.03)
+        self.declare_parameter("pid_z_kd", 0.2)
+        self.declare_parameter("pid_max_speed_xy_mps", 3.0)
+        self.declare_parameter("pid_max_speed_z_mps", 1.5)
         self.declare_parameter("target_system_id", 1)
         self.declare_parameter("local_frame_id", "map")
         self.declare_parameter("trajectory_mode", "waypoints")
@@ -432,6 +465,27 @@ class OffboardMission(Node):
         self.declare_parameter("gps_denied_down_max_m", DEFAULT_GPS_DENIED_ZONE.down_max)
 
     def _load_params(self):
+        self.control_mode = str(self.get_parameter("control_mode").value).lower()
+        if self.control_mode not in ("position", "velocity_pid"):
+            raise ValueError("control_mode must be 'position' or 'velocity_pid'")
+        self.position_source = str(self.get_parameter("position_source").value).lower()
+        if self.position_source not in ("px4", "fusion"):
+            raise ValueError("position_source must be 'px4' or 'fusion'")
+        self.fusion_max_age = float(self.get_parameter("fusion_max_age_s").value)
+        self._pid = VelocityPidController(
+            PidGains(
+                kp=float(self.get_parameter("pid_xy_kp").value),
+                ki=float(self.get_parameter("pid_xy_ki").value),
+                kd=float(self.get_parameter("pid_xy_kd").value),
+            ),
+            PidGains(
+                kp=float(self.get_parameter("pid_z_kp").value),
+                ki=float(self.get_parameter("pid_z_ki").value),
+                kd=float(self.get_parameter("pid_z_kd").value),
+            ),
+            max_speed_xy=float(self.get_parameter("pid_max_speed_xy_mps").value),
+            max_speed_z=float(self.get_parameter("pid_max_speed_z_mps").value),
+        )
         self.target_system_id = int(self.get_parameter("target_system_id").value)
         if not 1 <= self.target_system_id <= 255:
             raise ValueError("target_system_id must be in [1, 255]; broadcast is forbidden")
@@ -670,6 +724,7 @@ class OffboardMission(Node):
                 "gnss_pos_fused",
                 "gnss_vel_fused",
                 "gps_failure_active",
+                *CONTROL_VO_COLUMNS,
             ]
         )
         self.get_logger().info(f"Logging to {path}")
@@ -745,6 +800,7 @@ class OffboardMission(Node):
             int(self._gnss_pos_fused),
             int(self._gnss_vel_fused),
             int(self._gps_failure_active),
+            *self._control_vo_row(),
         ]
         try:
             self._log_writer.writerow(row)
@@ -764,6 +820,31 @@ class OffboardMission(Node):
             self._log_writer = None
             self._log_file = None
 
+    def _control_vo_row(self) -> list:
+        cmd = self._vel_cmd if self._vel_cmd is not None else (None, None, None)
+        vo = self._vo_status
+        fresh = vo is not None and time.monotonic() - self._vo_status_t <= 1.0
+
+        def rnd(value, digits=3):
+            return "" if value is None else round(float(value), digits)
+
+        return [
+            "velocity_pid" if self._vel_mode else "position",
+            self._pos_source_used,
+            rnd(cmd[0]),
+            rnd(cmd[1]),
+            rnd(cmd[2]),
+            int(bool(fresh and vo[3] > 0.5)),
+            rnd(vo[0]) if fresh else "",
+            rnd(vo[1]) if fresh else "",
+            rnd(vo[2]) if fresh else "",
+            rnd(vo[5]) if fresh else "",
+            rnd(vo[6]) if fresh else "",
+            rnd(vo[7], 2) if fresh else "",
+            rnd(vo[8], 4) if fresh else "",
+            int(vo[4]) if fresh else "",
+        ]
+
     # ── Callbacks ─────────────────────────────────────────────────────────────
 
     def _position_callback(self, msg: VehicleLocalPosition):
@@ -779,6 +860,18 @@ class OffboardMission(Node):
         self._gps_eph_m = eph if math.isfinite(eph) else None
         self._pos_stamp = time.monotonic()
         self._have_position = True
+
+    def _vo_status_callback(self, msg: Float32MultiArray):
+        if len(msg.data) >= 10:
+            self._vo_status = [float(v) for v in msg.data[:10]]
+            self._vo_status_t = time.monotonic()
+
+    def _fusion_fresh(self) -> bool:
+        return (
+            self._vo_status is not None
+            and self._vo_status[3] > 0.5
+            and time.monotonic() - self._vo_status_t <= self.fusion_max_age
+        )
 
     def _estimator_flags_callback(self, msg: EstimatorStatusFlags):
         self._ev_pos_fused = bool(msg.cs_ev_pos)
@@ -965,6 +1058,15 @@ class OffboardMission(Node):
     # ── Control loop ──────────────────────────────────────────────────────────
 
     def _control_loop(self):
+        # Decided once per tick, *before* the offboard-control-mode message,
+        # so the mode flag and the setpoint fields can never disagree.
+        vel_mode = self.control_mode == "velocity_pid" and self._state == State.MOVE
+        if vel_mode and not self._vel_mode:
+            self._pid.reset()
+            self._pid_last_t = None
+        if not vel_mode:
+            self._vel_cmd = None
+        self._vel_mode = vel_mode
         self._publish_offboard_control_mode()
         self._tick_executive()
         loc = self._update_localization()
@@ -1806,18 +1908,40 @@ class OffboardMission(Node):
     def _publish_offboard_control_mode(self):
         msg = OffboardControlMode()
         msg.timestamp = self._ts()
-        msg.position = True
-        msg.velocity = False
+        msg.position = not self._vel_mode
+        msg.velocity = self._vel_mode
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
         self._pub_ocm.publish(msg)
 
+    def _guidance_position(self) -> list:
+        """Position estimate the velocity PID closes on (see position_source)."""
+        if self.position_source == "fusion" and self._fusion_fresh():
+            self._pos_source_used = "fusion"
+            return list(self._vo_status[0:3])
+        self._pos_source_used = "px4"
+        return [self.current_x, self.current_y, self.current_z]
+
     def _publish_setpoint(self, ned: list):
         msg = TrajectorySetpoint()
         msg.timestamp = self._ts()
-        msg.position = [float(v) for v in ned]
-        msg.velocity = [float("nan")] * 3
+        if self._vel_mode:
+            now = time.monotonic()
+            dt = 0.1 if self._pid_last_t is None else min(max(now - self._pid_last_t, 0.01), 0.5)
+            self._pid_last_t = now
+            cmd = self._pid.command(
+                [float(v) for v in ned],
+                self._guidance_position(),
+                [self.current_vx, self.current_vy, self.current_vz],
+                dt,
+            )
+            self._vel_cmd = cmd
+            msg.position = [float("nan")] * 3
+            msg.velocity = [float(v) for v in cmd]
+        else:
+            msg.position = [float(v) for v in ned]
+            msg.velocity = [float("nan")] * 3
         msg.acceleration = [float("nan")] * 3
         msg.jerk = [float("nan")] * 3
         msg.yaw = self._yaw_toward(ned)

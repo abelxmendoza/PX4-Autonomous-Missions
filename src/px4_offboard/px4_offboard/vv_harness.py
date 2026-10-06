@@ -143,7 +143,54 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         severity=Severity.MUST,
         description="PX4 EKF must fuse external-position input from Gazebo pose with modeled noise/drift while GPS aiding is unavailable.",
     ),
+    Requirement(
+        id="REQ-VO-DRIFT-01",
+        title="Stereo+IMU position error stays bounded relative to distance flown",
+        severity=Severity.MUST,
+        description=(
+            "While the fusion estimate is healthy, its horizontal error against PX4's "
+            "estimate shall end the flight at or below 10% of distance travelled and "
+            "never exceed 20% once 20 m have been flown."
+        ),
+    ),
+    Requirement(
+        id="REQ-VO-AVAIL-01",
+        title="Stereo visual odometry is available while moving",
+        severity=Severity.MUST,
+        description="The fusion estimate shall be healthy in at least 80% of MOVE samples whenever the fusion node is running.",
+    ),
+    Requirement(
+        id="REQ-CTRL-01",
+        title="Velocity PID loop stays within its envelope",
+        severity=Severity.MUST,
+        description=(
+            "In velocity_pid mode the commanded velocity shall be finite, within "
+            "3.0 m/s horizontal and 1.5 m/s vertical, and only issued in MOVE "
+            "(the tick that hands MOVE over to LANDING/FAILSAFE excepted)."
+        ),
+    ),
+    Requirement(
+        id="REQ-ATT-01",
+        title="No loss of control while airborne",
+        severity=Severity.MUST,
+        description="Roll and pitch shall stay within 60 degrees in TAKEOFF, HOVER and MOVE; beyond that the vehicle is tumbling, not flying a mission.",
+    ),
+    Requirement(
+        id="REQ-CLEARANCE-02",
+        title="Airframe never touches a mapped obstacle",
+        severity=Severity.MUST,
+        description="Mapped clearance (vehicle centre to obstacle surface) shall stay at or above 0.35 m, the x500's half-diagonal plus margin. REQ-CLEARANCE-01 only forbids being inside the obstacle.",
+    ),
 )
+
+AIRFRAME_CONTACT_M = 0.35
+MAX_TILT_DEG = 60.0
+PID_MAX_SPEED_XY_MPS = 3.0
+PID_MAX_SPEED_Z_MPS = 1.5
+VO_MIN_PATH_M = 20.0
+VO_FINAL_DRIFT_FRAC = 0.10
+VO_PEAK_DRIFT_FRAC = 0.20
+VO_MIN_AVAILABILITY = 0.80
 
 
 @dataclass
@@ -736,6 +783,129 @@ def check_obstacle_clearance(trace: FlightTrace) -> CheckResult:
     )
 
 
+def check_vo_drift(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-VO-DRIFT-01")
+    if "vo_drift_frac" not in trace.columns:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "log has no fusion columns", skipped=True)
+    healthy = [
+        s for s in trace.samples
+        if s.vo_healthy and s.vo_drift_frac is not None and s.vo_path_m is not None
+    ]
+    if not healthy:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "fusion estimate was never healthy", skipped=True)
+    far = [s for s in healthy if s.vo_path_m >= VO_MIN_PATH_M]
+    if not far:
+        return CheckResult(
+            req.id, req.title, req.severity, True,
+            f"only {max(s.vo_path_m for s in healthy):.1f} m flown with a healthy "
+            f"estimate (need {VO_MIN_PATH_M:.0f} m)", skipped=True)
+    final, peak = far[-1], max(far, key=lambda s: s.vo_drift_frac)
+    violations = []
+    if final.vo_drift_frac > VO_FINAL_DRIFT_FRAC:
+        violations.append(
+            f"t={final.t_s:.1f}s final drift {100 * final.vo_drift_frac:.1f}% "
+            f"(limit {100 * VO_FINAL_DRIFT_FRAC:.0f}%)")
+    if peak.vo_drift_frac > VO_PEAK_DRIFT_FRAC:
+        violations.append(
+            f"t={peak.t_s:.1f}s peak drift {100 * peak.vo_drift_frac:.1f}% "
+            f"(limit {100 * VO_PEAK_DRIFT_FRAC:.0f}%)")
+    return CheckResult(
+        req.id, req.title, req.severity, not violations,
+        f"final drift {100 * final.vo_drift_frac:.1f}% over {final.vo_path_m:.0f} m "
+        f"(error {final.vo_err_m:.2f} m); peak {100 * peak.vo_drift_frac:.1f}%",
+        evidence=violations)
+
+
+def check_vo_availability(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-VO-AVAIL-01")
+    if "vo_healthy" not in trace.columns:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "log has no fusion columns", skipped=True)
+    moving = [s for s in trace.samples if s.state == "MOVE"]
+    if not any(s.vo_n is not None for s in trace.samples) or not moving:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "fusion node was not running", skipped=True)
+    healthy = sum(1 for s in moving if s.vo_healthy)
+    frac = healthy / len(moving)
+    return CheckResult(
+        req.id, req.title, req.severity, frac >= VO_MIN_AVAILABILITY,
+        f"fusion healthy in {healthy}/{len(moving)} MOVE samples ({100 * frac:.0f}%)",
+        evidence=[] if frac >= VO_MIN_AVAILABILITY else [
+            f"availability {100 * frac:.0f}% below {100 * VO_MIN_AVAILABILITY:.0f}%"])
+
+
+def check_velocity_pid_envelope(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-CTRL-01")
+    if "ctrl_mode" not in trace.columns:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "log has no control-mode column", skipped=True)
+    pid = [s for s in trace.samples if s.ctrl_mode == "velocity_pid"]
+    if not pid:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "velocity_pid mode was not used", skipped=True)
+    violations = []
+    samples = trace.samples
+    for index, s in enumerate(samples):
+        if s.ctrl_mode != "velocity_pid":
+            continue
+        cmd = (s.vel_cmd_n, s.vel_cmd_e, s.vel_cmd_d)
+        # The row is logged after the state machine moves on, so the tick in
+        # which MOVE hands over to LANDING/FAILSAFE legitimately carries
+        # velocity_pid with the *new* state: its setpoint was streamed in MOVE.
+        # Exactly that one tick is allowed; anything else outside MOVE is not.
+        handover = index > 0 and samples[index - 1].state == "MOVE"
+        if s.state != "MOVE" and not handover:
+            violations.append(f"t={s.t_s:.2f}s velocity_pid in state {s.state}")
+        elif any(c is None for c in cmd):
+            violations.append(f"t={s.t_s:.2f}s velocity_pid sample has no command")
+        else:
+            horiz = (cmd[0] ** 2 + cmd[1] ** 2) ** 0.5
+            if horiz > PID_MAX_SPEED_XY_MPS + 0.01 or abs(cmd[2]) > PID_MAX_SPEED_Z_MPS + 0.01:
+                violations.append(
+                    f"t={s.t_s:.2f}s command {horiz:.2f} m/s horiz, {cmd[2]:.2f} m/s vert")
+    return CheckResult(
+        req.id, req.title, req.severity, not violations,
+        f"{len(pid)} velocity_pid sample(s) checked", evidence=violations[:8])
+
+
+def check_attitude_envelope(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-ATT-01")
+    if "roll_deg" not in trace.columns:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "legacy log has no attitude columns", skipped=True)
+    flying = [s for s in trace.samples if s.state in AIRBORNE_STATES]
+    violations = [
+        f"t={s.t_s:.2f}s state={s.state} roll={s.roll_deg:.0f} pitch={s.pitch_deg:.0f}"
+        for s in flying
+        if abs(s.roll_deg) > MAX_TILT_DEG or abs(s.pitch_deg) > MAX_TILT_DEG
+    ]
+    worst = max((max(abs(s.roll_deg), abs(s.pitch_deg)) for s in flying), default=0.0)
+    return CheckResult(
+        req.id, req.title, req.severity, not violations,
+        f"maximum tilt {worst:.0f} deg over {len(flying)} airborne sample(s)",
+        evidence=violations[:8])
+
+
+def check_airframe_contact(trace: FlightTrace) -> CheckResult:
+    req = _req("REQ-CLEARANCE-02")
+    if "mapped_clearance_m" not in trace.columns:
+        return CheckResult(req.id, req.title, req.severity, True,
+                           "legacy log has no mapped-clearance column", skipped=True)
+    measured = [s for s in trace.samples if s.mapped_clearance_m is not None]
+    contacts = [
+        f"t={s.t_s:.2f}s clearance={s.mapped_clearance_m:.3f}m"
+        for s in measured if s.mapped_clearance_m < AIRFRAME_CONTACT_M
+    ]
+    minimum = min((s.mapped_clearance_m for s in measured), default=None)
+    return CheckResult(
+        req.id, req.title, req.severity, not contacts,
+        "no clearance samples" if minimum is None
+        else f"minimum mapped clearance {minimum:.3f}m (contact below {AIRFRAME_CONTACT_M}m)",
+        evidence=contacts[:8])
+
+
 def run_vv(
     trace: FlightTrace,
     fence: Fence | None = None,
@@ -758,5 +928,10 @@ def run_vv(
         check_gps_policy_response(trace),
         check_actual_gps_failure(trace),
         check_vio_fusion(trace),
+        check_vo_drift(trace),
+        check_vo_availability(trace),
+        check_velocity_pid_envelope(trace),
+        check_attitude_envelope(trace),
+        check_airframe_contact(trace),
     ]
     return VvReport(source=trace.source, results=results, summary=trace.summary())

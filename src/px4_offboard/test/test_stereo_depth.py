@@ -184,3 +184,65 @@ def test_track_features_recovers_a_known_translation():
 def test_track_features_returns_none_on_a_blank_frame():
     blank = np.zeros((200, 200), dtype=np.uint8)
     assert track_features(blank, blank) is None
+
+
+def test_camera_forward_motion_becomes_body_forward_not_sideways():
+    # The bug this guards against: VO returns motion in camera *optical*
+    # axes (x right, y down, z forward). Forward flight is +z there, but the
+    # EKF integrates body FRD (x forward). Without the relabel, flying north
+    # at yaw 0 shows up as "down".
+    from px4_offboard.stereo_depth import RelativeMotion
+
+    motion = RelativeMotion(
+        rotation_matrix=np.eye(3),
+        translation_m=np.array([0.0, 0.0, 0.5]),  # 0.5 m along optical z
+        inlier_count=20,
+        dt_s=0.1,
+    )
+    rot_body, trans_body = motion.in_body_frame()
+    assert np.allclose(trans_body, [0.5, 0.0, 0.0])
+    assert np.allclose(rot_body, np.eye(3))
+
+
+def test_camera_right_and_down_map_to_body_right_and_down():
+    from px4_offboard.stereo_depth import RelativeMotion
+
+    right = RelativeMotion(np.eye(3), np.array([0.3, 0.0, 0.0]), 20, 0.1)
+    down = RelativeMotion(np.eye(3), np.array([0.0, 0.2, 0.0]), 20, 0.1)
+    assert np.allclose(right.in_body_frame()[1], [0.0, 0.3, 0.0])
+    assert np.allclose(down.in_body_frame()[1], [0.0, 0.0, 0.2])
+
+
+def test_camera_yaw_rotation_is_a_body_yaw_rotation():
+    # A turn about the camera's y (down) axis is a yaw: rotation about body z.
+    from px4_offboard.stereo_depth import RelativeMotion
+
+    angle = math.radians(10.0)
+    rot_cam = _rotation_about_y(angle)
+    motion = RelativeMotion(rot_cam, np.zeros(3), 20, 0.1)
+    rot_body, _ = motion.in_body_frame()
+    c, s = math.cos(angle), math.sin(angle)
+    expected_yaw = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    assert np.allclose(rot_body, expected_yaw, atol=1e-9)
+
+
+def test_stereo_odometry_motion_dt_comes_from_image_stamps(monkeypatch):
+    # Frames can be dropped; the interval a motion spans is the stamp
+    # difference, not however long processing took.
+    import px4_offboard.stereo_depth as sd
+
+    odo = sd.StereoOdometry()
+    rng = np.random.default_rng(3)
+    frame = rng.integers(0, 256, size=(480, 640), dtype=np.uint8)
+    fake = sd.RelativeMotion(np.eye(3), np.array([0.0, 0.0, 0.1]), 30)
+    monkeypatch.setattr(sd, "estimate_relative_motion", lambda *a, **k: fake)
+    monkeypatch.setattr(
+        sd,
+        "track_features",
+        lambda *a, **k: sd.TrackedFeatures(np.zeros((10, 2)), np.zeros((10, 2))),
+    )
+    assert odo.process(frame, frame, 10.00) is None  # first frame: nothing to compare
+    motion = odo.process(frame, frame, 10.35)  # 3 frames dropped in between
+    assert motion is not None
+    assert motion.dt_s == pytest.approx(0.35)
+    assert odo.process(frame, frame, 10.35) is None  # non-increasing stamp rejected

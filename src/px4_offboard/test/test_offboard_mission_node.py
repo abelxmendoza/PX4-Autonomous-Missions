@@ -339,3 +339,125 @@ def test_zero_radius_mission_transitions_to_landing(tmp_path):
         n.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+class _Capture:
+    """Stands in for a publisher; records every message it is handed."""
+
+    def __init__(self):
+        self.messages = []
+
+    def publish(self, message):
+        self.messages.append(message)
+
+
+def _velocity_node(tmp_path, *extra_args):
+    rclpy.init(
+        args=[
+            "--ros-args",
+            "-p", f"log_dir:={tmp_path}",
+            "-p", "control_mode:=velocity_pid",
+            *extra_args,
+        ]
+    )
+    n = OffboardMission()
+    n._pub_sp, n._pub_ocm = _Capture(), _Capture()
+    return n
+
+
+def test_position_mode_is_unchanged_by_default(node):
+    node._pub_sp, node._pub_ocm = _Capture(), _Capture()
+    node._state_machine.state = State.MOVE
+    node._control_loop()
+    sp, ocm = node._pub_sp.messages[-1], node._pub_ocm.messages[-1]
+    assert ocm.position and not ocm.velocity
+    assert all(math.isfinite(v) for v in sp.position)
+    assert all(math.isnan(v) for v in sp.velocity)
+
+
+def test_velocity_pid_streams_velocity_setpoints_and_matching_mode_flag(tmp_path):
+    n = _velocity_node(tmp_path)
+    try:
+        # First MOVE waypoint is the origin; start 4 m south of it.
+        n.current_x, n.current_y, n.current_z = -4.0, 0.0, -3.5
+        n._have_position = True
+        n._pos_stamp = time.monotonic()
+        n._state_machine.state = State.MOVE
+        assert n._vel_mode is False  # mode is decided per tick, not by state alone
+        n._control_loop()
+        sp, ocm = n._pub_sp.messages[-1], n._pub_ocm.messages[-1]
+        assert ocm.velocity and not ocm.position
+        assert all(math.isnan(v) for v in sp.position)
+        assert sp.velocity[0] > 0.0  # target is north of us
+        assert math.hypot(sp.velocity[0], sp.velocity[1]) <= 3.0 + 1e-6
+    finally:
+        n.destroy_node()
+        rclpy.shutdown()
+
+
+def test_velocity_pid_only_applies_during_move(tmp_path):
+    n = _velocity_node(tmp_path)
+    try:
+        n._state_machine.state = State.HOVER
+        n._control_loop()
+        ocm, sp = n._pub_ocm.messages[-1], n._pub_sp.messages[-1]
+        assert ocm.position and not ocm.velocity
+        assert all(math.isfinite(v) for v in sp.position)
+    finally:
+        n.destroy_node()
+        rclpy.shutdown()
+
+
+def test_fusion_position_source_falls_back_to_px4_when_unhealthy(tmp_path):
+    n = _velocity_node(tmp_path, "-p", "position_source:=fusion")
+    try:
+        n.current_x, n.current_y, n.current_z = 1.0, 2.0, -3.0
+        # no fusion status yet -> PX4's estimate, and the log says so
+        assert n._guidance_position() == [1.0, 2.0, -3.0]
+        assert n._pos_source_used == "px4"
+        # healthy + fresh fusion estimate -> used
+        n._vo_status = [5.0, 6.0, -3.0, 1.0, 30.0, 0.1, 0.0, 10.0, 0.01, 50.0]
+        n._vo_status_t = time.monotonic()
+        assert n._guidance_position() == [5.0, 6.0, -3.0]
+        assert n._pos_source_used == "fusion"
+        # unhealthy flag -> back to PX4
+        n._vo_status[3] = 0.0
+        assert n._guidance_position() == [1.0, 2.0, -3.0]
+        assert n._pos_source_used == "px4"
+        # healthy but stale -> back to PX4
+        n._vo_status[3] = 1.0
+        n._vo_status_t = time.monotonic() - 5.0
+        assert n._guidance_position() == [1.0, 2.0, -3.0]
+    finally:
+        n.destroy_node()
+        rclpy.shutdown()
+
+
+def test_invalid_control_mode_is_rejected(tmp_path):
+    rclpy.init(args=["--ros-args", "-p", f"log_dir:={tmp_path}", "-p", "control_mode:=warp"])
+    try:
+        with pytest.raises(ValueError):
+            OffboardMission()
+    finally:
+        rclpy.shutdown()
+
+
+def test_log_row_records_control_and_fusion_columns(tmp_path):
+    n = _velocity_node(tmp_path)
+    try:
+        n._vo_status = [4.0, 5.0, -3.0, 1.0, 42.0, 0.7, 0.1, 25.0, 0.028, 120.0]
+        n._vo_status_t = time.monotonic()
+        n._vel_mode = True
+        n._vel_cmd = [1.0, -0.5, 0.2]
+        n._log_row([1.0, 2.0, -3.0], None)
+        n._log_file.flush()
+        rows = list(csv.DictReader(open(n._log_file.name)))
+        r = rows[-1]
+        assert r["ctrl_mode"] == "velocity_pid"
+        assert (r["vel_cmd_n"], r["vel_cmd_e"], r["vel_cmd_d"]) == ("1.0", "-0.5", "0.2")
+        assert r["vo_healthy"] == "1" and r["vo_inliers"] == "42"
+        assert float(r["vo_err_m"]) == pytest.approx(0.7)
+        assert float(r["vo_drift_frac"]) == pytest.approx(0.028)
+    finally:
+        n.destroy_node()
+        rclpy.shutdown()

@@ -23,7 +23,9 @@ hypothetical.
 | [BUG-013](BUG-013.md) | Geocage margin too tight for real avoidance overshoot, geofence breach | Live SITL | None (config tuning) |
 | [BUG-014](BUG-014.md) | Sensor-only bypass rigidly continues into an unanticipated second obstacle | Live SITL (near-collision) | `test_sensor_only_bypass_replans_on_emergency_close_reading` |
 | [BUG-015](BUG-015.md) | The BUG-014 fix itself thrashes on ordinary bypass proximity | Live SITL re-verification | `test_sensor_only_bypass_does_not_thrash_on_expected_proximity` |
-| [BUG-016](BUG-016.md) | **OPEN** — altitude spike + geofence breach at GPS-zone exit | Live SITL re-verification | Not yet fixed |
+| [BUG-016](BUG-016.md) | Loss of control after reactive-avoidance contact (first mis-attributed to GPS-zone exit); detectors added, causes open | Live SITL + 68-log analysis | `test_attitude_envelope_flags_a_tumble_before_the_failsafe`, `test_airframe_contact_catches_a_graze_that_clearance_01_passes` |
+| [BUG-017](BUG-017.md) | Camera sensors never render: subscribers started without PX4's `GZ_IP` never register, so no frame is ever produced | Live SITL (stereo bring-up) | Live validation run (`vo_healthy`); `test_vo_availability_fails_when_the_cameras_go_dark` |
+| [BUG-018](BUG-018.md) | Gyro-only fusion heading drifts up to 17 deg in fast turns, rotating every VO velocity wrong | Live SITL (flight H vs G) | `test_reference_attitude_pulls_a_drifted_heading_back_without_stepping`, `test_attitude_messages_pull_a_drifted_heading_toward_the_autopilot` |
 
 ## Reading this list
 
@@ -46,6 +48,7 @@ A few things worth noticing across these entries:
   the time, not encoded into the pytest suite. Left as an honest gap
   rather than backfilled with tests written after the fact to look more
   complete than the historical record supports.
-- **BUG-016 is still open.** It's included here, unresolved, because a
-  bug database that only ever shows fixed bugs isn't telling the whole
-  story.
+- **BUG-016 is only partly resolved.** Its first diagnosis (GPS-zone exit)
+  was wrong; re-analysis of 68 logs shows loss of control after reactive-
+  avoidance contact. Detectors exist; the avoidance causes are still open.
+  A bug database that only ever shows fixed bugs isn't telling the whole story.

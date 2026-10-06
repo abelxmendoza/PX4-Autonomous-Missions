@@ -121,6 +121,23 @@ def quat_slerp(q0: np.ndarray, q1: np.ndarray, t: float) -> np.ndarray:
     return quat_normalize(q0 * math.cos(theta) + q2 * math.sin(theta))
 
 
+def message_dt_s(
+    previous_us: int | None, current_us: int, max_dt_s: float
+) -> float | None:
+    """Integration interval from consecutive message timestamps (microseconds).
+
+    Uses the vehicle's own clock rather than when a Python callback happened
+    to run: callbacks are batched under load and the simulator does not run at
+    exactly real time, and both distort a wall-clock dt. Returns None for the
+    first message, a non-increasing timestamp, or a gap longer than
+    ``max_dt_s`` (a stall -- better to skip than to integrate across it).
+    """
+    if previous_us is None or current_us <= previous_us:
+        return None
+    dt = (current_us - previous_us) * 1e-6
+    return dt if dt <= max_dt_s else None
+
+
 @dataclass
 class FusionState:
     position_m: np.ndarray  # (3,) NED, metres
@@ -132,20 +149,30 @@ class FusionState:
 class PoseVelocityEKF:
     """See module docstring for the position/velocity-vs-attitude split.
 
-    accel_noise_std / vo_velocity_noise_std are process/measurement noise
-    tuning knobs, not free parameters chosen to make a demo pass — they
-    should reflect the actual simulated IMU noise and the actual observed
-    scatter of stereo-VO velocity estimates. Defaults here are reasonable
-    starting points for a simulated MEMS-class IMU and a ~30Hz VO update,
-    not a calibrated result.
+    ``accel_noise_std`` is the process noise on acceleration, and it must
+    cover more than raw accelerometer noise: attitude is tracked outside this
+    filter's covariance, so every degree of attitude error leaks gravity into
+    the horizontal acceleration (``g * sin(error)`` -- 0.85 m/s^2 for 5 degrees).
+    The original 0.05 m/s^2 ignored that, which made the filter overconfident
+    in its own dead reckoning and deaf to VO; live flight showed 39 m/s of
+    velocity while VO reported ~2. ``test_realistic_attitude_error_*`` pins it.
+
+    Velocity updates are gated on the Mahalanobis distance of the innovation
+    and on an absolute speed bound: stereo VO produces occasional absurd
+    outputs (hundreds of m/s on degenerate scenes), and one such update
+    accepted at face value ruins the state.
     """
 
     def __init__(
         self,
         initial_position_m: np.ndarray | None = None,
         initial_quat_wxyz: np.ndarray | None = None,
-        accel_noise_std: float = 0.05,
+        accel_noise_std: float = 0.5,
         vo_attitude_blend: float = 0.15,
+        velocity_gate_chi2: float = 16.27,  # 99.9% of chi-square, 3 dof
+        max_speed_mps: float = 15.0,
+        attitude_gate_deg: float = 1.5,
+        reference_attitude_tau_s: float = 0.0,
     ):
         self.position = (
             np.zeros(3) if initial_position_m is None else np.array(initial_position_m, dtype=float)
@@ -159,10 +186,33 @@ class PoseVelocityEKF:
         self.cov = np.eye(6) * 0.1
         self.accel_noise_std = accel_noise_std
         self.vo_attitude_blend = vo_attitude_blend
+        self.reference_attitude_tau_s = reference_attitude_tau_s
+        self.velocity_gate_chi2 = velocity_gate_chi2
+        self.max_speed_mps = max_speed_mps
+        self.attitude_gate_rad = math.radians(attitude_gate_deg)
+        self.accepted_updates = 0
+        self.rejected_updates = 0
+        self._consecutive_rejections = 0
         # Attitude at the time of the last VO correction (or construction,
         # if none yet) -- the frame relative_rotation is measured against.
         self._vo_reference_quat = self.quat.copy()
         self._initialized = False
+
+    def initialize(
+        self,
+        position_m: np.ndarray,
+        quat_wxyz: np.ndarray,
+        velocity_mps: np.ndarray | None = None,
+    ) -> None:
+        """Seed the state from the vehicle's own estimate (what a real
+        vehicle has before VO has acquired). Velocity defaults to rest."""
+        self.position = np.array(position_m, dtype=float)
+        self.velocity = (
+            np.zeros(3) if velocity_mps is None else np.array(velocity_mps, dtype=float)
+        )
+        self.quat = quat_normalize(np.array(quat_wxyz, dtype=float))
+        self._vo_reference_quat = self.quat.copy()
+        self.cov = np.eye(6) * 0.1
 
     def predict(self, gyro_rad_s: np.ndarray, accel_mps2: np.ndarray, dt_s: float) -> None:
         if dt_s <= 0.0:
@@ -197,30 +247,82 @@ class PoseVelocityEKF:
 
     def update_velocity(
         self, measured_velocity_world_mps: np.ndarray, measurement_std: float
-    ) -> None:
-        """Fuse a stereo-VO-derived world-frame velocity measurement."""
+    ) -> bool:
+        """Fuse a stereo-VO-derived world-frame velocity. Returns whether it
+        was accepted; a rejected measurement leaves the state untouched."""
         z = np.asarray(measured_velocity_world_mps, dtype=float)
+        if not np.all(np.isfinite(z)) or np.linalg.norm(z) > self.max_speed_mps:
+            return self._reject()
         h = np.zeros((3, 6))
         h[:, 3:6] = np.eye(3)
         r_meas = np.eye(3) * measurement_std**2
 
         y = z - h @ np.concatenate([self.position, self.velocity])
         s = h @ self.cov @ h.T + r_meas
+        if float(y @ np.linalg.solve(s, y)) > self.velocity_gate_chi2:
+            return self._reject()
         k = self.cov @ h.T @ np.linalg.inv(s)
         state = np.concatenate([self.position, self.velocity]) + k @ y
         self.position, self.velocity = state[0:3], state[3:6]
         self.cov = (np.eye(6) - k @ h) @ self.cov
+        self.accepted_updates += 1
+        self._consecutive_rejections = 0
+        return True
 
-    def apply_vo_attitude_correction(self, relative_rotation: np.ndarray) -> None:
+    def _reject(self) -> bool:
+        self.rejected_updates += 1
+        self._consecutive_rejections += 1
+        # Persistent rejection means the *filter* has drifted away from a
+        # consistent VO stream, not that every measurement is bad: open up the
+        # velocity covariance so the next consistent measurement re-anchors it
+        # instead of locking the filter out forever.
+        if self._consecutive_rejections >= 8:
+            self.cov[3:6, 3:6] += np.eye(3) * 4.0
+            self._consecutive_rejections = 0
+        return False
+
+    def apply_vo_attitude_correction(self, relative_rotation: np.ndarray) -> bool:
         """Blend the gyro-integrated attitude toward what VO's relative
         rotation implies, at ``vo_attitude_blend`` weight. ``relative_rotation``
-        is the camera-frame rotation since the *previous* VO update, in the
-        camera's own prior frame -- the same body frame the gyro operates
-        in, since the camera is rigidly mounted to the airframe.
+        is the body-frame rotation since the *previous* VO update.
+
+        The correction is only applied when VO's rotation agrees with the
+        gyro-integrated rotation over the same interval (within
+        ``attitude_gate_deg``). Short-interval gyro integration is far more
+        accurate than frame-to-frame PnP rotation, so a large disagreement
+        means a bad VO frame, and blending it in would rotate every later
+        velocity into the wrong direction. Returns whether it was applied.
         """
         dq_vo = rotation_matrix_to_quat(relative_rotation)
-        q_vo_implied = quat_normalize(quat_multiply(self._vo_reference_quat, dq_vo))
+        ref = self._vo_reference_quat
+        ref_conj = np.array([ref[0], -ref[1], -ref[2], -ref[3]])
+        dq_gyro = quat_multiply(ref_conj, self.quat)
+        disagreement = 2.0 * math.acos(min(1.0, abs(float(np.dot(dq_vo, dq_gyro)))))
+        if disagreement > self.attitude_gate_rad:
+            self._vo_reference_quat = self.quat.copy()
+            return False
+        q_vo_implied = quat_normalize(quat_multiply(ref, dq_vo))
         self.quat = quat_slerp(self.quat, q_vo_implied, self.vo_attitude_blend)
+        self._vo_reference_quat = self.quat.copy()
+        return True
+
+    def apply_reference_attitude(self, quat_wxyz: np.ndarray, dt_s: float) -> None:
+        """Complementary pull of the gyro-integrated attitude toward an
+        external attitude estimate (the autopilot's IMU+magnetometer AHRS --
+        not ground truth), with time constant ``reference_attitude_tau_s``.
+
+        Raw gyro integration has no bias or scale correction, and it
+        accumulated up to 17 degrees of yaw error through fast turns in live
+        flights (BUG-017 follow-up); every later VO velocity was then rotated
+        into the wrong direction. Short-term the gyro still dominates, so the
+        fast dynamics stay smooth. Position and velocity remain IMU + VO only.
+        """
+        if self.reference_attitude_tau_s <= 0.0 or dt_s <= 0.0:
+            return
+        alpha = min(1.0, dt_s / self.reference_attitude_tau_s)
+        self.quat = quat_normalize(
+            quat_slerp(self.quat, quat_normalize(np.asarray(quat_wxyz, dtype=float)), alpha)
+        )
         self._vo_reference_quat = self.quat.copy()
 
     def state(self) -> FusionState:
@@ -230,3 +332,35 @@ class PoseVelocityEKF:
             quat_wxyz=self.quat.copy(),
             position_cov=self.cov.copy(),
         )
+
+
+class DriftTracker:
+    """Fused-estimate error against a reference estimate, normalized by the
+    distance the reference actually travelled.
+
+    Drift is only meaningful relative to distance flown (a stationary
+    vehicle that "drifts" 1 m is a different failure than a 100 m flight
+    that ends 1 m off), so this reports both the absolute error and the
+    error as a fraction of cumulative reference path length.
+    """
+
+    def __init__(self) -> None:
+        self.path_length_m = 0.0
+        self._last_ref: np.ndarray | None = None
+
+    def update(
+        self, fused_position_m: np.ndarray, reference_position_m: np.ndarray
+    ) -> dict[str, float]:
+        fused = np.asarray(fused_position_m, dtype=float)
+        ref = np.asarray(reference_position_m, dtype=float)
+        if self._last_ref is not None:
+            self.path_length_m += float(np.linalg.norm(ref - self._last_ref))
+        self._last_ref = ref.copy()
+        err = fused - ref
+        horiz = float(np.hypot(err[0], err[1]))
+        return {
+            "err_horiz_m": horiz,
+            "err_down_m": float(err[2]),
+            "path_length_m": self.path_length_m,
+            "drift_frac": horiz / self.path_length_m if self.path_length_m > 1.0 else 0.0,
+        }

@@ -41,3 +41,16 @@ def gz_pixel_format_to_ros_fields(pixel_format_name: str, width: int) -> RosImag
             f"no ROS encoding mapping for gz pixel format {pixel_format_name!r}"
         ) from exc
     return RosImageFields(encoding=encoding, step=width * bytes_per_pixel)
+
+
+def sensor_stamp(sec: int, nsec: int) -> tuple[int, int] | None:
+    """The sensor's own timestamp from a gz message header, or None if unset.
+
+    Stereo odometry needs timestamps that describe the *frame*: both cameras
+    of a pair share one simulation tick, so their sensor stamps are identical,
+    and the interval between two frames is the true time between exposures
+    (the same clock PX4's IMU timestamps use). Receive-time stamps are neither.
+    """
+    if sec < 0 or nsec < 0 or (sec == 0 and nsec == 0):
+        return None
+    return int(sec), int(nsec)
