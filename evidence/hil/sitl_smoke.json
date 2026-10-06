@@ -1,0 +1,38 @@
+{
+  "connection": "udpin:0.0.0.0:14540",
+  "telemetry": true,
+  "arm_ack": "accepted",
+  "disarm_ack": "accepted",
+  "state": {
+    "t_s": 87.132,
+    "position_ned": [
+      0.002999312011525035,
+      -0.011392101645469666,
+      -0.03571833670139313
+    ],
+    "velocity_ned": [
+      0.006498981267213821,
+      7.38560629542917e-05,
+      -0.003822790924459696
+    ],
+    "roll_deg": -0.043938433507920135,
+    "pitch_deg": -0.05132018046373125,
+    "yaw_deg": 96.69750158948509,
+    "armed": false
+  },
+  "rx_rate_hz": 13.5,
+  "parser": {
+    "frames": 27,
+    "bad_crc": 0,
+    "unknown_msg": 41,
+    "unsupported": 0
+  },
+  "provenance": {
+    "recorded_at_utc": "2026-10-06T05:16:20Z",
+    "px4_version": "v1.16.0-5-gd26cb57aca",
+    "repo_commit": "ab621bd",
+    "note": "Recorded run against a local PX4 SITL (gz_x500, headless). Re-run tools/sitl_smoke.py to refresh."
+  },
+  "passed": true,
+  "detail": "telemetry=yes rx_rate=13.5 Hz; arm: accepted; disarm: accepted"
+}

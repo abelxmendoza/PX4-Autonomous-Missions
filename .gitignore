@@ -40,3 +40,7 @@ node_modules/
 /flight_plot*.png
 /flight_report*.png
 *.log
+
+# Generated reports, JUnit and fault evidence (CI uploads them as artifacts)
+artifacts/
+build/

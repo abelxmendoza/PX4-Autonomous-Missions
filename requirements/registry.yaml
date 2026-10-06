@@ -306,9 +306,12 @@ requirements:
     description: Against a live PX4 SITL instance the vehicle shall receive telemetry, arm and disarm.
     rationale: The mock autopilot proves the host side only; interop with the real firmware needs the real firmware.
     threshold: "telemetry received; arm and disarm acknowledged"
-    measurement: "tools/sitl_smoke.py against a running SITL; results file written there."
+    measurement: >
+      tools/sitl_smoke.py against a running SITL writes the results file. CI runners have no PX4 SITL,
+      so CI evaluates the committed recording (evidence/hil/sitl_smoke.json: PX4 v1.16.0-5-gd26cb57aca,
+      headless gz_x500, one run); re-run the tool locally to refresh it.
     verification:
-      - {kind: external, requires: px4_sitl, results_file: artifacts/sitl/sitl_smoke.json,
+      - {kind: external, requires: px4_sitl, results_file: evidence/hil/sitl_smoke.json,
          reason: "Needs a running PX4 SITL; not available on CI runners."}
 
   - id: REQ-HIL-004

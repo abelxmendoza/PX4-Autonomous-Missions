@@ -19,6 +19,10 @@ class TransportError(Exception):
     """The device is gone or misbehaving; the link should reconnect."""
 
 
+class PeerUnknown(TransportError):
+    """A connectionless transport has nobody to send to yet (not a device failure)."""
+
+
 class TransportClosed(TransportError):
     """Operation attempted on a transport that is not open."""
 

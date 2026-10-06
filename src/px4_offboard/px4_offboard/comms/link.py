@@ -13,7 +13,7 @@ from enum import Enum
 
 from .clock import Clock
 from .mavlink_frame import Frame, FrameParser, ParseEvent, ParseStats, encode_frame
-from .serial_transport import Transport, TransportError
+from .serial_transport import PeerUnknown, Transport, TransportError
 
 
 MAX_DRAIN_READS = 256
@@ -25,6 +25,10 @@ class LinkError(Exception):
 
 class LinkDown(LinkError):
     """The operation needs a connected link and there is none."""
+
+
+class LinkNotReady(LinkError):
+    """Connected, but nobody to talk to yet (listening UDP before the first datagram)."""
 
 
 class LinkState(Enum):
@@ -164,6 +168,8 @@ class MavlinkLink:
                 if written <= 0:
                     raise TransportError("write made no progress")
                 view = view[written:]
+        except PeerUnknown as exc:
+            raise LinkNotReady(str(exc)) from exc
         except TransportError as exc:
             self._mark_down()
             raise LinkDown(str(exc)) from exc

@@ -5,7 +5,7 @@ from __future__ import annotations
 import select
 import socket
 
-from .serial_transport import Transport, TransportClosed, TransportError
+from .serial_transport import PeerUnknown, Transport, TransportClosed, TransportError
 
 
 class UdpTransport(Transport):
@@ -62,7 +62,7 @@ class UdpTransport(Transport):
     def write(self, data: bytes) -> int:
         sock = self._require()
         if self._peer is None:
-            raise TransportError("no UDP peer yet: nothing has been received")
+            raise PeerUnknown("no UDP peer yet: nothing has been received")
         try:
             return sock.sendto(data, self._peer)
         except OSError as exc:

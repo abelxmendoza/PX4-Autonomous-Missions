@@ -223,3 +223,27 @@ def test_one_poll_drains_everything_already_received_not_just_one_chunk(dev, clo
         dev.inject_rx(hb(seq))  # 30 separate deliveries, like UDP datagrams
     assert len(link.poll(0.05)) == 30
     assert link.stats.read_timeouts == 0
+
+
+def test_sending_before_a_udp_peer_is_known_is_not_a_link_failure(clock):
+    # A listening UDP endpoint (PX4 SITL style) cannot reply until it has heard
+    # from the peer. That is "not ready yet", not a lost link: it must not flip
+    # the state to DISCONNECTED (found against a live PX4 SITL).
+    import socket
+
+    from px4_offboard.comms.link import LinkNotReady
+    from px4_offboard.comms.udp_transport import UdpTransport
+    from px4_offboard.vehicle.connection import ConnectionSpec
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    link = MavlinkLink(UdpTransport(ConnectionSpec("udpin", host="127.0.0.1", port=port)), clock)
+    link.connect()
+    try:
+        with pytest.raises(LinkNotReady):
+            link.send(MSG_HEARTBEAT, HB)
+        assert link.state is LinkState.CONNECTED
+        assert link.stats.disconnects == 0
+    finally:
+        link.disconnect()

@@ -13,7 +13,7 @@ from collections import deque
 
 from px4_offboard.comms import messages as m
 from px4_offboard.comms.clock import Clock, SystemClock
-from px4_offboard.comms.link import LinkDown, LinkState, MavlinkLink, ReconnectPolicy
+from px4_offboard.comms.link import LinkDown, LinkNotReady, LinkState, MavlinkLink, ReconnectPolicy
 from px4_offboard.comms.mavlink_frame import (
     MSG_ATTITUDE,
     MSG_COMMAND_ACK,
@@ -153,6 +153,8 @@ class MavlinkVehicle(VehicleInterface):
     def _send(self, msgid: int, payload: bytes) -> None:
         try:
             self.link.send(msgid, payload)
+        except LinkNotReady as exc:
+            raise VehicleError(f"link not ready: {exc}") from exc
         except LinkDown as exc:
             raise VehicleError(f"link down: {exc}") from exc
 
@@ -169,6 +171,15 @@ class MavlinkVehicle(VehicleInterface):
                     raise CommandRejected(f"command {command} rejected (result {result})")
                 return
         raise CommandTimeout(f"no ack for command {command} within {self.command_timeout_s}s")
+
+    def send_heartbeat(self, mav_type: int = 6, autopilot: int = 8) -> None:
+        """Announce ourselves (default: a GCS, no autopilot). PX4 will not arm
+        without a GCS heartbeat, so a companion link has to send one at ~1 Hz."""
+        try:
+            self._send(MSG_HEARTBEAT, m.pack_heartbeat(mav_type=mav_type, autopilot=autopilot, system_status=4))
+        except VehicleError as exc:
+            if "not ready" not in str(exc):  # best effort until a peer exists; real failures still raise
+                raise
 
     def arm(self) -> None:
         self._command(m.MAV_CMD_COMPONENT_ARM_DISARM, 1.0)

@@ -159,3 +159,16 @@ def test_mavlink_vehicle_recovers_after_the_cable_is_unplugged():
     assert world.vehicle.reconnect() is True
     world.run(1.0)
     assert world.vehicle.link_health().alive
+
+
+def test_heartbeat_is_sent_as_a_companion_or_gcs_component():
+    # PX4 refuses to arm without a GCS heartbeat; a companion link must send one.
+    from px4_offboard.comms import messages as m
+    from px4_offboard.comms.mavlink_frame import FrameParser, MSG_HEARTBEAT
+
+    world = _mavlink_world(PX4SITLVehicle)
+    world.vehicle.connect()
+    world.vehicle.send_heartbeat(mav_type=6)  # MAV_TYPE_GCS
+    frames = [e.frame for e in FrameParser().feed(bytes(world.autopilot.device.tx_log)) if e.frame]
+    assert len(frames) == 1 and frames[0].msgid == MSG_HEARTBEAT
+    assert m.unpack_heartbeat(frames[0].payload).mav_type == 6
