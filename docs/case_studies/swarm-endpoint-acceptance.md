@@ -14,7 +14,7 @@ A route passing within roughly one metre of a waypoint looks plausible at course
 
 ## Requirement violated
 
-[REQ-SWM-003](../requirements.md): task completion requires an independent armed-position observation within 0.6 m. The verifier's corridor/start/end checks must not be weakened to match incorrect completion flags.
+[REQ-SWM-003](../REQUIREMENTS.md): task completion requires an independent armed-position observation within 0.6 m. The verifier's corridor/start/end checks must not be weakened to match incorrect completion flags.
 
 ## Telemetry/evidence that exposed it
 

@@ -56,4 +56,4 @@ Recorded environment: ROS 2 Humble; Gazebo Harmonic; PX4 checkout `d26cb57aca2cf
 
 ## What the demo does not prove
 
-No camera/LiDAR navigation, GPS denial, payload delivery, surveyed imagery, distributed swarm operation, hardware/HIL validation or precise touchdown location. The visible landing pad is contextual scenery. The verifier checks sampled positions and terminal flags, not continuous aircraft-volume collision clearance. Read [requirements](requirements.md) for exact acceptance and remaining gaps.
+No camera/LiDAR navigation, GPS denial, payload delivery, surveyed imagery, distributed swarm operation, hardware/HIL validation or precise touchdown location. The visible landing pad is contextual scenery. The verifier checks sampled positions and terminal flags, not continuous aircraft-volume collision clearance. Read [requirements](REQUIREMENTS.md) for exact acceptance and remaining gaps.

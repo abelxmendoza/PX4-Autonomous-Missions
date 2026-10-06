@@ -1,6 +1,6 @@
 # Operations reference
 
-[Project overview](../README.md) · [Requirements](requirements.md) · [Evidence limits](verification_matrix.md)
+[Project overview](../README.md) · [Requirements](REQUIREMENTS.md) · [Evidence limits](verification_matrix.md)
 
 Commands below run from the repository root. This reference describes available mechanisms; it does not certify every configuration. The flagship is the [recorded recovery demo](golden_demo.md).
 
@@ -254,7 +254,7 @@ Opt-in, none of it changes the default mission: `use_camera:=true use_stereo:=tr
 
 Everything is logged per tick (`ctrl_mode`, `pos_source`, `vel_cmd_*`, `vo_*`) and
 checked by `REQ-VO-001/002`, `REQ-CTL-001`, `REQ-ATT-001`, `REQ-OBS-003`
-([catalog](requirements.md)). To fly and score one mission headless:
+([catalog](REQUIREMENTS.md)). To fly and score one mission headless:
 
 ```bash
 scripts/run_vo_validation.sh <tag> [position|velocity_pid] [px4|fusion]

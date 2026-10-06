@@ -1,0 +1,323 @@
+# Requirement registry: the single source of truth for what is claimed, how it
+# is measured, and which tests/evidence back it. `tools/validation_report.py`
+# evaluates every entry and refuses to call anything PASS without evidence.
+#
+# verification kinds
+#   flight    replay curated recordings (evidence/manifest.json cases) through
+#             the verifier and read named checks
+#   fault     run a fault scenario (config/fault_scenarios) and read the record
+#             for the numbered fault, optionally only some of its checks
+#   pytest    every test listed under `tests` must pass
+#   external  needs something this repository's CI does not have (a real flight
+#             controller, a running PX4 SITL). NOT_RUN unless a results file exists.
+# `known_open` marks a requirement that is currently NOT met and says where that
+# is tracked. The gate tolerates exactly that, and fails if the marker goes stale.
+schema: 1
+requirements:
+
+  - id: REQ-EST-001
+    title: Fusion position drift is bounded relative to distance flown
+    level: MUST
+    description: >
+      While fusion is healthy, the stereo+IMU horizontal position shall end the flight within
+      10% of the distance travelled of PX4's estimate, and never exceed 20% once 20 m have been flown.
+    rationale: >
+      Dead-reckoning error that grows faster than distance flown makes the estimate unusable
+      for guidance; it is the headline quality figure for visual-inertial odometry.
+    threshold: "final drift <= 10% of path; peak drift <= 20% (>= 20 m flown)"
+    measurement: >
+      Horizontal distance between the fused position and PX4's own estimate divided by PX4's
+      cumulative path length, from the flight log (vv_harness.check_vo_drift). Reference is PX4's
+      estimate, not ground truth.
+    legacy_ids: [REQ-VO-DRIFT-01, REQ-VO-001]
+    verification:
+      - {kind: flight, cases: [stereo_vo_flight_k, stereo_vo_flight_l], checks: [REQ-VO-DRIFT-01]}
+    tests:
+      - src/px4_offboard/test/test_flight_vv.py::test_vo_drift_passes_when_error_is_small_relative_to_distance
+      - src/px4_offboard/test/test_flight_vv.py::test_vo_drift_fails_when_error_is_a_large_fraction_of_distance
+      - src/px4_offboard/test/test_flight_vv.py::test_vo_drift_peak_limit_catches_a_transient_even_if_it_recovers
+    known_open: >
+      Identical-configuration live flights K and L ended at 9.3% and 13.2% (peak 37%); the
+      run-to-run spread is unexplained. See docs/engineering_results.md and bugs/BUG-018.md.
+
+  - id: REQ-EST-002
+    title: Visual odometry is available while moving
+    level: MUST
+    description: Fusion shall be healthy in at least 80% of MOVE samples when the fusion node is running.
+    rationale: A localization source that is mostly stale cannot be relied on to close a control loop.
+    threshold: "healthy in >= 80% of MOVE samples (healthy = accepted VO update within 0.5 s and fresh IMU)"
+    measurement: "Fraction of logged MOVE samples with vo_healthy=1 (vv_harness.check_vo_availability)."
+    legacy_ids: [REQ-VO-AVAIL-01, REQ-VO-002]
+    verification:
+      - {kind: flight, cases: [stereo_vo_flight_k, stereo_vo_flight_l], checks: [REQ-VO-AVAIL-01]}
+    tests:
+      - src/px4_offboard/test/test_flight_vv.py::test_vo_availability_fails_when_the_cameras_go_dark
+      - src/px4_offboard/test/test_flight_vv.py::test_vo_availability_passes_when_healthy_most_of_the_flight
+    known_open: >
+      Live flights K and L reached 73% and 66%: about 5 VO updates/s under simulation load and VO
+      losing track in fast yaw turns. See docs/engineering_results.md.
+
+  - id: REQ-EST-003
+    title: A VO outage is detected and the dead-reckoned error stays bounded
+    level: MUST
+    description: >
+      When stereo VO stops delivering measurements, fusion health shall drop within 1 s, and the
+      horizontal error shall grow by no more than 2 m over the baseline.
+    rationale: Consumers must be told the estimate is no longer vision-corrected, and IMU-only drift must stay small.
+    threshold: "detect <= 1.0 s; error growth <= 2.0 m over the fault-free baseline (5 s outage)"
+    measurement: "Fault scenario vo_dropout_and_packet_loss fault 1: injected/observed/verdict record (faults/evidence.py)."
+    verification:
+      - {kind: fault, scenario: vo_dropout_and_packet_loss, faults: [1], checks: [must_detect, detect_within_s, max_err_growth_m]}
+
+  - id: REQ-EST-004
+    title: A frozen VO stream is rejected rather than trusted
+    level: MUST
+    description: A VO sensor that keeps repeating its last velocity shall be detected within 1 s with bounded error growth.
+    rationale: A stuck sensor is consistent with a state it is itself dragging along; trusting it silently caused an 11 m error (BUG-019).
+    threshold: "detect <= 1.0 s; error growth <= 2.0 m; recovery <= 2.0 s"
+    measurement: "Fault scenario sensor_faults fault 8, plus unit tests of the stuck-measurement rule."
+    verification:
+      - {kind: fault, scenario: sensor_faults, faults: [8]}
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_ekf_fusion.py::test_bit_identical_repeat_of_a_moving_velocity_is_rejected_as_a_stuck_sensor
+      - src/px4_offboard/test/test_ekf_fusion.py::test_repeated_zero_velocity_is_not_a_stuck_sensor
+
+  - id: REQ-EST-005
+    title: Corrupted VO measurements are gated
+    level: MUST
+    description: Randomly spiked VO velocities (30% of samples, 20 m/s) shall not degrade the estimate by more than 2 m.
+    rationale: Stereo VO produces occasional absurd outputs on degenerate scenes; one accepted outlier ruins the state.
+    threshold: "error growth <= 2.0 m; recovery <= 2.0 s"
+    measurement: "Fault scenario sensor_faults fault 6, plus gate unit tests."
+    verification:
+      - {kind: fault, scenario: sensor_faults, faults: [6]}
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_ekf_fusion.py::test_absurd_vo_velocity_is_rejected_and_state_untouched
+      - src/px4_offboard/test/test_ekf_fusion.py::test_statistically_inconsistent_velocity_is_gated_but_consistent_one_is_not
+
+  - id: REQ-EST-006
+    title: A frozen IMU is detected
+    level: SHOULD
+    description: An IMU that keeps repeating its first sample shall be detected within 1 s with bounded error growth.
+    rationale: Without VO the IMU is the only source, and a frozen accelerometer produced a 32 m error in the rig.
+    threshold: "detect <= 1.0 s; error growth <= 1.0 m"
+    measurement: "Fault scenario imu_faults_during_vo_outage fault 4."
+    verification:
+      - {kind: fault, scenario: imu_faults_during_vo_outage, faults: [4]}
+    known_open: "No frozen-IMU detector exists; false-positive rate cannot be measured without an IMU recording. bugs/BUG-020.md."
+
+  - id: REQ-CTRL-001
+    title: The velocity PID loop stays inside its envelope
+    level: MUST
+    description: In velocity_pid mode the commanded velocity shall be finite and within 3.0 m/s horizontal and 1.5 m/s vertical.
+    rationale: The outer loop replaces position-setpoint steps that produced violent tilts; its bounds are the point of using it.
+    threshold: "|v_xy| <= 3.0 m/s, |v_z| <= 1.5 m/s, finite, every velocity_pid sample"
+    measurement: "vv_harness.check_velocity_pid_envelope over the flight log, plus controller unit tests."
+    legacy_ids: [REQ-CTRL-01, REQ-CTL-001]
+    verification:
+      - {kind: flight, cases: [stereo_vo_flight_k, stereo_vo_flight_l], checks: [REQ-CTRL-01]}
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_pid_control.py
+      - src/px4_offboard/test/test_flight_vv.py::test_velocity_pid_envelope_passes_for_bounded_commands
+      - src/px4_offboard/test/test_flight_vv.py::test_velocity_pid_envelope_flags_out_of_bounds_samples
+
+  - id: REQ-CTRL-002
+    title: No loss of attitude control while airborne
+    level: MUST
+    description: Roll and pitch shall stay within 60 degrees in TAKEOFF, HOVER and MOVE.
+    rationale: Beyond that the vehicle is tumbling; the historical altitude "spike" (BUG-016) was this.
+    threshold: "max(|roll|, |pitch|) <= 60 deg"
+    measurement: "vv_harness.check_attitude_envelope over the flight log."
+    legacy_ids: [REQ-ATT-01, REQ-ATT-001]
+    verification:
+      - {kind: flight, cases: [stereo_vo_flight_k, stereo_vo_flight_l], checks: [REQ-ATT-01]}
+    tests:
+      - src/px4_offboard/test/test_flight_vv.py::test_attitude_envelope_flags_a_tumble_before_the_failsafe
+      - src/px4_offboard/test/test_flight_vv.py::test_attitude_envelope_passes_for_aggressive_but_controlled_flight
+
+  - id: REQ-SAFE-001
+    title: The airframe keeps clear of mapped obstacles
+    level: MUST
+    description: Mapped clearance shall be positive throughout, and at least 0.35 m from the airframe centre to any obstacle surface.
+    rationale: Contact with an obstacle is the precursor to the loss-of-control failures seen in BUG-016.
+    threshold: "min mapped clearance > 0 and >= 0.35 m"
+    measurement: "vv_harness.check_obstacle_clearance / check_airframe_contact over the flight log."
+    legacy_ids: [REQ-CLEARANCE-01, REQ-CLEARANCE-02, REQ-OBS-002, REQ-OBS-003]
+    verification:
+      - {kind: flight, cases: [stereo_vo_flight_k, stereo_vo_flight_l], checks: [REQ-CLEARANCE-01, REQ-CLEARANCE-02]}
+    tests:
+      - src/px4_offboard/test/test_flight_vv.py::test_zero_mapped_clearance_fails_collision_requirement
+      - src/px4_offboard/test/test_flight_vv.py::test_airframe_contact_catches_a_graze_that_clearance_01_passes
+      - src/px4_offboard/test/test_flight_vv.py::test_airframe_contact_passes_with_real_standoff
+
+  - id: REQ-COMMS-001
+    title: The MAVLink v2 codec is byte-identical to the reference implementation
+    level: MUST
+    description: Frames this repository encodes shall equal pymavlink's byte for byte, and pymavlink's frames shall parse here.
+    rationale: A private codec is only trustworthy if it agrees with the reference on the wire.
+    threshold: "0 byte differences for HEARTBEAT, ATTITUDE, LOCAL_POSITION_NED, COMMAND_LONG, SET_POSITION_TARGET_LOCAL_NED; crc_extra table equal"
+    measurement: "Unit tests comparing encoded bytes with pymavlink."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_comms_frame.py::test_crc_extra_table_matches_pymavlink
+      - src/px4_offboard/test/test_comms_frame.py::test_encoded_frames_are_byte_identical_to_pymavlink
+      - src/px4_offboard/test/test_comms_frame.py::test_frames_encoded_by_pymavlink_parse_with_ours
+      - src/px4_offboard/test/test_comms_messages.py
+
+  - id: REQ-COMMS-002
+    title: Malformed input never produces a false frame and never stops the stream
+    level: MUST
+    description: Bad CRC, garbage, truncated, unknown-id and signed frames shall be counted and skipped, and the next good frame shall still parse.
+    rationale: A UART delivers noise; the parser must resynchronise rather than stall or fabricate data.
+    threshold: "no exceptions; every malformed case counted; following good frame parsed; 200 random-noise chunks yield no frame"
+    measurement: "Parser and link unit tests (deterministic mock serial device)."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_comms_frame.py::test_bad_crc_is_reported_and_the_next_good_frame_still_parses
+      - src/px4_offboard/test/test_comms_frame.py::test_garbage_before_a_frame_is_skipped_and_counted
+      - src/px4_offboard/test/test_comms_frame.py::test_truncated_frame_waits_for_more_bytes_and_does_not_emit
+      - src/px4_offboard/test/test_comms_frame.py::test_unknown_message_id_cannot_be_crc_checked_and_is_reported
+      - src/px4_offboard/test/test_comms_frame.py::test_signed_frames_are_reported_unsupported_not_misparsed
+      - src/px4_offboard/test/test_comms_frame.py::test_random_noise_never_raises_and_never_fabricates_a_frame
+      - src/px4_offboard/test/test_comms_link.py::test_corrupted_frame_between_good_ones_is_dropped_and_counted
+      - src/px4_offboard/test/test_comms_link.py::test_a_frame_that_never_completes_is_discarded_after_the_frame_timeout
+      - src/px4_offboard/test/test_comms_link.py::test_garbage_does_not_keep_the_link_alive
+
+  - id: REQ-COMMS-003
+    title: Link loss is detected and the link is re-established with bounded backoff
+    level: MUST
+    description: A disappearing transport shall be detected within 1 s, reconnect attempts shall back off and stop at a bound, and telemetry shall resume after the device returns.
+    rationale: A pulled cable or reset flight controller is routine on real vehicles.
+    threshold: "detect <= 1.0 s; recover <= 4.0 s after the device returns; at most max_attempts opens per reconnect"
+    measurement: "Fault scenario link_faults fault 3 (comm_disconnect) and link unit tests."
+    verification:
+      - {kind: fault, scenario: link_faults, faults: [3]}
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_comms_link.py::test_connect_retries_with_exponential_backoff_then_gives_up
+      - src/px4_offboard/test/test_comms_link.py::test_unplug_is_detected_on_poll_and_reconnect_is_timed
+      - src/px4_offboard/test/test_comms_link.py::test_reconnect_gives_up_when_the_device_stays_gone
+      - src/px4_offboard/test/test_comms_link.py::test_reconnect_discards_a_half_received_frame
+
+  - id: REQ-COMMS-004
+    title: Partial frame loss does not take the link down
+    level: MUST
+    description: With 30% of MAVLink frames lost the link shall stay alive and receive at least 40% of the nominal frame count.
+    rationale: Lossy radio links degrade; a supervisor that declares link-loss on mere degradation causes needless failsafes.
+    threshold: "link alive throughout; rx ratio >= 0.40 of baseline"
+    measurement: "Fault scenario link_faults fault 1 (mavlink_packet_loss p=0.3)."
+    verification:
+      - {kind: fault, scenario: link_faults, faults: [1]}
+
+  - id: REQ-COMMS-005
+    title: Timeouts, short writes and burst reads are handled
+    level: MUST
+    description: Reads shall time out cleanly, short writes shall be completed or reported, and a single poll shall drain everything already received.
+    rationale: >
+      A real defect found in this repository: a one-chunk-per-poll reader fell behind a 40 frame/s stream without bound.
+    threshold: "no read hang; zero-progress write raises LinkDown; 30 queued frames drained by one poll"
+    measurement: "Unit tests on the deterministic clock and mock device."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_comms_link.py::test_poll_timeout_returns_nothing_and_is_counted
+      - src/px4_offboard/test/test_comms_link.py::test_short_writes_are_completed
+      - src/px4_offboard/test/test_comms_link.py::test_a_write_that_makes_no_progress_is_a_link_failure
+      - src/px4_offboard/test/test_comms_link.py::test_one_poll_drains_everything_already_received_not_just_one_chunk
+      - src/px4_offboard/test/test_comms_transport.py
+
+  - id: REQ-COMMS-006
+    title: I2C and SPI driver logic handles NACK, hang and register conventions
+    level: SHOULD
+    description: Register access, NACK retry and bus-hang handling shall be correct against mock buses.
+    rationale: Interface-level logic should be testable before silicon is on the bench.
+    threshold: "all mock-bus tests pass"
+    measurement: "Unit tests on MockI2CBus / MockSPIBus. These say nothing about real buses."
+    verification:
+      - {kind: pytest}
+      - {kind: external, requires: hardware, results_file: artifacts/hardware/i2c_spi_bench.json,
+         reason: "A physical I2C/SPI bus with a real peripheral has never been exercised by this repository."}
+    tests:
+      - src/px4_offboard/test/test_comms_buses.py
+
+  - id: REQ-RECOVERY-001
+    title: Fusion recovers promptly after a VO outage
+    level: MUST
+    description: After VO resumes, fusion shall be healthy with velocity error under 0.35 m/s, sustained for 1 s, within 2 s.
+    rationale: A localization source that stays degraded after its input returns defeats the purpose of detecting the outage.
+    threshold: "recovery <= 2.0 s"
+    measurement: "Fault scenario vo_dropout_and_packet_loss fault 1, recovery time."
+    verification:
+      - {kind: fault, scenario: vo_dropout_and_packet_loss, faults: [1], checks: [recover_within_s]}
+
+  - id: REQ-RECOVERY-002
+    title: Telemetry resumes promptly after a link disconnect
+    level: MUST
+    description: After the device returns, the link shall be connected, alive and fresh within 4 s.
+    rationale: Operators and failsafes depend on telemetry returning without a restart.
+    threshold: "recovery <= 4.0 s"
+    measurement: "Fault scenario link_faults fault 3, recovery time."
+    verification:
+      - {kind: fault, scenario: link_faults, faults: [3], checks: [recover_within_s]}
+
+  - id: REQ-RECOVERY-003
+    title: The estimator re-converges after a mid-flight reset
+    level: MUST
+    description: After the estimator is re-initialised, velocity shall re-converge within 3 s with position error growth under 1.5 m.
+    rationale: Estimators restart in flight (watchdog, mode change); position continuity must survive.
+    threshold: "recovery <= 3.0 s; error growth <= 1.5 m"
+    measurement: "Fault scenario sensor_faults fault 10."
+    verification:
+      - {kind: fault, scenario: sensor_faults, faults: [10]}
+
+  - id: REQ-HIL-001
+    title: One behavioural contract holds for simulated, SITL and hardware vehicle classes
+    level: MUST
+    description: SimVehicle, PX4SITLVehicle and PX4HardwareVehicle shall pass the same connect/telemetry/arm/velocity/disconnect tests without the test knowing which it has.
+    rationale: Test logic must not branch on the target, or SITL results say nothing about hardware runs.
+    threshold: "every conformance test passes for all three classes"
+    measurement: "test_vehicle_conformance.py (parametrised); SITL and hardware classes run against a mock autopilot, not a real one."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_vehicle_conformance.py
+      - src/px4_offboard/test/test_vehicle_connection.py
+
+  - id: REQ-HIL-002
+    title: A hardware vehicle cannot actuate unless explicitly enabled
+    level: MUST
+    description: PX4HardwareVehicle shall be telemetry-only by default; arm and setpoint commands shall raise and send nothing.
+    rationale: Pointing a test at a real flight controller must not be able to arm it by accident.
+    threshold: "0 command bytes on the wire without allow_actuation=True"
+    measurement: "Unit test inspecting the mock autopilot's received commands."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_vehicle_conformance.py::test_hardware_vehicle_is_telemetry_only_unless_actuation_is_explicit
+
+  - id: REQ-HIL-003
+    title: PX4SITLVehicle interoperates with a running PX4 SITL over MAVLink/UDP
+    level: SHOULD
+    description: Against a live PX4 SITL instance the vehicle shall receive telemetry, arm and disarm.
+    rationale: The mock autopilot proves the host side only; interop with the real firmware needs the real firmware.
+    threshold: "telemetry received; arm and disarm acknowledged"
+    measurement: "tools/sitl_smoke.py against a running SITL; results file written there."
+    verification:
+      - {kind: external, requires: px4_sitl, results_file: artifacts/sitl/sitl_smoke.json,
+         reason: "Needs a running PX4 SITL; not available on CI runners."}
+
+  - id: REQ-HIL-004
+    title: PX4HardwareVehicle interoperates with a real PX4 flight controller over UART/USB
+    level: SHOULD
+    description: Against a physical flight controller the vehicle shall receive telemetry (props off, telemetry-only).
+    rationale: This is the actual hardware-in-the-loop claim, and it is the one nothing here can support yet.
+    threshold: "telemetry received over serial from a real flight controller"
+    measurement: "Not measured. Requires a bench setup."
+    verification:
+      - {kind: external, requires: hardware, results_file: artifacts/hardware/uart_telemetry.json,
+         reason: "No physical flight controller has been connected to this repository."}

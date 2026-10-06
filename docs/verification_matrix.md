@@ -1,6 +1,6 @@
 # Verification matrix
 
-Reproduce evidence results: `python3 scripts/verify_evidence.py`. It validates SHA-256, runs the real verifiers, checks expected outcomes (including the preserved failure), and compares complete JSON snapshots. No ROS or simulator is needed. [Manifest](../evidence/manifest.json) records origins; [catalog](requirements.md) defines acceptance scope.
+Reproduce evidence results: `python3 scripts/verify_evidence.py`. It validates SHA-256, runs the real verifiers, checks expected outcomes (including the preserved failure), and compares complete JSON snapshots. No ROS or simulator is needed. [Manifest](../evidence/manifest.json) records origins; [catalog](REQUIREMENTS.md) defines acceptance scope.
 
 Paths in implementation/function columns are relative to `src/px4_offboard/px4_offboard/`; test names below are in `src/px4_offboard/test/`. PASS is scoped to listed evidence. **UNIT PASS** is not flight evidence; **NOT EXERCISED** is not a pass claim for the physical behavior.
 

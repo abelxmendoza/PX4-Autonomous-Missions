@@ -57,3 +57,58 @@ Added with the stereo-camera + IMU fusion estimator and the outer-loop velocity 
 - REQ-SWM-002 and REQ-SWM-006 have direct automated tests; `swarm_verify.verify` does not independently check reassignment dwell or command watchdog response. Golden-run timing evidence supports the former, but is not an additional automated verifier.
 - The cooperative verifier constructs task geometry from the current coordinator and checks names against the header. Historical four-lane recordings cannot be verified with the current gate/landing specification. Curated current recordings match that geometry; schema-versioned scenario metadata remains a limitation.
 - No hardware-in-the-loop, real aircraft, camera localization, or visual SLAM validation is claimed.
+
+
+## Requirement registry (structured, machine-evaluated)
+
+The catalog above predates the registry and is kept for traceability to historical
+reports. New work is registered in [`requirements/registry.yaml`](../requirements/registry.yaml),
+which is the source of truth for **what is claimed, its threshold, how it is measured, and
+which tests and evidence back it**. Each entry has: `id`, `title`, `level`, `description`,
+`rationale`, `threshold`, `measurement`, `verification` (one or more of `flight`, `fault`,
+`pytest`, `external`), `tests`, optional `legacy_ids` and `known_open`.
+
+`python tools/validation_report.py` evaluates every entry and writes
+`artifacts/validation/validation_report.{json,md}` with **Requirement -> Test -> Evidence ->
+Result** for each ID. See [CI.md](CI.md) for how the CI gate uses it.
+
+Rules the evaluator enforces, not conventions:
+
+- **No evidence, no PASS.** A listed test that did not run (or was skipped) fails its requirement;
+  an `external` verification with no results file is `NOT_RUN`, never a pass.
+- **Statuses:** `PASS`, `FAIL`, `PARTIAL` (everything runnable passed, an `external` part was not run),
+  `NOT_RUN`.
+- **`known_open`** declares a requirement that is currently *not met* and where that is tracked.
+  The gate tolerates exactly that, and fails if the marker is stale (the requirement now passes).
+- Thresholds are not changed to obtain a pass. Where a measured result misses its threshold
+  (REQ-EST-001/002) it is reported as FAIL.
+
+| ID | Level | Requirement | Threshold | Verified by | Legacy IDs | Evidence status |
+| --- | --- | --- | --- | --- | --- | --- |
+| REQ-EST-001 | MUST | Fusion position drift is bounded relative to distance flown | final drift <= 10% of path; peak drift <= 20% (>= 20 m flown) | flight | REQ-VO-DRIFT-01, REQ-VO-001 | known open |
+| REQ-EST-002 | MUST | Visual odometry is available while moving | healthy in >= 80% of MOVE samples (healthy = accepted VO update within 0.5 s and fresh IMU) | flight | REQ-VO-AVAIL-01, REQ-VO-002 | known open |
+| REQ-EST-003 | MUST | A VO outage is detected and the dead-reckoned error stays bounded | detect <= 1.0 s; error growth <= 2.0 m over the fault-free baseline (5 s outage) | fault | - | evidenced |
+| REQ-EST-004 | MUST | A frozen VO stream is rejected rather than trusted | detect <= 1.0 s; error growth <= 2.0 m; recovery <= 2.0 s | fault, pytest | - | evidenced |
+| REQ-EST-005 | MUST | Corrupted VO measurements are gated | error growth <= 2.0 m; recovery <= 2.0 s | fault, pytest | - | evidenced |
+| REQ-EST-006 | SHOULD | A frozen IMU is detected | detect <= 1.0 s; error growth <= 1.0 m | fault | - | known open |
+| REQ-CTRL-001 | MUST | The velocity PID loop stays inside its envelope | \|v_xy\| <= 3.0 m/s, \|v_z\| <= 1.5 m/s, finite, every velocity_pid sample | flight, pytest | REQ-CTRL-01, REQ-CTL-001 | evidenced |
+| REQ-CTRL-002 | MUST | No loss of attitude control while airborne | max(\|roll\|, \|pitch\|) <= 60 deg | flight | REQ-ATT-01, REQ-ATT-001 | evidenced |
+| REQ-SAFE-001 | MUST | The airframe keeps clear of mapped obstacles | min mapped clearance > 0 and >= 0.35 m | flight | REQ-CLEARANCE-01, REQ-CLEARANCE-02, REQ-OBS-002, REQ-OBS-003 | evidenced |
+| REQ-COMMS-001 | MUST | The MAVLink v2 codec is byte-identical to the reference implementation | 0 byte differences for HEARTBEAT, ATTITUDE, LOCAL_POSITION_NED, COMMAND_LONG, SET_POSITION_TARGET_LOCAL_NED; crc_extra table equal | pytest | - | evidenced |
+| REQ-COMMS-002 | MUST | Malformed input never produces a false frame and never stops the stream | no exceptions; every malformed case counted; following good frame parsed; 200 random-noise chunks yield no frame | pytest | - | evidenced |
+| REQ-COMMS-003 | MUST | Link loss is detected and the link is re-established with bounded backoff | detect <= 1.0 s; recover <= 4.0 s after the device returns; at most max_attempts opens per reconnect | fault, pytest | - | evidenced |
+| REQ-COMMS-004 | MUST | Partial frame loss does not take the link down | link alive throughout; rx ratio >= 0.40 of baseline | fault | - | evidenced |
+| REQ-COMMS-005 | MUST | Timeouts, short writes and burst reads are handled | no read hang; zero-progress write raises LinkDown; 30 queued frames drained by one poll | pytest | - | evidenced |
+| REQ-COMMS-006 | SHOULD | I2C and SPI driver logic handles NACK, hang and register conventions | all mock-bus tests pass | external, pytest | - | needs hardware/SITL for part |
+| REQ-RECOVERY-001 | MUST | Fusion recovers promptly after a VO outage | recovery <= 2.0 s | fault | - | evidenced |
+| REQ-RECOVERY-002 | MUST | Telemetry resumes promptly after a link disconnect | recovery <= 4.0 s | fault | - | evidenced |
+| REQ-RECOVERY-003 | MUST | The estimator re-converges after a mid-flight reset | recovery <= 3.0 s; error growth <= 1.5 m | fault | - | evidenced |
+| REQ-HIL-001 | MUST | One behavioural contract holds for simulated, SITL and hardware vehicle classes | every conformance test passes for all three classes | pytest | - | evidenced |
+| REQ-HIL-002 | MUST | A hardware vehicle cannot actuate unless explicitly enabled | 0 command bytes on the wire without allow_actuation=True | pytest | - | evidenced |
+| REQ-HIL-003 | SHOULD | PX4SITLVehicle interoperates with a running PX4 SITL over MAVLink/UDP | telemetry received; arm and disarm acknowledged | external | - | needs hardware/SITL for part |
+| REQ-HIL-004 | SHOULD | PX4HardwareVehicle interoperates with a real PX4 flight controller over UART/USB | telemetry received over serial from a real flight controller | external | - | needs hardware/SITL for part |
+
+Evidence status describes what the registry can currently show, not what is true of an
+aircraft: "evidenced" means a test, curated recording or fault scenario produced the result;
+"needs hardware/SITL for part" means a real-flight-controller or running-SITL verification is
+declared and has not been run; "known open" means the requirement is currently failing.
