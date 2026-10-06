@@ -210,7 +210,7 @@
   .landing-pitch{margin:0 0 22px;font:14px/1.65 var(--display);color:var(--muted);max-width:58ch;}
   .landing-pitch b{color:var(--text);}
   .landing-badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;}
-  .landing-badges span{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);}
+  .landing-badges span,.landing-badges a{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);text-decoration:none;}
   .landing-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin-bottom:26px;}
   .landing-actions button{min-height:50px;padding:0 22px;font-size:13px;}
   .landing-actions a{color:var(--text);text-decoration:none;font:700 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--amber);padding-bottom:3px;white-space:nowrap;}
@@ -365,7 +365,7 @@
     <h1 class="landing-title">A flight fault, <span>tested and verified.</span></h1>
     <p class="landing-pitch">A <b>64-second recorded PX4/Gazebo recovery flight</b>. One vehicle is commanded to land; the coordinator waits for landing and disarming before reassigning its work. The remaining vehicle completes four point visits. Inspect the replay and the independently computed post-flight verdict.</p>
     <div class="landing-badges">
-      <span>PX4</span><span>ROS 2</span><span>Gazebo</span><span>Python</span><span>Three.js</span>
+      <a href="https://px4.io/" target="_blank" rel="noopener noreferrer">PX4</a><a href="https://www.ros.org/" target="_blank" rel="noopener noreferrer">ROS 2</a><a href="https://gazebosim.org/" target="_blank" rel="noopener noreferrer">Gazebo</a><a href="https://www.python.org/" target="_blank" rel="noopener noreferrer">Python</a><a href="https://threejs.org/" target="_blank" rel="noopener noreferrer">Three.js</a>
     </div>
     <div class="landing-actions">
       <button id="landingStory" class="primary">▶ Watch recovery (64s)</button>
@@ -1404,29 +1404,29 @@ missionSelect.addEventListener('change', () => {
 let totalWaypoints = 0;
 
 function buildWaypoints() {
-  const seen = new Set();
+  // missionWaypoints() (lib.js) recovers the true per-waypoint target —
+  // naively taking the first tgt_* per wp_index put markers at avoidance
+  // setpoints whenever a waypoint transition happened mid-maneuver.
+  const waypoints = missionWaypoints(rows);
   let n = 1;
-  for (const r of rows) {
-    if (!seen.has(r.wp_index)) {
-      seen.add(r.wp_index);
-      const pos = toWorld(r.tgt_n, r.tgt_e, r.tgt_d);
-      // Gold/amber glow matches the Gazebo sim's own waypoint markers
-      // (flight_trail.py spawns identical 1.0/0.72/0.05 spheres at every
-      // corner) so the web replay reads the same way the sim does.
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 20, 20),
-        new THREE.MeshStandardMaterial({ color:0xffb80d, emissive:0x8c5200, emissiveIntensity:1.1, transparent:true, opacity:0.95 })
-      );
-      marker.position.copy(pos);
-      scene.add(marker);
-      const label = makeLabelSprite('WP' + n);
-      label.position.copy(pos).add(new THREE.Vector3(0, 1.1, 0));
-      scene.add(label);
-      waypointObjects.push(marker, label);
-      n++;
-    }
+  for (const wp of waypoints) {
+    const pos = toWorld(wp.n, wp.e, wp.d);
+    // Gold/amber glow matches the Gazebo sim's own waypoint markers
+    // (flight_trail.py spawns identical 1.0/0.72/0.05 spheres at every
+    // corner) so the web replay reads the same way the sim does.
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.4, 20, 20),
+      new THREE.MeshStandardMaterial({ color:0xffb80d, emissive:0x8c5200, emissiveIntensity:1.1, transparent:true, opacity:0.95 })
+    );
+    marker.position.copy(pos);
+    scene.add(marker);
+    const label = makeLabelSprite('WP' + n);
+    label.position.copy(pos).add(new THREE.Vector3(0, 1.1, 0));
+    scene.add(label);
+    waypointObjects.push(marker, label);
+    n++;
   }
-  totalWaypoints = seen.size;
+  totalWaypoints = waypoints.length;
 }
 
 function buildTrail() {
@@ -1481,18 +1481,11 @@ function syncTrail(idx) {
 }
 
 function buildNominalRoute() {
-  const points = [toWorld(rows[0].north, rows[0].east, rows[0].down)];
-  let previous = null;
-  for (const r of rows) {
-    const n = Number.isFinite(r.nominal_n) ? r.nominal_n : r.tgt_n;
-    const e = Number.isFinite(r.nominal_e) ? r.nominal_e : r.tgt_e;
-    const d = Number.isFinite(r.nominal_d) ? r.nominal_d : r.tgt_d;
-    const key = `${r.wp_index}:${n}:${e}:${d}`;
-    if (key !== previous) {
-      points.push(toWorld(n, e, d));
-      previous = key;
-    }
-  }
+  // nominalRoutePoints() (lib.js) recovers the planned waypoint corridor.
+  // The old per-row fallback to tgt_* meant legacy avoidance recordings
+  // (no nominal_* columns) drew the green "planned" path through every
+  // reactive-avoidance setpoint — a dense scribble instead of the plan.
+  const points = nominalRoutePoints(rows).map(p => toWorld(p.n, p.e, p.d));
   // Solid green fat line matches the Gazebo sim's own planned-route legs
   // (flight_trail.py spawns 0.15/1.0/0.35 boxes between consecutive
   // waypoints) — was previously a thin dashed amber THREE.Line, which both
