@@ -159,8 +159,8 @@ def test_forward_vo_velocity_moves_north_when_yawed_north():
     motion = RelativeMotion(np.eye(3), np.array([0.0, 0.0, 0.5]), 30, dt_s=0.1)
     _, trans_body = motion.in_body_frame()
     v_world = quat_to_rotation_matrix(ekf.quat) @ (trans_body / motion.dt_s)
-    for _ in range(50):
-        ekf.update_velocity(v_world, 0.15)
+    for i in range(50):  # real VO is never bit-identical twice in a row
+        ekf.update_velocity(v_world + 1e-4 * math.sin(i), 0.15)
     assert ekf.velocity[0] == pytest.approx(5.0, abs=0.1)
     assert abs(ekf.velocity[1]) < 0.1
     assert abs(ekf.velocity[2]) < 0.1
@@ -219,7 +219,9 @@ def test_filter_reanchors_after_persistent_rejection_instead_of_locking_out():
         ekf.predict(np.zeros(3), np.array([0.0, 0.0, -9.80665]), 0.1)
         ekf.update_velocity(np.zeros(3), 0.15)
     # The vehicle genuinely starts moving at 4 m/s and VO keeps saying so.
-    accepted = [ekf.update_velocity(np.array([4.0, 0.0, 0.0]), 0.15) for _ in range(40)]
+    accepted = [
+        ekf.update_velocity(np.array([4.0 + 1e-3 * math.sin(i), 0.0, 0.0]), 0.15) for i in range(40)
+    ]
     assert any(accepted), "filter locked itself out of a consistent measurement stream"
     assert ekf.velocity[0] == pytest.approx(4.0, abs=0.5)
 
@@ -284,3 +286,35 @@ def test_reference_attitude_is_off_when_tau_is_zero():
     ekf.quat = drifted.copy()
     ekf.apply_reference_attitude(np.array([1.0, 0.0, 0.0, 0.0]), dt_s=0.02)
     assert np.allclose(ekf.quat, drifted)
+
+
+def test_fusion_health_needs_fresh_vo_and_fresh_imu():
+    from px4_offboard.ekf_fusion import fusion_healthy
+
+    assert fusion_healthy(10.0, last_vo_t=9.8, last_imu_t=9.99, stale_timeout_s=0.5)
+    assert not fusion_healthy(10.0, last_vo_t=9.4, last_imu_t=9.99, stale_timeout_s=0.5)  # VO stale
+    assert not fusion_healthy(10.0, last_vo_t=9.8, last_imu_t=9.4, stale_timeout_s=0.5)  # IMU stale
+    assert not fusion_healthy(10.0, last_vo_t=None, last_imu_t=9.99, stale_timeout_s=0.5)
+    assert not fusion_healthy(10.0, last_vo_t=9.8, last_imu_t=None, stale_timeout_s=0.5)
+
+
+def test_bit_identical_repeat_of_a_moving_velocity_is_rejected_as_a_stuck_sensor():
+    # Fault-injection finding: a frozen VO kept feeding the same velocity, was
+    # accepted every time, and the estimate drifted 11 m while reporting healthy.
+    ekf = PoseVelocityEKF()
+    ekf.initialize(np.zeros(3), np.array([1.0, 0.0, 0.0, 0.0]), np.array([2.0, 0.0, 0.0]))
+    v = np.array([2.0, 0.1, -0.05])
+    assert ekf.update_velocity(v, 0.15) is True       # the first reading is fine
+    assert ekf.update_velocity(v.copy(), 0.15) is False  # an exact repeat is not a new measurement
+    assert ekf.stuck_rejections == 1
+    assert ekf.update_velocity(v + 1e-3, 0.15) is True   # any change thaws it
+
+
+def test_repeated_zero_velocity_is_not_a_stuck_sensor():
+    # Recorded SITL flights: ~60% of VO rows are exact repeats, all of them ~0 m/s
+    # (hover/ground); none above 0.2 m/s across five flights.
+    ekf = PoseVelocityEKF()
+    ekf.initialize(np.zeros(3), np.array([1.0, 0.0, 0.0, 0.0]))
+    for _ in range(10):
+        assert ekf.update_velocity(np.zeros(3), 0.15) is True
+    assert ekf.stuck_rejections == 0

@@ -26,6 +26,8 @@ hypothetical.
 | [BUG-016](BUG-016.md) | Loss of control after reactive-avoidance contact (first mis-attributed to GPS-zone exit); detectors added, causes open | Live SITL + 68-log analysis | `test_attitude_envelope_flags_a_tumble_before_the_failsafe`, `test_airframe_contact_catches_a_graze_that_clearance_01_passes` |
 | [BUG-017](BUG-017.md) | Camera sensors never render: subscribers started without PX4's `GZ_IP` never register, so no frame is ever produced | Live SITL (stereo bring-up) | Live validation run (`vo_healthy`); `test_vo_availability_fails_when_the_cameras_go_dark` |
 | [BUG-018](BUG-018.md) | Gyro-only fusion heading drifts up to 17 deg in fast turns, rotating every VO velocity wrong | Live SITL (flight H vs G) | `test_reference_attitude_pulls_a_drifted_heading_back_without_stepping`, `test_attitude_messages_pull_a_drifted_heading_toward_the_autopilot` |
+| [BUG-019](BUG-019.md) | Frozen VO stream accepted as fresh: 5.4 s to detect, +11 m error, health stayed green | Fault-injection rig | `test_bit_identical_repeat_of_a_moving_velocity_is_rejected_as_a_stuck_sensor`, scenario `sensor_faults` |
+| [BUG-020](BUG-020.md) | No frozen-IMU detector (open known gap): +32 m error undetected when VO is out | Fault-injection rig | scenarios pinned as `known_gap` in `test_fault_scenarios_shipped.py` |
 
 ## Reading this list
 

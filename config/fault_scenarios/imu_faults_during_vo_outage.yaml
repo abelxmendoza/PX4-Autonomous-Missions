@@ -1,0 +1,19 @@
+# With VO healthy, 5 Hz velocity updates mask almost any IMU fault (see
+# sensor_faults.yaml: they show no measurable effect). Removing VO for the whole
+# window leaves the IMU as the only source, which is when its faults matter.
+# Recovery is measured from the end of each fault window, but nothing can be
+# "recovered" (healthy, velocity re-anchored) until VO returns at t=40, i.e.
+# 10 s after the t=30 fault ends -- so recover_within_s is 11 s, derived from
+# that, not tuned to a result. Detection is meaningless while the background
+# outage already makes fusion unhealthy, so no detection is asked of these.
+name: imu_faults_during_vo_outage
+description: IMU faults while stereo VO is unavailable (dead reckoning).
+duration_s: 60
+seed: 1
+background:
+  - {type: vo_dropout, start_s: 15, duration_s: 25}
+faults:
+  - {type: dropped_messages, sensor: imu, start_s: 20, duration_s: 10, probability: 0.3, expect: {max_err_growth_m: 1.0, recover_within_s: 11.0}}
+  - {type: timestamp_jitter, sensor: imu, start_s: 20, duration_s: 10, std_s: 0.002, expect: {max_err_growth_m: 1.0, recover_within_s: 11.0}}
+  - {type: corrupted_measurement, sensor: imu, start_s: 20, duration_s: 10, probability: 0.1, magnitude: 5.0, expect: {max_err_growth_m: 1.0, recover_within_s: 11.0}}
+  - {type: frozen_sensor, sensor: imu, start_s: 20, duration_s: 5, known_gap: BUG-020, expect: {max_err_growth_m: 1.0, recover_within_s: 25.0}}

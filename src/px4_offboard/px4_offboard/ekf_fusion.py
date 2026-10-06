@@ -35,6 +35,9 @@ import numpy as np
 GRAVITY_MPS2 = 9.80665
 GRAVITY_WORLD = np.array([0.0, 0.0, GRAVITY_MPS2])
 
+# Exact-repeat detection only applies above this speed (see update_velocity).
+STUCK_MIN_SPEED_MPS = 0.2
+
 
 def quat_normalize(q: np.ndarray) -> np.ndarray:
     n = np.linalg.norm(q)
@@ -138,6 +141,24 @@ def message_dt_s(
     return dt if dt <= max_dt_s else None
 
 
+def fusion_healthy(
+    now: float,
+    last_vo_t: float | None,
+    last_imu_t: float | None,
+    stale_timeout_s: float,
+) -> bool:
+    """"Healthy" means VO is currently *contributing* (an accepted update
+    within the timeout -- rejected measurements must not keep the estimate
+    looking fresh) and the IMU is still arriving. Shared by the ROS node and
+    the offline fault-injection rig so both judge health identically."""
+    return (
+        last_vo_t is not None
+        and now - last_vo_t <= stale_timeout_s
+        and last_imu_t is not None
+        and now - last_imu_t <= stale_timeout_s
+    )
+
+
 @dataclass
 class FusionState:
     position_m: np.ndarray  # (3,) NED, metres
@@ -192,6 +213,8 @@ class PoseVelocityEKF:
         self.attitude_gate_rad = math.radians(attitude_gate_deg)
         self.accepted_updates = 0
         self.rejected_updates = 0
+        self.stuck_rejections = 0
+        self._last_velocity_measurement: np.ndarray | None = None
         self._consecutive_rejections = 0
         # Attitude at the time of the last VO correction (or construction,
         # if none yet) -- the frame relative_rotation is measured against.
@@ -252,6 +275,18 @@ class PoseVelocityEKF:
         was accepted; a rejected measurement leaves the state untouched."""
         z = np.asarray(measured_velocity_world_mps, dtype=float)
         if not np.all(np.isfinite(z)) or np.linalg.norm(z) > self.max_speed_mps:
+            return self._reject()
+        # A real VO velocity carries float noise and never repeats bit-for-bit
+        # while moving; an exact repeat is a frozen/stale sensor. Near-zero
+        # repeats are normal (VO reports exactly 0 at rest) and are exempt.
+        last = self._last_velocity_measurement
+        self._last_velocity_measurement = z.copy()
+        if (
+            last is not None
+            and np.array_equal(z, last)
+            and np.linalg.norm(z) > STUCK_MIN_SPEED_MPS
+        ):
+            self.stuck_rejections += 1
             return self._reject()
         h = np.zeros((3, 6))
         h[:, 3:6] = np.eye(3)

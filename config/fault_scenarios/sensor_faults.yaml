@@ -1,0 +1,20 @@
+# One fault per entry; each is run on its own against a fault-free baseline of
+# the same seed, so every observed number belongs to exactly one cause.
+name: sensor_faults
+description: Message loss, latency, jitter, corruption, frozen values and an estimator reset.
+duration_s: 60
+seed: 1
+faults:
+  - {type: dropped_messages, sensor: vo,  start_s: 20, duration_s: 10, probability: 0.5}
+  - {type: dropped_messages, sensor: imu, start_s: 20, duration_s: 10, probability: 0.3}
+  - {type: delayed_messages, sensor: vo,  start_s: 20, duration_s: 10, delay_s: 0.4}
+  - {type: timestamp_jitter, sensor: imu, start_s: 20, duration_s: 10, std_s: 0.002}
+  - {type: timestamp_jitter, sensor: vo,  start_s: 20, duration_s: 10, std_s: 0.02}
+  - {type: corrupted_measurement, sensor: vo,  start_s: 20, duration_s: 10, probability: 0.3, magnitude: 20.0}
+  - {type: corrupted_measurement, sensor: imu, start_s: 20, duration_s: 10, probability: 0.1, magnitude: 5.0}
+  - {type: frozen_sensor, sensor: vo,  start_s: 20, duration_s: 5}
+  # No frozen-IMU detector exists (BUG-020). Here VO masks it (error growth ~0), so the
+  # detection expectation is the part that fails; the consequence without VO is in
+  # imu_faults_during_vo_outage.yaml.
+  - {type: frozen_sensor, sensor: imu, start_s: 20, duration_s: 5, known_gap: BUG-020}
+  - {type: estimator_reset, start_s: 20}

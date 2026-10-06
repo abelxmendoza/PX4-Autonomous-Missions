@@ -1,0 +1,13 @@
+# The worked example from docs/FAULT_INJECTION.md.
+name: vo_dropout_and_packet_loss
+description: A 5 s stereo-VO outage and a 3 s burst of 30% MAVLink frame loss.
+duration_s: 60
+seed: 1
+faults:
+  - type: vo_dropout
+    start_s: 20
+    duration_s: 5
+  - type: mavlink_packet_loss
+    start_s: 40
+    duration_s: 3
+    probability: 0.30

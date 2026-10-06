@@ -1,0 +1,8 @@
+name: link_faults
+description: MAVLink frame loss (partial and total) and a cable-pull style disconnect.
+duration_s: 60
+seed: 1
+faults:
+  - {type: mavlink_packet_loss, start_s: 20, duration_s: 5, probability: 0.30}
+  - {type: mavlink_packet_loss, start_s: 30, duration_s: 6, probability: 1.0, expect: {must_stay_alive: false, min_rx_rate_ratio: 0.0, must_detect: true, detect_within_s: 4.0, recover_within_s: 2.0}}
+  - {type: comm_disconnect, start_s: 42, duration_s: 5}

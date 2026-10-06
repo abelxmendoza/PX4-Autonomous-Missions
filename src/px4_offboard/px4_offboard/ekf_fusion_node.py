@@ -43,6 +43,7 @@ from std_msgs.msg import Bool, Float32MultiArray
 from .ekf_fusion import (
     DriftTracker,
     PoseVelocityEKF,
+    fusion_healthy,
     message_dt_s,
     quat_to_rotation_matrix,
 )
@@ -390,11 +391,8 @@ class EkfFusionNode(Node):
     def _publish_tick(self) -> None:
         now = time.monotonic()
         with self._lock:
-            healthy = (
-                self._last_vo_update_t is not None
-                and now - self._last_vo_update_t <= self._stale_timeout
-                and self._last_imu_t is not None
-                and now - self._last_imu_t <= self._stale_timeout
+            healthy = fusion_healthy(
+                now, self._last_vo_update_t, self._last_imu_t, self._stale_timeout
             )
             state = self._ekf.state()
             vo_updates = self._vo_updates
