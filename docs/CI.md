@@ -75,6 +75,9 @@ Or individually: `make test-fast`, `make test-integration`, `make evidence`, `ma
 `make validate`, `make compare-selfcheck`, `make cpp-test`. Outputs land in `artifacts/` (git-ignored);
 `make clean` removes them and the C++ build directory.
 
+Do not mix a sourced ROS shell with a virtualenv: ROS's pytest plugins then import into an interpreter without
+`lark` and `make test-fast` fails during collection (seen locally). Use a fresh shell for the ROS-free run.
+
 With ROS (also runs the node tests that are otherwise skipped):
 
 ```bash
