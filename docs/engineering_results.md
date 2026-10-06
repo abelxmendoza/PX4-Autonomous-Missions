@@ -5,8 +5,8 @@ These are local command results and recorded measurements, not an assertion abou
 | Measurement | Result | Source / scope |
 | --- | --- | --- |
 | Original Python baseline | 131 passed, 2 failed, 3 skipped | Unsourced environment before the endpoint fix |
-| Current lightweight Python suite | 205 passed, 5 skipped | `PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -q`; skipped modules need ROS |
-| Current ROS-enabled Python suite | 245 passed | Same suite after sourcing ROS Humble and installed PX4 messages; adapter tests do not fly aircraft |
+| Current lightweight Python suite | 402 passed, 5 skipped (ROS-free virtualenv, `make test-fast test-integration`) | `PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -q`; skipped modules need ROS |
+| Current ROS-enabled Python suite | 450 passed | Same suite after sourcing ROS Humble and installed PX4 messages; adapter tests do not fly aircraft |
 | Browser/replay tests | 27 passed | `cd web/replay && npm test` |
 | Curated recording expectations | 9/9 matched | `python3 scripts/verify_evidence.py`; three expected failures (one kinematic recovery trace, two live stereo flights), six passing verifier outcomes |
 | Existing legacy browser CSV regressions | 4 applicable-check passes | `vv_replay` on each `web/replay/data/*.csv`; sensor/GPS/clearance skips remain visible |
@@ -51,3 +51,15 @@ Same A* course mission, ~78 m flown, drift measured against PX4's own estimate (
 | L | identical to K | 13.2% / 37.4% | 66% | FAIL |
 
 What this supports: the filter works and stays within roughly 4-19% of distance flown against PX4's estimate, with large run-to-run spread under identical settings (K vs L). What it does not support: meeting REQ-VO-001 (10% final, 20% peak) or REQ-VO-002 (80% availability) reliably. Neither threshold has been relaxed; the requirements are recorded as failing. Availability is limited by about 5 VO updates/s under simulation load and by VO losing track during fast yaw turns. Flight J shows the loop can be closed on the fusion estimate without loss of control, but it did not complete the mission, so it is not evidence of fusion-guided navigation.
+
+## Validation platform additions (CI, comms, fault injection, registry)
+
+| Measurement | Result | Command / source |
+| --- | --- | --- |
+| Blocking CI equivalent, clean ROS-free virtualenv | exit 0: 402 unit + 8 integration tests passed (5 ROS test modules skipped), evidence 9/9, fault scenarios, registry gate, compare self-check, CTest | `make ci PY=<venv python>` |
+| C++ | 1 CTest case, 41 checks, 12 golden vectors shared with the Python codec | `make cpp-test` |
+| Fault scenarios (seed 1) | 19 faults: 17 PASS, 2 declared known gaps (frozen IMU, BUG-020) | `make faults`, [FAULT_INJECTION.md](FAULT_INJECTION.md) |
+| Requirement registry | 22 requirements: 17 PASS, 3 FAIL declared known-open (REQ-EST-001/002/006), 1 PARTIAL (mock I2C/SPI only), 1 NOT_RUN (real flight controller) | `make validate` |
+| PX4 SITL MAVLink interop | 1 recorded session, PX4 v1.16.0-5-gd26cb57aca: telemetry decoded, 27 valid frames / 0 bad CRCs / 41 frames of other message ids skipped, arm and disarm accepted with a GCS heartbeat | `tools/sitl_smoke.py`, `evidence/hil/sitl_smoke.json` |
+| Defects found by this work | BUG-019 (frozen VO accepted: 5.4 s detection, +11 m, fixed), BUG-020 (frozen IMU undetected, open), a poll-drain backlog bug and a UDP not-ready-peer bug (fixed, regression tests) | [bugs/](../bugs/README.md) |
+| Hardware | none | -- |
