@@ -191,9 +191,18 @@ actual rendered sensors, not the web replay's FPV viewing angle (see below).
 Install it like the LiDAR override (step 1):
 
 ```bash
-cp -r models/lidar_2d_v2 models/x500_lidar_2d models/mono_cam_right \
+cp -r models/lidar_2d_v2 models/x500_lidar_2d models/mono_cam models/mono_cam_right \
   ~/PX4-Autopilot/Tools/simulation/gz/models/
 ```
+
+> **Camera consumers need PX4's `GZ_IP`.** PX4 starts the Gazebo server with
+> `GZ_IP=127.0.0.1`. Gazebo's camera sensors render only while a subscriber is
+> registered with them, and gz-transport registers a subscriber only when it is
+> on the same interface as the server. Anything reading camera frames from a
+> PX4-launched Gazebo (`camera_bridge`, `scripts/gz_cam_sub`, `gz topic -e`)
+> must run with `GZ_IP=127.0.0.1` or the cameras stay dark and no error says
+> why; `full_stack.launch.py` sets it for its own nodes. Details and the list
+> of things ruled out are in [BUG-017](../bugs/BUG-017.md).
 
 `camera_bridge` republishes the raw Gazebo frames as ROS `sensor_msgs/Image`:
 
@@ -210,6 +219,53 @@ so far.
 > Note: the web replay's "FPV" view (`view` toggle in `web/replay/`) is a
 > Three.js camera angle over recorded telemetry, unrelated to this sensor —
 > it renders no imagery and reads no Gazebo topic.
+
+### Stereo visual odometry + IMU fusion, and the velocity PID
+
+Opt-in, none of it changes the default mission: `use_camera:=true use_stereo:=true use_sensor_fusion_vio:=true`.
+
+```text
+ mono_cam (left) ─┐                                  ┌─ vo_status ──► offboard_mission (logs it,
+ mono_cam_right ──┴─ camera_bridge ×2 ─► stereo_depth ┤                 optional PID position source)
+ PX4 SensorCombined (gyro/accel) ───────► ekf_fusion ─┴─ vo_pose / vehicle_visual_odometry*
+ PX4 attitude + local position ─ seeds the filter before VO acquires, then only scores it
+                                                          * published to PX4 only if publish_to_px4:=true
+```
+
+- **`stereo_depth.py`** — block-matching disparity → metric depth (0.06 m baseline) →
+  tracked features lifted to 3D → PnP pose, expressed in body-FRD axes. Not SLAM:
+  no map, no loop closure. Parameters (`VoConfig`) were chosen by replaying a
+  recorded flight with `scripts/vo_offline_eval.py`, not by hand.
+- **`ekf_fusion.py`** — 6-state position/velocity Kalman filter driven by IMU
+  specific force, updated by VO velocity with a Mahalanobis gate and an absolute
+  speed bound (stereo VO emits occasional absurd values). Attitude is gyro
+  integration, tracked outside the covariance — a deliberate simplification, see
+  the module docstring. VO rotation correction exists but is **off by default**
+  (`vo_attitude_blend:=0.0`) because it measurably increased drift.
+  The 2D LiDAR is not fused for localization: it is a planar range sensor with
+  no altitude information and no map-relative measurement model here, so it
+  stays an avoidance sensor.
+- **`pid_control.py`** — with `control_mode:=velocity_pid` the mission node streams
+  *velocity* setpoints during MOVE from a PID on (target − position), derivative
+  on measurement, anti-windup, 3 m/s / 1.5 m/s limits. PX4's own cascade is
+  unchanged underneath. `position_source:=fusion` closes the loop on the fused
+  estimate instead of PX4's (falling back to PX4's whenever fusion is unhealthy,
+  and logging which one was used).
+
+Everything is logged per tick (`ctrl_mode`, `pos_source`, `vel_cmd_*`, `vo_*`) and
+checked by `REQ-VO-001/002`, `REQ-CTL-001`, `REQ-ATT-001`, `REQ-OBS-003`
+([catalog](requirements.md)). To fly and score one mission headless:
+
+```bash
+scripts/run_vo_validation.sh <tag> [position|velocity_pid] [px4|fusion]
+#   env: HEADLESS=true  TRAJECTORY_MODE=course|waypoints  OBSTACLE_SOURCE=sensor_only|hybrid
+#        VO_DEBUG_CSV=<file>  VO_DEBUG_FRAMES=<dir>  (per-update log / recorded stereo pairs)
+PYTHONPATH=src/px4_offboard python3 -m px4_offboard.vv_replay demo_artifacts/vo_validation/<tag>.csv
+```
+
+Recorded stereo pairs (with PX4's pose and velocity) can be replayed offline to
+tune the VO without another flight:
+`scripts/vo_offline_eval.py demo_artifacts/vo_dataset --sweep`.
 
 ### Vision-based marker detection
 

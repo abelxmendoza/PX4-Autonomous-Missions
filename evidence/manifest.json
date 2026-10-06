@@ -82,6 +82,44 @@
       "sha256": "ea268126c11b977e808b585df2380bdea4745a191c1407a7976e2de2b38b6566",
       "provenance": "demo_artifacts/swarm/20260912_102427_4fb25c/swarm_1f644f9e1aa049789c4d1441835817b8.jsonl; fresh PX4/Gazebo SITL run after endpoint fix, --dropout. Raw bytes preserved with gzip.",
       "replay": "web/replay/data/golden_recovery.json"
+    },
+    {
+      "id": "stereo_vo_flight_k",
+      "kind": "flight",
+      "path": "evidence/stereo_vo/flight_K.csv.gz",
+      "report": "evidence/stereo_vo/flight_K_report.json",
+      "expected_pass": false,
+      "expected_failed_checks": [
+        "REQ-VO-AVAIL-01"
+      ],
+      "provenance": "demo_artifacts/vo_validation/flightK.csv; exact raw bytes, gzip only. SITL course mission, control_mode=velocity_pid, position_source=px4, BM matcher, reference_attitude_tau_s=2. stereo+IMU live fusion, drift 9.3% (passes), availability 73% (fails 80%). Drift is measured against PX4's own estimate, not ground truth.",
+      "required_checks": [
+        "REQ-CLEARANCE-01",
+        "REQ-CLEARANCE-02",
+        "REQ-ATT-01",
+        "REQ-CTRL-01",
+        "REQ-VO-DRIFT-01"
+      ],
+      "sha256": "9ab331834ecdda9539e2d48aefe546c8ebfdb4cbf8192a0c68bfb835ca2a9ae0"
+    },
+    {
+      "id": "stereo_vo_flight_l",
+      "kind": "flight",
+      "path": "evidence/stereo_vo/flight_L.csv.gz",
+      "report": "evidence/stereo_vo/flight_L_report.json",
+      "expected_pass": false,
+      "expected_failed_checks": [
+        "REQ-VO-DRIFT-01",
+        "REQ-VO-AVAIL-01"
+      ],
+      "provenance": "demo_artifacts/vo_validation/flightL.csv; exact raw bytes, gzip only. SITL course mission, control_mode=velocity_pid, position_source=px4, BM matcher, reference_attitude_tau_s=2. identical config to K, repeated flight: drift 13.2% / peak 37% and availability 66% -- run-to-run variance is real. Drift is measured against PX4's own estimate, not ground truth.",
+      "required_checks": [
+        "REQ-CLEARANCE-01",
+        "REQ-CLEARANCE-02",
+        "REQ-ATT-01",
+        "REQ-CTRL-01"
+      ],
+      "sha256": "e8e4d9cd0d00a5622592005eb1fd80113232e1dec3762045cf4b4e32712f48a2"
     }
   ]
 }

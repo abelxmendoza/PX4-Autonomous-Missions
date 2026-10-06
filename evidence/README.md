@@ -6,7 +6,7 @@ Run from the repository root:
 python3 scripts/verify_evidence.py
 ```
 
-The manifest pins seven cases by SHA-256 and provenance. Five contain historical or fresh PX4/Gazebo recordings; two are before/after **kinematic** recovery traces. A known failure must continue to fail for the exact expected reason. Reports are regenerated from the actual verifiers, not handwritten summaries.
+The manifest pins nine cases by SHA-256 and provenance. Seven contain historical or fresh PX4/Gazebo recordings; two are before/after **kinematic** recovery traces. A known failure must continue to fail for the exact expected reason. Reports are regenerated from the actual verifiers, not handwritten summaries.
 
 | Folder | Contents and intended claim |
 | --- | --- |
@@ -14,6 +14,7 @@ The manifest pins seven cases by SHA-256 and provenance. Five contain historical
 | `obstacle_avoidance/` | Report referencing the existing 41 s legacy replay, with 214 avoidance-labelled rows. Sensor-backed avoidance and clearance are not established by this schema. |
 | `gps_denied/` | Exact compressed historical CSV, 468 samples over 129 s, and regenerated report. External odometry is Gazebo pose plus modeled noise/drift. Missing early phases and time gaps prevent claiming continuous complete-flight evidence. |
 | `swarm/` | Exact compressed nominal and fresh golden recovery JSONL plus reports. Gate/landing tasks, not area survey or payload delivery. |
+| `stereo_vo/` | Two exact compressed live flights (K, L) of the same configuration: stereo VO + IMU fusion running beside PX4, outer-loop velocity PID, A* course. Both are **expected failures**, pinned to the exact failing checks (K: availability 73% < 80%; L: drift 13.2%/peak 37% and availability 66%). Drift is measured against PX4's own estimate, not ground truth. They are kept as honest evidence of the run-to-run spread, not as a pass. |
 | `failure_case/` | Exact compressed before/after deterministic recovery fixture output. Only coordinator endpoint tolerance changes; tests and verifier acceptance are not relaxed. |
 
 `manifest.json` is the source of truth for origins, hashes, expected verdicts and report paths. Uncompressed logs are inspectable with `gzip -dc evidence/swarm/golden_recovery.jsonl.gz`. Compression preserves raw bytes; recordings are neither resampled nor trimmed here. Browser data is separately resampled for presentation and must not replace raw verification input.

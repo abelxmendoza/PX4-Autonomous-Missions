@@ -27,6 +27,11 @@ Paths in implementation/function columns are relative to `src/px4_offboard/px4_o
 | REQ-SWM-005 | `SurveyCoordinator.update`, `_step`, `swarm_coordinator._tick` | stale telemetry, replay, missing/truncated evidence tests | Python tests; golden report | `swarm_verify.verify` timestamps/vehicle freshness | PASS for golden; negative cases rejected |
 | REQ-SWM-006 | `swarm_vehicle._command`, `_tick` | `test_coordinator_timeout_holds_then_lands`, bad/replayed-command tests | ROS test result | `test_swarm_nodes.py` | ROS UNIT PASS; golden uses commanded dropout, not communications loss |
 | REQ-TEL-002 | `scripts/export_swarm_replay.py` | off-grid terminal sample, stale report sidecar | `test_swarm_export.py`; browser replay tests | `export`; `parseSwarmReplay` | PASS; exact final sample retained and verdict recomputed |
+| REQ-VO-001 | `stereo_depth.py`, `ekf_fusion.py`, `ekf_fusion_node.py` | live SITL flights K, L | [flight K](../evidence/stereo_vo/flight_K_report.json), [flight L](../evidence/stereo_vo/flight_L_report.json) | `vv_harness.check_vo_drift` | **K PASS (9.3%); L FAIL (13.2%, peak 37%)**; drift is against PX4's estimate, not ground truth; not reliably met |
+| REQ-VO-002 | `ekf_fusion_node.py`, `camera_bridge.py` | live SITL flights K, L; dark-camera unit test | flight K and L reports; `test_vo_availability_fails_when_the_cameras_go_dark` | `check_vo_availability` | **FAIL in both flights (73%, 66% vs 80%)**; unit PASS for the dark-camera signature |
+| REQ-CTL-001 | `pid_control.py`, `offboard_mission._publish_setpoint` | live SITL velocity-PID flights; envelope unit tests | flight K and L reports; `test_pid_control.py` | `check_velocity_pid_envelope` | PASS in 299 and 293 samples |
+| REQ-ATT-001 | `offboard_mission.py` | tumble shape from historical logs; live flights | `test_flight_vv.py`; flight K and L reports | `check_attitude_envelope` | PASS (27-28 deg); detector UNIT PASS on the BUG-016 tumble |
+| REQ-OBS-003 | `mission_logic.py` | graze shape from historical logs; live flights | `test_airframe_contact_catches_a_graze_that_clearance_01_passes`; flight K and L reports | `check_airframe_contact` | PASS (2.4 m minimum); reactive-avoidance contact itself remains open (BUG-016) |
 
 ## Evidence levels
 

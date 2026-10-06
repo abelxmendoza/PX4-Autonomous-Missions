@@ -25,7 +25,7 @@ flowchart LR
 | Measured engineering result | Evidence |
 | --- | --- |
 | Fresh recovery flight: **641 samples**, **2 reassignments**, **8.095491 m** minimum horizontal separation against a **2.5 m** requirement | [Report](evidence/swarm/golden_report.json) · [raw log](evidence/swarm/golden_recovery.jsonl.gz) |
-| **21 catalog requirements**, mapped to 14 existing single-vehicle checks and cooperative acceptance behavior | [Requirements](docs/requirements.md) · [verification matrix](docs/verification_matrix.md) |
+| **26 catalog requirements**, mapped to 19 single-vehicle verifier checks (incl. stereo/IMU fusion, velocity PID, loss-of-control) and cooperative acceptance behavior | [Requirements](docs/requirements.md) · [verification matrix](docs/verification_matrix.md) |
 | **7 curated cases**: 5 SITL recordings and 2 kinematic before/after traces; all expected outcomes reproduced, including an intentional failure | [Evidence manifest](evidence/manifest.json) |
 | **166 Python tests** with ROS enabled; **24 browser tests** | [Commands, results and scope](docs/engineering_results.md) |
 | **2 documented defects**: premature task completion and dropped terminal replay evidence | [Coordinator case study](docs/case_studies/swarm-endpoint-acceptance.md) · [replay boundary case](docs/case_studies/replay-terminal-sample.md) |

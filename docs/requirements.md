@@ -1,6 +1,6 @@
 # Requirements catalog
 
-Scope: existing software-in-the-loop behavior. These 21 stable catalog IDs are acceptance statements for specific configurations, not airworthiness claims. The 14 existing single-vehicle verifier IDs remain unchanged in code and saved logs; this table maps them to catalog IDs rather than breaking historical reports. Seven additional entries name existing cooperative behavior.
+Scope: existing software-in-the-loop behavior. These 26 stable catalog IDs are acceptance statements for specific configurations, not airworthiness claims. The 14 existing single-vehicle verifier IDs remain unchanged in code and saved logs; this table maps them to catalog IDs rather than breaking historical reports. Seven additional entries name existing cooperative behavior, and five more cover stereo/IMU localization, the outer-loop velocity controller, and loss-of-control / obstacle-contact detection.
 
 **MUST** is mandatory within the stated scope. **SHOULD** retains the existing harness severity. A scenario can pass applicable checks while other requirements are unexercised. See the [verification matrix](verification_matrix.md) for evidence and gaps.
 
@@ -36,6 +36,18 @@ These requirements apply to the fixed two-vehicle gate/landing-point scenario in
 | REQ-SWM-005 | MUST | Active cooperative evidence shall include both vehicles, valid telemetry age at most 0.75 s, and strictly increasing sample times with gaps no greater than 0.5 s. Stale telemetry shall abort coordination without releasing assignments. |
 | REQ-SWM-006 | MUST | A vehicle shall hold on coordinator-command loss after 0.75 s and land after 2 s; stale/replayed commands shall not renew its watchdog. |
 | REQ-TEL-002 | MUST | Browser export shall retain the exact final recorded cooperative sample, even between 10 Hz playback ticks, and compute the verdict from that input rather than trusting a separate report file. |
+
+## Perception, control and safety additions
+
+Added with the stereo-camera + IMU fusion estimator and the outer-loop velocity PID (`control_mode:=velocity_pid`). The fusion estimate is **measured against PX4's own estimate**, which is itself an estimate: "drift" below means disagreement with PX4's navigation solution, not error against ground truth. The estimate does not feed PX4 in these runs (`publish_to_px4` stays false); it is only scored, except when `position_source:=fusion`, where the velocity PID deliberately closes on it.
+
+| Catalog ID | Level | Verifier ID | Requirement and acceptance boundary |
+| --- | --- | --- | --- |
+| REQ-VO-001 | MUST | REQ-VO-DRIFT-01 | While the fusion estimate is healthy, its horizontal position shall end the flight within 10% of distance travelled of PX4's estimate and never exceed 20% once 20 m have been flown. Skipped (not passed) when under 20 m of healthy path. Distance is PX4's own path length. |
+| REQ-VO-002 | MUST | REQ-VO-AVAIL-01 | When the fusion node is running, the estimate shall be healthy in at least 80% of MOVE samples. "Healthy" means an accepted VO velocity update within the last 0.5 s, so rejected or failed frames count against availability. A run with dark cameras fails with 0%. |
+| REQ-CTL-001 | MUST | REQ-CTRL-01 | In velocity_pid mode the commanded velocity shall be finite, at most 3.0 m/s horizontal and 1.5 m/s vertical, and only issued in MOVE. The single tick that hands MOVE over to LANDING/FAILSAFE is exempt because the row is logged after the state changes. |
+| REQ-ATT-001 | MUST | REQ-ATT-01 | Roll and pitch shall stay within 60 degrees in TAKEOFF, HOVER and MOVE. Beyond that the vehicle is tumbling, which no requirement previously covered; geofence breaches and altitude spikes were only its downstream symptoms (see BUG-016). |
+| REQ-OBS-003 | MUST | REQ-CLEARANCE-02 | Mapped clearance (vehicle centre to obstacle surface) shall stay at or above 0.35 m (the x500's half-diagonal plus margin). REQ-OBS-002 only forbids being inside the obstacle, so a 1 cm graze passed it. Sampled position against the configured map, not a swept airframe envelope. |
 
 ## Interpretation and known verification gaps
 
