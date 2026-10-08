@@ -8,8 +8,8 @@ many scenarios instead of one fixed recovery.
 This is a kinematic fixture around the real coordinator, not PX4 flight evidence.
 
 Invariants implemented so far:
-  #2  every one of the four tasks has exactly one owner, the owner is px4_1 or
-      px4_2, and report()["assignments"] covers all four tasks.
+  #2  every task of the mission has exactly one owner, the owner is a vehicle of
+      the fleet, and report()["assignments"] covers every task.
   #3  a completed task stays completed and its owner never changes.
   #5  COMPLETE means every task was actually visited (armed, within 0.6 m),
       by the same rule as the independent verifier.
@@ -23,9 +23,8 @@ from typing import Callable
 
 import pytest
 
-from px4_offboard.swarm_logic import HOMES, SurveyCoordinator, Telemetry
+from px4_offboard.swarm_logic import DEFAULT_FLEET, HOMES, Fleet, SurveyCoordinator, Telemetry
 
-EXPECTED_TASKS = ("gate_1", "land_1", "gate_2", "land_2")
 SEEDS = range(50)
 TICK_S = 0.1
 MAX_TICKS = 3500  # same budget as simulate(): 350 s against the coordinator's 330 s timeout
@@ -35,7 +34,7 @@ Invariant = Callable[[SurveyCoordinator], None]
 
 def _sample(vehicle: str, now: float = 0.0, **kwargs) -> Telemetry:
     return replace(
-        Telemetry(vehicle, vehicle, int(now * 1000), now, HOMES[vehicle],
+        Telemetry(vehicle, vehicle, int(now * 1000), now, HOMES.get(vehicle, (0.0, 0.0, 0.0)),
                   (0, 0, 0), "WAITING", True, False, True),
         **kwargs,
     )
@@ -60,6 +59,15 @@ class Scenario:
             speed_mps=rng.choice([0.45, 0.7, 1.0, 1.5]),
         )
 
+    @staticmethod
+    def for_fleet(seed: int, fleet: Fleet) -> "Scenario":
+        """Any fleet: every third seed has no dropout; otherwise a seeded choice of
+        which vehicle drops, when (0-40 s) and the speed."""
+        rng = random.Random(seed)
+        when, speed = rng.uniform(0.0, 40.0), rng.choice([0.45, 0.7, 1.0, 1.5])
+        vehicle = None if seed % 3 == 0 else rng.choice(sorted(fleet.homes))
+        return Scenario(seed=seed, dropout_vehicle=vehicle, dropout_time_s=when, speed_mps=speed)
+
 
 @dataclass
 class RunResult:
@@ -80,16 +88,18 @@ def run_scenario(
     invariants: list[Invariant],
     mutate: Callable[[SurveyCoordinator, int], None] | None = None,
     observe: Callable[[SurveyCoordinator, int, float], None] | None = None,
+    fleet: Fleet = DEFAULT_FLEET,
 ) -> RunResult:
     """Run the real coordinator against a point-mass model, calling every
     invariant after every ``step()``. ``mutate`` (tests only) may corrupt the
     coordinator after a step to prove the checks can fail. ``observe`` is a
     read-only hook called after every step with (coordinator, tick, now)."""
-    c = SurveyCoordinator()
-    positions = dict(HOMES)
-    velocities = {v: (0, 0, 0) for v in HOMES}
-    states = {v: "WAITING" for v in HOMES}
-    faults = {v: "" for v in HOMES}
+    c = SurveyCoordinator(fleet=fleet)
+    homes = fleet.homes
+    positions = dict(homes)
+    velocities = {v: (0, 0, 0) for v in homes}
+    states = {v: "WAITING" for v in homes}
+    faults = {v: "" for v in homes}
     minimum = math.inf
     dropout_fired = False
     steps = checks = 0
@@ -102,7 +112,7 @@ def run_scenario(
             faults[v_drop] = "test fault"
             states[v_drop] = "LANDING"
             dropout_fired = True
-        for v in HOMES:
+        for v in homes:
             c.update(_sample(v, now, position=positions[v], velocity=velocities[v], state=states[v],
                              armed=states[v] not in {"WAITING", "LANDED"},
                              landed=states[v] in {"WAITING", "LANDED"}, fault=faults[v]), now)
@@ -132,7 +142,7 @@ def run_scenario(
                 goal = (*positions[v][:2], 0)
             elif action == "takeoff":
                 states[v] = "TAKEOFF"
-                goal = (*HOMES[v][:2], -3)
+                goal = (*homes[v][:2], -3)
             elif action == "move":
                 states[v] = "MOVING"
                 goal = cmd["target"]
@@ -150,7 +160,8 @@ def run_scenario(
                 states[v] = "READY"
             if states[v] == "LANDING" and positions[v][2] == 0:
                 states[v] = "LANDED"
-        minimum = min(minimum, math.dist(*[p[:2] for p in positions.values()]))
+        pts = [p[:2] for p in positions.values()]
+        minimum = min([minimum] + [math.dist(a, b) for i, a in enumerate(pts) for b in pts[i + 1:]])
 
     return RunResult(scenario, c.phase, dropout_fired, c.reassignments, steps, checks, minimum, c)
 
@@ -158,14 +169,15 @@ def run_scenario(
 # --- Invariant #2 ----------------------------------------------------------------
 
 def assert_every_task_has_one_valid_owner(c: SurveyCoordinator) -> None:
+    expected = [t.name for t in c.fleet.tasks]  # the mission's tasks, whatever the fleet size
     names = [t.name for t in c.tasks]
-    assert sorted(names) == sorted(EXPECTED_TASKS), f"task list is {names}, expected {list(EXPECTED_TASKS)}"
+    assert sorted(names) == sorted(expected), f"task list is {names}, expected {expected}"
     for task in c.tasks:
         assert type(task.owner) is str, f"{task.name} owner is {task.owner!r}, not a single vehicle id"
-        assert task.owner in HOMES, f"{task.name} owner {task.owner!r} is not one of {sorted(HOMES)}"
+        assert task.owner in c.homes, f"{task.name} owner {task.owner!r} is not one of {sorted(c.homes)}"
     assignments = c.report()["assignments"]
-    assert set(assignments) == set(EXPECTED_TASKS), \
-        f"report()['assignments'] covers {sorted(assignments)}, expected {list(EXPECTED_TASKS)}"
+    assert set(assignments) == set(expected), \
+        f"report()['assignments'] covers {sorted(assignments)}, expected {expected}"
     for task in c.tasks:
         assert assignments[task.name] == task.owner, \
             f"report says {task.name} -> {assignments[task.name]!r}, coordinator state says {task.owner!r}"
@@ -358,7 +370,7 @@ def _accept_task_endpoints_at_1m(c: SurveyCoordinator, tick: int) -> None:
     """Re-creates the pre-fix coordinator rule from the case study -- a task
     endpoint accepted at 1.0 m instead of 0.5 m -- from outside, so
     swarm_logic.py is untouched."""
-    for v in HOMES:
+    for v in c.homes:
         t, name = c.telemetry.get(v), c.active.get(v)
         if v in c.retired or t is None or name is None or len(c.routes[v]) != 1:
             continue

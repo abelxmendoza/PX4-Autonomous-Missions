@@ -28,6 +28,7 @@ hypothetical.
 | [BUG-018](BUG-018.md) | Gyro-only fusion heading drifts up to 17 deg in fast turns, rotating every VO velocity wrong | Live SITL (flight H vs G) | `test_reference_attitude_pulls_a_drifted_heading_back_without_stepping`, `test_attitude_messages_pull_a_drifted_heading_toward_the_autopilot` |
 | [BUG-019](BUG-019.md) | Frozen VO stream accepted as fresh: 5.4 s to detect, +11 m error, health stayed green | Fault-injection rig | `test_bit_identical_repeat_of_a_moving_velocity_is_rejected_as_a_stuck_sensor`, scenario `sensor_faults` |
 | [BUG-020](BUG-020.md) | No frozen-IMU detector (open known gap): +32 m error undetected when VO is out | Fault-injection rig | scenarios pinned as `known_gap` in `test_fault_scenarios_shipped.py` |
+| [BUG-021](BUG-021.md) | N-drone coordinator gridlocks: safe at every size, but 10 drones never finish (reservation holds form cycles) | Seeded N-drone harness | `test_swarm_scaling.py` (strict xfail at 10 drones) |
 
 ## Reading this list
 
