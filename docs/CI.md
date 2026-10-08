@@ -15,7 +15,7 @@ Every CI step is a `make` target, so the same commands run locally ([below](#rep
 | `unit` | `make test-fast` -- ROS-free pytest, no simulated flights | yes | `artifacts/junit/unit.xml` |
 | `validation` | `make test-fast test-integration evidence faults validate compare-selfcheck` | yes | JUnit, fault evidence (JSON, Markdown, per-fault CSV), validation report (JSON + Markdown), compare output; the Markdown report is also written to the job summary |
 | `cpp` | `make cpp-test` -- CMake configure (warnings as errors), build, CTest | yes | `artifacts/junit/cpp.xml` |
-| `ros2` | `colcon build` + full pytest inside `ros:humble` | **no** (`continue-on-error`) | `artifacts/junit/ros.xml` |
+| `ros2` | `colcon build` + full pytest inside `ros:humble` | yes (since its first green run on GitHub) | `artifacts/junit/ros.xml` |
 
 ### What makes the build fail
 
@@ -59,7 +59,7 @@ The validation report maps Requirement -> Test -> Evidence -> Result and lists w
   signatures current pytest rejects (`PluginValidationError`). Diagnosed by re-running the job's exact steps in the
   same `ros:humble` image with Docker; fixed by setting `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` (no test uses those
   plugins). In that container: 466 passed, 1 skipped (`test_camera_bridge_node.py`: no Gazebo Python bindings).
-  It stays non-blocking until it has also passed on a GitHub runner.
+  It then passed on a GitHub runner (commit `78808f4`, all 8 jobs across both workflows green) and is now blocking.
 - The workflows' first runs on GitHub (commit `dcf2dde`) also broke the older `unit-tests.yml` jobs, because this
   work added dependencies (PyYAML, pymavlink, pyserial) and a demo flight that fails VO availability by design.
   Both were fixed in `db5d986`; the blocking jobs of both workflows pass.

@@ -89,13 +89,11 @@ jobs:
           path: artifacts/junit/cpp.xml
 
   ros2:
-    # Builds the ament package against px4_msgs and runs the ROS-node tests that
-    # the jobs above skip. NOT yet proven on a GitHub runner (it needs px4_msgs
-    # from the network); it is non-blocking until its first green run -- see
-    # docs/CI.md before relying on it.
+    # Builds the ament package against px4_msgs and runs the full suite with ROS available,
+    # including the ROS-node tests the jobs above skip. Blocking since its first green run
+    # on GitHub (it was non-blocking while unproven; see docs/CI.md for the history).
     name: ROS 2 Humble build and node tests
     runs-on: ubuntu-22.04
-    continue-on-error: true
     timeout-minutes: 45
     container: ros:humble
     steps:
