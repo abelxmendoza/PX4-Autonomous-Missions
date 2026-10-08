@@ -82,10 +82,11 @@ class Telemetry:
     fault: str = ""
 
     @classmethod
-    def parse(cls, data: dict) -> "Telemetry":
+    def parse(cls, data: dict, vehicles: Iterable[str] | None = None) -> "Telemetry":
         if not isinstance(data, dict):
             raise ValueError("expected telemetry object")
-        if data.get("vehicle") not in HOMES or not isinstance(data.get("session"), str):
+        known = HOMES if vehicles is None else set(vehicles)
+        if data.get("vehicle") not in known or not isinstance(data.get("session"), str):
             raise ValueError("unknown vehicle/session")
         if type(data.get("seq")) is not int or data["seq"] < 0:
             raise ValueError("invalid sequence")
@@ -110,9 +111,59 @@ class SurveyTask:
     completed: bool = False
 
 
+@dataclass(frozen=True)
+class FleetTask:
+    name: str
+    owner: str
+    start: Point
+    end: Point
+
+
+@dataclass(frozen=True)
+class Fleet:
+    """Which vehicles exist, where they start and land, and the initial task owners."""
+    homes: dict[str, Point]
+    landings: dict[str, Point]
+    tasks: tuple[FleetTask, ...]
+
+    def __post_init__(self):
+        if not self.homes:
+            raise ValueError("a fleet needs at least one vehicle")
+        if set(self.landings) != set(self.homes):
+            raise ValueError("a fleet needs a landing for every vehicle and no others")
+        names = [t.name for t in self.tasks]
+        if len(names) != len(set(names)):
+            raise ValueError("duplicate task name")
+        for t in self.tasks:
+            if t.owner not in self.homes:
+                raise ValueError(f"task {t.name} has unknown owner {t.owner!r}")
+
+
+# The original two-vehicle mission. Gate then pad for each vehicle; staggered east
+# corridors so both can move in parallel (not serialized on one shared A* funnel).
+DEFAULT_FLEET = Fleet(
+    homes=HOMES,
+    landings=LANDINGS,
+    tasks=(
+        FleetTask("gate_1", "px4_1", (28.0, 11.0, -3.0), (28.0, 11.0, -3.0)),
+        FleetTask("land_1", "px4_1", (50.0, -2.0, -3.0), (50.0, -2.0, -3.0)),
+        FleetTask("gate_2", "px4_2", (28.0, 16.5, -3.0), (28.0, 16.5, -3.0)),
+        FleetTask("land_2", "px4_2", (50.0, 5.0, -3.0), (50.0, 5.0, -3.0)),
+    ),
+)
+
+# Reassignment cost, in metres: distance from a healthy vehicle to the released task plus
+# this much per task it already owns and has not completed. 10 m means a vehicle with one
+# more pending task must be over 10 m closer to win. A tunable, not a derived constant.
+WORKLOAD_PENALTY_M = 10.0
+
+
 class SurveyCoordinator:
     """Deterministic planner; all time inputs use the same host monotonic clock."""
-    def __init__(self, *, minimum_separation: float = 2.5, timeout: float = 330.0):
+    def __init__(self, *, minimum_separation: float = 2.5, timeout: float = 330.0,
+                 fleet: Fleet = DEFAULT_FLEET):
+        self.fleet = fleet
+        self.homes = dict(fleet.homes)
         self.minimum_separation = minimum_separation
         self.reservation = minimum_separation + 1.0
         # Deliberately smaller than self.reservation: that value guards live
@@ -124,18 +175,11 @@ class SurveyCoordinator:
         self.obstacle_clearance = 1.5
         self.timeout = timeout
         self.telemetry: dict[str, Telemetry] = {}
-        self.routes: dict[str, list[Point]] = {v: [] for v in HOMES}
-        self.active: dict[str, str | None] = {v: None for v in HOMES}
+        self.routes: dict[str, list[Point]] = {v: [] for v in self.homes}
+        self.active: dict[str, str | None] = {v: None for v in self.homes}
         # Coordinated transit to the far landing pad: A* plans the whole
         # commute (task start == end), avoiding obstacles + GPS-denied keep-out.
-        # Staggered east corridors so both can move in parallel (not serialized
-        # on one shared A* funnel). Gate then pad for each vehicle.
-        self.tasks = [
-            SurveyTask("gate_1", "px4_1", (28.0, 11.0, -3.0), (28.0, 11.0, -3.0)),
-            SurveyTask("land_1", "px4_1", (50.0, -2.0, -3.0), (50.0, -2.0, -3.0)),
-            SurveyTask("gate_2", "px4_2", (28.0, 16.5, -3.0), (28.0, 16.5, -3.0)),
-            SurveyTask("land_2", "px4_2", (50.0, 5.0, -3.0), (50.0, 5.0, -3.0)),
-        ]
+        self.tasks = [SurveyTask(t.name, t.owner, t.start, t.end) for t in fleet.tasks]
         self.retired: set[str] = set()
         self.retire_since: dict[str, float] = {}
         self.phase = "WAITING"
@@ -156,11 +200,30 @@ class SurveyCoordinator:
         self.telemetry[sample.vehicle] = sample
         return True
 
+    def _reassign_from(self, failed: str) -> None:
+        """A retired vehicle's unfinished tasks go back to the pool and are handed out
+        at once, so no task is ever left without an owner (swarm invariant #2).
+        Eligible: vehicles that are neither faulted nor retired. Cost: distance to the
+        task + WORKLOAD_PENALTY_M per task already owned and unfinished; ties by name.
+        With two vehicles there is only ever one candidate, as before."""
+        candidates = [o for o in self.homes
+                      if o != failed and o not in self.retired and not self.telemetry[o].fault]
+        if not candidates:
+            return  # nobody can take them; the caller aborts with "no available vehicles"
+        for task in self.tasks:
+            if task.owner != failed or task.completed:
+                continue
+            def cost(o: str) -> tuple:
+                load = sum(1 for t in self.tasks if t.owner == o and not t.completed)
+                return (math.dist(self.telemetry[o].position, task.start) + WORKLOAD_PENALTY_M * load, o)
+            task.owner = min(candidates, key=cost)
+            self.reassignments += 1
+
     def _abort(self, reason: str):
         self.phase, self.reason = "ABORTED", reason
 
     def _hold(self) -> dict[str, dict]:
-        return {v: {"action": "hold"} for v in HOMES}
+        return {v: {"action": "hold"} for v in self.homes}
 
     def _route(self, vehicle: str, goal: Point) -> list[Point]:
         current = self.telemetry[vehicle].position
@@ -191,35 +254,39 @@ class SurveyCoordinator:
 
     def _step(self, now: float) -> dict[str, dict]:
         if self.phase in {"ABORTED", "COMPLETE"}:
-            return {v: {"action": "land"} for v in HOMES}
-        if len(self.telemetry) != len(HOMES):
+            return {v: {"action": "land"} for v in self.homes}
+        if len(self.telemetry) != len(self.homes):
             return self._hold()
         if any(now - t.sent > 0.75 or not t.valid for t in self.telemetry.values()):
             if self.phase != "WAITING":
                 self._abort("stale telemetry or invalid world position")
-                return {v: {"action": "land"} for v in HOMES}
+                return {v: {"action": "land"} for v in self.homes}
             return self._hold()
         samples = list(self.telemetry.values())
-        if math.dist(samples[0].position[:2], samples[1].position[:2]) < self.minimum_separation:
+        # Every pair. (With two vehicles this was samples[0] vs samples[1]; for N it has
+        # to be all N*(N-1)/2 pairs or a breach between, say, the 1st and 3rd goes unseen.)
+        pairs = [(a, b) for i, a in enumerate(samples) for b in samples[i + 1:]]
+        if any(math.dist(a.position[:2], b.position[:2]) < self.minimum_separation for a, b in pairs):
             self._abort("minimum horizontal separation breached")
-            return {v: {"action": "land"} for v in HOMES}
+            return {v: {"action": "land"} for v in self.homes}
         # Constant-velocity closest approach over the next second catches
         # unexpected closing motion even when planned segments are disjoint.
-        relative = tuple(samples[0].position[i] - samples[1].position[i] for i in (0, 1))
-        velocity = tuple(samples[0].velocity[i] - samples[1].velocity[i] for i in (0, 1))
-        speed_sq = sum(x * x for x in velocity)
-        closest_t = max(0.0, min(1.0, -sum(relative[i] * velocity[i] for i in (0, 1)) / speed_sq)) if speed_sq else 0.0
-        predicted = math.hypot(*(relative[i] + closest_t * velocity[i] for i in (0, 1)))
-        if predicted < self.minimum_separation:
-            self._abort("predicted separation breach")
-            return {v: {"action": "land"} for v in HOMES}
+        for a, b in pairs:
+            relative = tuple(a.position[i] - b.position[i] for i in (0, 1))
+            velocity = tuple(a.velocity[i] - b.velocity[i] for i in (0, 1))
+            speed_sq = sum(x * x for x in velocity)
+            closest_t = max(0.0, min(1.0, -sum(relative[i] * velocity[i] for i in (0, 1)) / speed_sq)) if speed_sq else 0.0
+            predicted = math.hypot(*(relative[i] + closest_t * velocity[i] for i in (0, 1)))
+            if predicted < self.minimum_separation:
+                self._abort("predicted separation breach")
+                return {v: {"action": "land"} for v in self.homes}
         if self.started is not None and now - self.started > self.timeout:
             self._abort("mission timeout / blocked route")
-            return {v: {"action": "land"} for v in HOMES}
+            return {v: {"action": "land"} for v in self.homes}
         if self.phase == "WAITING":
             if any(t.state != "WAITING" or t.armed or not t.landed for t in samples):
                 self._abort("vehicles must start landed and disarmed")
-                return {v: {"action": "land"} for v in HOMES}
+                return {v: {"action": "land"} for v in self.homes}
             self.phase, self.reason = "STARTING", "takeoff"
             self.started = now
         # A fault never releases its assignment until fresh land + disarm
@@ -232,23 +299,19 @@ class SurveyCoordinator:
                         self.retired.add(v)
                         self.routes[v] = []
                         self.active[v] = None
-                        candidates = [other for other in HOMES if other != v and not self.telemetry[other].fault]
-                        for task in self.tasks:
-                            if task.owner == v and not task.completed and candidates:
-                                task.owner = candidates[0]
-                                self.reassignments += 1
+                        self._reassign_from(v)
                 else:
                     self.retire_since.pop(v, None)
         if any(t.fault and v not in self.retired for v, t in self.telemetry.items()):
             self.reason = "waiting for failed vehicle to land and disarm"
             return {v: {"action": "land" if t.fault else "hold"} for v, t in self.telemetry.items()}
-        healthy = [v for v in HOMES if v not in self.retired]
+        healthy = [v for v in self.homes if v not in self.retired]
         if not healthy:
             self._abort("no available vehicles")
-            return {v: {"action": "land"} for v in HOMES}
+            return {v: {"action": "land"} for v in self.homes}
         if self.phase == "STARTING":
             if not all(self.telemetry[v].state in {"READY", "MOVING"} for v in healthy):
-                return {v: {"action": "land" if v in self.retired else "takeoff"} for v in HOMES}
+                return {v: {"action": "land" if v in self.retired else "takeoff"} for v in self.homes}
             self.phase = "SURVEY"
         # Consume reached route points only from fresh position and low speed.
         for v in healthy:
@@ -272,7 +335,7 @@ class SurveyCoordinator:
         for v in healthy:
             t = self.telemetry[v]
             if self.phase == "RETURNING":
-                home = (*LANDINGS[v][:2], -3.0)
+                home = (*self.fleet.landings[v][:2], -3.0)
                 if t.state in {"LANDING", "LANDED"} or math.dist(t.position, home) < 0.4:
                     commands[v] = {"action": "land"}
                     continue

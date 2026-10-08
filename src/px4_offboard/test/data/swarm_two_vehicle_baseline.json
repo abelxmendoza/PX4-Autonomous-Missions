@@ -1,0 +1,1001 @@
+[
+ [
+  0,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  483,
+  4.946473,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  1,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1810,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  2,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1740,
+  4.96273,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  3,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1032,
+  4.875039,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  4,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1773,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  5,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  790,
+  5.136993,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  6,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1606,
+  4.899009,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  7,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1146,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  8,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  532,
+  6.632797,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  9,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  723,
+  4.904737,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  10,
+  "ABORTED",
+  "mission timeout / blocked route",
+  2,
+  3302,
+  5.70853,
+  [
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  11,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  532,
+  5.199575,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  12,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  723,
+  4.904737,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  13,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1146,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  14,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1123,
+  8.035572,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  15,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1606,
+  4.899009,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  16,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  545,
+  6.014269,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  17,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  790,
+  4.984682,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  18,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  483,
+  4.946473,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  19,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1773,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  20,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1123,
+  5.139802,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  21,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  483,
+  4.946473,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  22,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1146,
+  6.020338,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  23,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  1,
+  824,
+  4.393423,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  24,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1032,
+  4.875039,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  25,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1773,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  26,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1123,
+  4.966487,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  27,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  723,
+  4.904737,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  28,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1146,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  29,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  790,
+  5.025546,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  30,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  723,
+  4.904737,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  31,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1810,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  32,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1123,
+  8.035572,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  33,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1032,
+  4.875039,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  34,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1773,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  35,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1123,
+  5.58655,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  36,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1606,
+  4.899009,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  37,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1773,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  38,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  1,
+  564,
+  4.074649,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  39,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  483,
+  4.946473,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  40,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1773,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  41,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1123,
+  8.390587,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  42,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1606,
+  4.899009,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  43,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1167,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  44,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  1740,
+  8.369351,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  45,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  483,
+  4.946473,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  46,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  1,
+  526,
+  4.946473,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  47,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  532,
+  4.958194,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_1",
+   "land_1": "px4_1",
+   "land_2": "px4_1"
+  }
+ ],
+ [
+  48,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  0,
+  1032,
+  4.875039,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_1",
+   "gate_2": "px4_2",
+   "land_1": "px4_1",
+   "land_2": "px4_2"
+  }
+ ],
+ [
+  49,
+  "COMPLETE",
+  "both vehicles landed at far pad",
+  2,
+  545,
+  10.0,
+  [
+   "gate_1",
+   "gate_2",
+   "land_1",
+   "land_2"
+  ],
+  {
+   "gate_1": "px4_2",
+   "gate_2": "px4_2",
+   "land_1": "px4_2",
+   "land_2": "px4_2"
+  }
+ ]
+]
