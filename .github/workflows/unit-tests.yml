@@ -15,7 +15,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: python -m pip install pytest opencv-contrib-python-headless numpy
+      # PyYAML/pymavlink/pyserial: fault scenarios, requirement registry, MAVLink codec checks.
+      - run: python -m pip install pytest opencv-contrib-python-headless numpy pyyaml pymavlink pyserial
       - name: Logic, verifier and negative regression tests
         shell: bash
         run: |
@@ -49,6 +50,10 @@ jobs:
         run: |
           set -euo pipefail
           for log in web/replay/data/*.csv; do
+            # Flight K (the live stereo-VO demo flight) fails VO availability by design. It is
+            # checked above by verify_evidence.py against its exact expected failing checks, and
+            # test_replay_fixtures.py proves this copy is byte-identical to that pinned flight.
+            case "$log" in *mission_stereo_vo.csv) continue ;; esac
             PYTHONPATH=src/px4_offboard python -m px4_offboard.vv_replay "$log"
           done
       - name: Configuration and world consistency

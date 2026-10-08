@@ -105,8 +105,10 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends git python3-pip python3-colcon-common-extensions
           pip3 install -r requirements-ci.txt
-      - name: px4_msgs (release/1.16, the version this repository was developed against)
-        run: git clone --depth 1 --branch release/1.16 https://github.com/PX4/px4_msgs.git src/px4_msgs
+      - name: px4_msgs (pinned to the commit this repository was developed against)
+        run: |
+          git clone https://github.com/PX4/px4_msgs.git src/px4_msgs
+          git -C src/px4_msgs checkout 392e831c1f659429ca83902e66820d7094591410
       - name: colcon build
         shell: bash
         run: |

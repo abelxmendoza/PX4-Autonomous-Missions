@@ -54,8 +54,8 @@ The validation report maps Requirement -> Test -> Evidence -> Result and lists w
 - It does not run PX4, Gazebo, or any flight. Flight results come from curated recordings made earlier on a
   workstation (see [engineering results](engineering_results.md)); CI re-checks those recordings, not the
   simulator.
-- The `ros2` job has **never been run on a GitHub runner** by the author of this change (it clones `px4_msgs`
-  `release/1.16` from the network). It is non-blocking so a first-run infrastructure problem cannot hold up
+- The `ros2` job has **never been run on a GitHub runner** by the author of this change (it clones `px4_msgs` from the network, pinned to commit
+  `392e831`). It is non-blocking so a first-run infrastructure problem cannot hold up
   merges; make it blocking (delete `continue-on-error`) after its first green run. The equivalent local
   commands (`colcon build`, full `pytest` with ROS sourced) have been run: 450 tests passed.
 - No physical hardware is involved. REQ-COMMS-006 (physical I2C/SPI) and REQ-HIL-004 (real flight
