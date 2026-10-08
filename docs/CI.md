@@ -54,10 +54,15 @@ The validation report maps Requirement -> Test -> Evidence -> Result and lists w
 - It does not run PX4, Gazebo, or any flight. Flight results come from curated recordings made earlier on a
   workstation (see [engineering results](engineering_results.md)); CI re-checks those recordings, not the
   simulator.
-- The `ros2` job has **never been run on a GitHub runner** by the author of this change (it clones `px4_msgs` from the network, pinned to commit
-  `392e831`). It is non-blocking so a first-run infrastructure problem cannot hold up
-  merges; make it blocking (delete `continue-on-error`) after its first green run. The equivalent local
-  commands (`colcon build`, full `pytest` with ROS sourced) have been run: 450 tests passed.
+- The `ros2` job (full test suite inside a `ros:humble` container, `px4_msgs` pinned to `392e831`) **has run on
+  GitHub and currently fails** at its "Full pytest with ROS available" step. The cause is not diagnosed: job logs
+  need repository-admin login and were not readable from the environment that wrote this. It stays non-blocking
+  (`continue-on-error`). Meanwhile the older workflow's `ros-adapters` job (`unit-tests.yml`) builds the same
+  `px4_msgs` and runs the three ROS node test files successfully; the same suite passes locally with ROS Humble
+  sourced (467 tests). Until the log is read, treat ROS coverage in CI as the `ros-adapters` job only.
+- The workflows' first runs on GitHub (commit `dcf2dde`) also broke the older `unit-tests.yml` jobs, because this
+  work added dependencies (PyYAML, pymavlink, pyserial) and a demo flight that fails VO availability by design.
+  Both were fixed in `db5d986`; the blocking jobs of both workflows pass.
 - No physical hardware is involved. REQ-COMMS-006 (physical I2C/SPI) and REQ-HIL-004 (real flight
   controller) are `NOT_RUN`.
 - The workflow file itself was validated as YAML and its `make` targets were run end to end locally in a
