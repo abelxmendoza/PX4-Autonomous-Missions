@@ -116,6 +116,12 @@ jobs:
           colcon build --packages-select px4_msgs px4_offboard
       - name: Full pytest with ROS available (nothing skipped for lack of rclpy)
         shell: bash
+        # ros:humble ships launch_testing / launch_testing_ros pytest plugins whose hooks are
+        # incompatible with current pytest (PluginValidationError before any test is collected).
+        # No test here uses them, so third-party plugin autoloading is turned off. Reproduced and
+        # verified in the same ros:humble image: 466 passed, 1 skipped (no gz Python bindings).
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
           source /opt/ros/humble/setup.bash
           source install/setup.bash
