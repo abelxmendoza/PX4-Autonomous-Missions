@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import math
 from typing import Iterable
 
-from .mission_logic import DEFAULT_OBSTACLE_COURSE, Fence, Obstacle
+from .mission_logic import DEFAULT_OBSTACLE_COURSE, Fence, Obstacle, segment_hits_expanded_aabb
 from .path_planner import plan_path
 
 Point = tuple[float, float, float]
@@ -157,6 +157,19 @@ DEFAULT_FLEET = Fleet(
 # more pending task must be over 10 m closer to win. A tunable, not a derived constant.
 WORKLOAD_PENALTY_M = 10.0
 
+# A circular hold that lasts this long is a deadlock, not a drone waiting for
+# another to pass. Short enough that the mission does not sit in silence until
+# the 330 s timeout, and long enough that a yield already underway is not
+# aborted. This does not change the mission timeout.
+DEADLOCK_HOLD_S = 15.0
+
+# How much of an issued move is reserved for other drones. The vehicle still
+# flies the whole leg; only the conflict check is limited to the part it can
+# reach inside the 1 s predicted-separation window at the harness's fastest
+# speed (1.5 m/s) plus the 3.5 m reservation. Reserving the entire leg made
+# the drone behind wait until the leg was finished, which is the gridlock.
+RESERVATION_HORIZON_M = 5.0
+
 
 class SurveyCoordinator:
     """Deterministic planner; all time inputs use the same host monotonic clock."""
@@ -188,6 +201,20 @@ class SurveyCoordinator:
         self.reassignments = 0
         self.last_progress = 0.0
         self.last_commands: dict[str, dict] = {}
+        # Right-of-way bookkeeping. blocked_since is the first time a drone
+        # with a route was refused a move; yield_target is a committed sidestep
+        # so a yielder does not pick a new point every tick.
+        self.blocked_since: dict[str, float] = {}
+        self.yield_target: dict[str, Point] = {}
+        self._idle_since: float | None = None
+        self._cycle_since: float | None = None
+        # Set while drones are stuck, cleared when they move again. A circular
+        # wait also aborts; a plain stall is reported and left to the timeout
+        # so a physically impossible task (a grounded drone on the goal) still
+        # ends the way the two-vehicle characterization records it.
+        self.deadlock: str | None = None
+        self.deadlock_events: list[str] = []
+        self._replan_not_before: dict[str, float] = {}
 
     def update(self, sample: Telemetry, now: float) -> bool:
         if not 0 <= now - sample.sent <= 0.75:
@@ -225,7 +252,21 @@ class SurveyCoordinator:
     def _hold(self) -> dict[str, dict]:
         return {v: {"action": "hold"} for v in self.homes}
 
-    def _route(self, vehicle: str, goal: Point) -> list[Point]:
+    def _approach_limit(self, other: str) -> float:
+        """Distance another drone's body must be kept outside.
+
+        Airborne drones keep the 3.5 m reservation. A drone that has landed and
+        disarmed is not going to close the gap, and the pads are 5.5 m apart, so
+        a 3.5 m capsule on each side overlaps and leaves no way back to a pad.
+        The 2.5 m floor is unchanged, as is the predicted-separation check.
+        """
+        sample = self.telemetry[other]
+        if sample.state == "LANDED" and sample.landed and not sample.armed:
+            return self.minimum_separation
+        return self.reservation
+
+    def _route(self, vehicle: str, goal: Point, avoid: Iterable[str] = (),
+               avoid_keep_out: float | None = None) -> list[Point]:
         current = self.telemetry[vehicle].position
         # Retired vehicles stay reserved on the ground. No overflight shortcut.
         # The physical course (DEFAULT_OBSTACLE_COURSE) is always avoided too,
@@ -238,14 +279,212 @@ class SurveyCoordinator:
         # obstacle_clearance uniformly — the extra margin is baked into its
         # placeholder box size instead (half-size = reservation - obstacle_clearance).
         retired_half_size = max(0.0, self.reservation - self.obstacle_clearance)
+        avoid_half_size = retired_half_size if avoid_keep_out is None else max(
+            0.0, avoid_keep_out - self.obstacle_clearance)
+        avoid = set(avoid)
         obstacles = list(DEFAULT_OBSTACLE_COURSE) + [GPS_DENIED_ZONE] + [
-            Obstacle(t.position[1], t.position[0], retired_half_size * 2, retired_half_size * 2, 10.0)
-            for v, t in self.telemetry.items() if v != vehicle and v in self.retired
+            Obstacle(t.position[1], t.position[0],
+                     (avoid_half_size if v in avoid and v not in self.retired else retired_half_size) * 2,
+                     (avoid_half_size if v in avoid and v not in self.retired else retired_half_size) * 2,
+                     10.0)
+            for v, t in self.telemetry.items()
+            if v != vehicle and (v in self.retired or v in avoid)
         ]
         route = plan_path(current[:2], goal[:2], obstacles, FENCE,
                           clearance_m=self.obstacle_clearance, resolution_m=0.5,
                           fence_margin_m=0.5)
         return [(n, e, goal[2]) for n, e in route]
+
+    @staticmethod
+    def _vehicle_rank(name: str) -> tuple:
+        """Deterministic priority key. Lower sorts first: px4_1 before px4_2 before px4_10."""
+        tail = name.rsplit("_", 1)[-1]
+        if tail.isdigit():
+            return (int(tail), name)
+        return (1_000_000_000, name)
+
+    def _outranks(self, first: str, second: str) -> bool:
+        """Who moves first when two drones want the same space.
+
+        A drone that still has a route outranks one that is only hovering,
+        because the hoverer is what keeps the mission from ever reaching
+        RETURNING. Otherwise the lower vehicle rank wins, so the order is
+        total and a wait cannot be circular.
+        """
+        first_busy = bool(self.routes.get(first)) and first not in self.retired
+        second_busy = bool(self.routes.get(second)) and second not in self.retired
+        if first_busy != second_busy:
+            return first_busy
+        return self._vehicle_rank(first) < self._vehicle_rank(second)
+
+    @staticmethod
+    def _horizon(start: Point, end: Point) -> Point:
+        """The point at most RESERVATION_HORIZON_M along start→end."""
+        distance = math.dist(start[:2], end[:2])
+        if distance <= RESERVATION_HORIZON_M or distance < 1e-9:
+            return end
+        frac = RESERVATION_HORIZON_M / distance
+        return tuple(start[i] + frac * (end[i] - start[i]) for i in range(3))
+
+    def _in_free_space(self, start: Point, end: Point, ignore_vehicles: set[str]) -> bool:
+        """Yield targets stay inside the fence and off the known obstacles.
+
+        A retired vehicle we are stepping away from is ignored: the start point
+        is already inside its inflated box, so every segment would 'hit' it.
+        """
+        margin = 0.5
+        north, east, down = end
+        if not (FENCE.north_min + margin <= north <= FENCE.north_max - margin
+                and FENCE.east_min + margin <= east <= FENCE.east_max - margin
+                and -FENCE.altitude_max <= down <= 1.0):
+            return False
+        obstacles = list(DEFAULT_OBSTACLE_COURSE) + [GPS_DENIED_ZONE]
+        half = max(0.0, self.reservation - self.obstacle_clearance)
+        for vehicle, sample in self.telemetry.items():
+            if vehicle not in self.retired or vehicle in ignore_vehicles:
+                continue
+            obstacles.append(Obstacle(
+                sample.position[1], sample.position[0], half * 2, half * 2, 10.0))
+        return not any(
+            segment_hits_expanded_aabb(start, end, obstacle, self.obstacle_clearance)[0]
+            for obstacle in obstacles
+        )
+
+    def _yield_ok(self, vehicle: str, start: Point, end: Point, threat_segments: list[tuple[Point, Point]],
+                  reservations: dict[str, tuple[Point, Point]], escaping: set[str]) -> bool:
+        """A sidestep is legal when it leaves the threatened segment and does not
+        enter anyone else's reservation. A body we are already inside the
+        reservation of (but still outside the 2.5 m safety floor) may be left;
+        the move has to increase that distance and must not cross the floor.
+        """
+        if not self._in_free_space(start, end, escaping):
+            return False
+        for other, segment in reservations.items():
+            if other == vehicle:
+                continue
+            if other in escaping and math.dist(start[:2], self.telemetry[other].position[:2]) <= self.reservation:
+                body = self.telemetry[other].position
+                if segment_distance(start, end, body, body) < self.minimum_separation:
+                    return False
+                if math.dist(end[:2], body[:2]) <= math.dist(start[:2], body[:2]):
+                    return False
+                continue
+            if segment_distance(start, end, *segment) <= self.reservation:
+                return False
+        return all(segment_distance(end, end, *segment) > self.reservation for segment in threat_segments)
+
+    def _choose_yield(self, vehicle: str, threat_segments: list[tuple[Point, Point]],
+                      reservations: dict[str, tuple[Point, Point]], escaping: set[str],
+                      goal: Point | None = None) -> Point | None:
+        start = self.telemetry[vehicle].position
+        locked = self.yield_target.get(vehicle)
+        # Stay on the committed sidestep until it is reached. Re-picking every
+        # tick, while still a metre short, walked drones backwards along the
+        # launch line for minutes.
+        if locked is not None and math.dist(start, locked) >= 0.5 and self._yield_ok(
+                vehicle, start, locked, threat_segments, reservations, escaping):
+            return locked
+        best: Point | None = None
+        best_key: tuple | None = None
+        # A drone that still has a route should step toward that route, not
+        # merely the shortest legal hop. The shortest hop is what pushed a
+        # blocked drone away from its gate for the whole mission. An idle
+        # hoverer has no route, so the short hop that leaves the bubble is enough.
+        # Never step past the goal: a 12 m hop toward a pad 8 m away lands in
+        # the next row of landed drones, and the gaps there are not routable.
+        goal_limit = math.dist(start[:2], goal[:2]) if goal is not None else None
+        for distance in (1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0):
+            if goal_limit is not None and distance > goal_limit + 0.25:
+                continue
+            for step in range(16):
+                angle = step * math.pi / 8.0
+                candidate = (start[0] + distance * math.cos(angle),
+                             start[1] + distance * math.sin(angle), start[2])
+                if not self._yield_ok(vehicle, start, candidate, threat_segments, reservations, escaping):
+                    continue
+                clearance = min(segment_distance(candidate, candidate, *segment) for segment in threat_segments)
+                if goal is None:
+                    key = (distance, -clearance, step)
+                else:
+                    key = (math.dist(candidate[:2], goal[:2]), distance, -clearance, step)
+                if best_key is None or key < best_key:
+                    best_key, best = key, candidate
+            if goal is None and best is not None:
+                break
+        if best is not None:
+            self.yield_target[vehicle] = best
+        else:
+            self.yield_target.pop(vehicle, None)
+        return best
+
+    def _holding_cycle(self, denied: dict[str, list[str]], commands: dict[str, dict]) -> list[str] | None:
+        """A cycle in the 'who am I waiting for' graph, among drones that are actually holding.
+
+        A drone that has finished its own tasks and is hovering in someone else's
+        path will not move until RETURNING, and RETURNING will not start until
+        that someone finishes — so the hoverer waits on the drone it is blocking.
+        """
+        holding = {v for v, cmd in commands.items()
+                   if cmd.get("action") == "hold" and v not in self.retired}
+        graph: dict[str, list[str]] = {}
+        for vehicle, blockers in denied.items():
+            if vehicle not in holding:
+                continue
+            live = [b for b in blockers if b in holding]
+            if live:
+                graph[vehicle] = live
+        for vehicle, blockers in list(graph.items()):
+            for blocker in blockers:
+                if not self.routes.get(blocker):
+                    graph.setdefault(blocker, [])
+                    if vehicle not in graph[blocker]:
+                        graph[blocker].append(vehicle)
+        return _first_cycle(graph)
+
+    def _abort_if_circular_wait(self, now: float, commands: dict[str, dict],
+                                denied: dict[str, list[str]]) -> bool:
+        if self.phase not in {"SURVEY", "RETURNING"}:
+            self._cycle_since = None
+            return False
+        cycle = self._holding_cycle(denied, commands)
+        if not cycle:
+            self._cycle_since = None
+            return False
+        if self._cycle_since is None:
+            self._cycle_since = now
+        if now - self._cycle_since < DEADLOCK_HOLD_S:
+            return False
+        text = "circular wait: " + " -> ".join(cycle)
+        if self.deadlock != text:
+            self.deadlock_events.append(text)
+        self.deadlock = text
+        self._abort(f"deadlock: {text}")
+        return True
+
+    def _note_idle(self, now: float, commands: dict[str, dict]) -> None:
+        """Say so when the mission is simply not moving. Does not abort: an
+        unreachable task (grounded drone on the goal) is already characterized
+        as a timeout, and this only stops it being a silent one."""
+        if self.phase not in {"SURVEY", "RETURNING"}:
+            self._idle_since = None
+            return
+        healthy = [v for v in self.homes if v not in self.retired]
+        holds = [v for v in healthy if commands.get(v, {}).get("action") == "hold"]
+        moves = [v for v in healthy if commands.get(v, {}).get("action") == "move"]
+        if moves or not holds:
+            self._idle_since = None
+            if self.deadlock and self.deadlock.startswith("no mission progress"):
+                self.deadlock = None
+            return
+        if self._idle_since is None:
+            self._idle_since = now
+            return
+        if now - self._idle_since < DEADLOCK_HOLD_S:
+            return
+        text = f"no mission progress for {DEADLOCK_HOLD_S:.0f}s while drones hold"
+        if not (self.deadlock or "").startswith("no mission progress"):
+            self.deadlock_events.append(text)
+        self.deadlock = text
 
     def step(self, now: float) -> dict[str, dict]:
         commands = self._step(now)
@@ -365,22 +604,157 @@ class SurveyCoordinator:
         # Persistent, conservative reservations use each peer's last issued
         # segment as well as its current location. Newly issued segments are
         # considered immediately, before telemetry can acknowledge motion.
-        reservations = {}
+        # Grants go out in right-of-way order (a drone with a route before an
+        # idle hoverer, then lower vehicle rank). The reservation test itself
+        # is unchanged: a drone still may not enter the 3.5 m capsule.
+        reservations: dict[str, tuple[Point, Point]] = {}
         for v, t in self.telemetry.items():
             previous = self.last_commands.get(v, {})
-            end = tuple(previous["target"]) if previous.get("action") == "move" else t.position
-            reservations[v] = (t.position, end)
-        for v in healthy:
-            if commands[v]["action"] == "land" or not self.routes[v]:
-                continue
-            start, end = self.telemetry[v].position, self.routes[v][0]
-            if any(segment_distance(start, end, *segment) <= self.reservation
-                   for other, segment in reservations.items() if other != v):
+            if previous.get("action") == "move":
+                reservations[v] = (t.position, self._horizon(t.position, tuple(previous["target"])))
+            else:
+                reservations[v] = (t.position, t.position)
+        intents = {
+            v: (self.telemetry[v].position, self.routes[v][0])
+            for v in healthy if commands[v]["action"] != "land" and self.routes[v]
+        }
+        granted: set[str] = set()
+        denied: dict[str, list[str]] = {}
+        for v in sorted(intents, key=self._vehicle_rank):
+            start, end = intents[v]
+            blockers = [other for other, segment in reservations.items()
+                        if other != v and segment_distance(start, self._horizon(start, end), *segment) <= self._approach_limit(other)]
+            if blockers:
+                denied[v] = blockers
+                self.blocked_since.setdefault(v, now)
                 continue
             commands[v] = {"action": "move", "target": list(end)}
+            reservations[v] = (start, self._horizon(start, end))
+            granted.add(v)
+            self.blocked_since.pop(v, None)
+            self.yield_target.pop(v, None)
+        # Drones that lost the right-of-way, and idle drones sitting on a
+        # winner's next segment, step aside. They do not get to fly through
+        # the winner, and the winner does not fly until the sidestep has
+        # cleared the reservation. A landed drone cannot step aside; if it is
+        # the only thing on the polyline, drop that polyline so the next tick
+        # plans around it (the planner already treats retired vehicles as
+        # obstacles, but only at the moment a route is built).
+        needs_yield: dict[str, list[tuple[Point, Point]]] = {}
+        escaping: dict[str, set[str]] = {}
+        for v, blockers in denied.items():
+            if all(b in self.retired for b in blockers):
+                self.routes[v] = []
+                self.active[v] = None
+            for b in blockers:
+                if b in granted or commands.get(b, {}).get("action") == "land":
+                    continue
+                if b in self.retired:
+                    body = self.telemetry[b].position
+                    if segment_distance(self.telemetry[v].position, self.telemetry[v].position,
+                                        body, body) <= self.reservation:
+                        needs_yield.setdefault(v, []).append((body, body))
+                        escaping.setdefault(v, set()).add(b)
+                    continue
+                if self._outranks(v, b):
+                    needs_yield.setdefault(b, []).append(intents[v])
+                    escaping.setdefault(b, set()).add(v)
+        for v in list(self.yield_target):
+            if v not in needs_yield:
+                self.yield_target.pop(v, None)
+        for v in sorted(needs_yield, key=self._vehicle_rank, reverse=True):
+            # Aim at the end of the route, not the next fence-hugging corner.
+            # Steering toward that corner walked drones into the east fence.
+            # With no route, a short hop is enough to leave the bubble.
+            goal = self.routes[v][-1] if self.routes.get(v) else None
+            target = self._choose_yield(v, needs_yield[v], reservations, escaping.get(v, set()), goal)
+            if target is None:
+                continue
+            start = self.telemetry[v].position
+            commands[v] = {"action": "move", "target": list(target)}
+            reservations[v] = (start, target)
+            self.blocked_since.pop(v, None)
+        # Right-of-way cannot move a drone that is landed, landing, or boxed
+        # into a pad with no legal sidestep. Those peers are stationary, so
+        # the blocked drone replans around them. A landed, disarmed peer is
+        # given the 2.5 m floor rather than the 3.5 m reservation: the pads are
+        # 5.5 m apart, and two 3.5 m capsules overlap, so there is no path
+        # home that honours 3.5 m. Airborne peers still keep 3.5 m. The new
+        # leg is refused when it enters that limit. Eight seconds of holding
+        # come first so a drone that is merely passing through is not turned
+        # into a detour.
+        for v, blockers in list(denied.items()):
+            if commands[v]["action"] != "hold" or not self.routes.get(v):
+                continue
+            if now - self.blocked_since.get(v, now) < 8.0:
+                continue
+            if now < self._replan_not_before.get(v, 0.0):
+                continue
+            # Yield already had its chance this tick. What remains is a peer
+            # with nowhere to sidestep: no route, not moving. Replan around
+            # those bodies only — replanning around every holder packed the
+            # corridor solid and made A* run every tick.
+            idle = [b for b in blockers if b not in self.retired and not self.routes.get(b)
+                    and commands.get(b, {}).get("action") != "move"]
+            if not idle:
+                continue
+            if any(commands.get(b, {}).get("action") == "move" for b in blockers if b not in self.retired):
+                continue
+            live = idle
+            goal = self.routes[v][-1]
+            if self.active[v]:
+                task = next(task for task in self.tasks if task.name == self.active[v])
+                if task.start != task.end and math.dist(self.telemetry[v].position, task.start) > 0.5:
+                    goal = task.start
+            settled = [b for b in live
+                       if self.telemetry[b].state == "LANDED" and self.telemetry[b].landed
+                       and not self.telemetry[b].armed]
+            try:
+                # Landed peers use the 2.5 m floor. The 3.5 m box overlaps the
+                # 5.5 m pad spacing and the planner then reports no path home.
+                route = self._route(
+                    v, goal, avoid=live,
+                    avoid_keep_out=self.minimum_separation if settled and len(settled) == len(live) else None)
+            except (ValueError, RuntimeError):
+                # The start cell snapped into a stationary peer's inflated box
+                # (common when a drone is just outside the 3.5 m reservation and
+                # hard against the fence). Step away, then replan next tick.
+                # A landed peer cannot yield, and right-of-way does not let us
+                # fly through it.
+                bodies = live or [b for b in blockers if b in self.telemetry]
+                if bodies:
+                    nearest = min(bodies, key=lambda b: math.dist(
+                        self.telemetry[v].position, self.telemetry[b].position))
+                    threat = (self.telemetry[nearest].position, self.telemetry[nearest].position)
+                    target = self._choose_yield(v, [threat], reservations, {nearest})
+                    if target is not None:
+                        start = self.telemetry[v].position
+                        commands[v] = {"action": "move", "target": list(target)}
+                        reservations[v] = (start, target)
+                self._replan_not_before[v] = now + 2.0
+                continue
+            if not route:
+                continue
+            start = self.telemetry[v].position
+            end = route[0]
+            if any(segment_distance(start, end, *segment) <= self._approach_limit(other)
+                   for other, segment in reservations.items() if other != v):
+                self._replan_not_before[v] = now + 2.0
+                continue
+            self.routes[v] = route
+            commands[v] = {"action": "move", "target": list(end)}
             reservations[v] = (start, end)
+            self.blocked_since.pop(v, None)
+            self.yield_target.pop(v, None)
         if self.phase == "RETURNING" and all(t.state == "LANDED" and t.landed and not t.armed for t in samples):
             self.phase, self.reason = "COMPLETE", "both vehicles landed at far pad"
+            self.deadlock = None
+            return commands
+        if self._abort_if_circular_wait(now, commands, denied):
+            return {v: {"action": "land"} for v in self.homes}
+        self._note_idle(now, commands)
+        if self.deadlock:
+            self.reason = self.deadlock
         else:
             self.reason = "transiting to far pad" if self.phase == "SURVEY" else "landing at far pad"
         return commands
@@ -389,4 +763,38 @@ class SurveyCoordinator:
         return {"phase": self.phase, "reason": self.reason,
                 "completed": [t.name for t in self.tasks if t.completed],
                 "assignments": {t.name: t.owner for t in self.tasks},
-                "retired": sorted(self.retired), "reassignments": self.reassignments}
+                "retired": sorted(self.retired), "reassignments": self.reassignments,
+                "deadlock": self.deadlock, "deadlock_events": list(self.deadlock_events)}
+
+
+def _first_cycle(graph: dict[str, list[str]]) -> list[str] | None:
+    """One cycle as [a, b, ..., a], or None. Deterministic in the start node."""
+    color: dict[str, int] = {}
+    parent: dict[str, str] = {}
+
+    def walk(node: str) -> list[str] | None:
+        color[node] = 1
+        for nxt in graph.get(node, ()):
+            if color.get(nxt, 0) == 0:
+                parent[nxt] = node
+                found = walk(nxt)
+                if found:
+                    return found
+            elif color.get(nxt) == 1:
+                cycle = [nxt]
+                cursor = node
+                while cursor != nxt and cursor in parent:
+                    cycle.append(cursor)
+                    cursor = parent[cursor]
+                cycle.append(nxt)
+                cycle.reverse()
+                return cycle
+        color[node] = 2
+        return None
+
+    for node in sorted(graph):
+        if color.get(node, 0) == 0:
+            found = walk(node)
+            if found:
+                return found
+    return None

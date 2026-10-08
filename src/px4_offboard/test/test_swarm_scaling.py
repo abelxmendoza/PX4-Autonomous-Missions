@@ -4,12 +4,10 @@ What is established here, and what is not:
 
 * SAFETY holds at every size: invariants #2, #3, #5 are checked after every step
   and no two vehicles come within the 2.5 m minimum separation.
-* LIVENESS (finishing the mission) holds without failures up to 5 drones.
-* At 10 drones the mission never finishes: the coordinator gridlocks (BUG-021).
-  That is pinned as a strict expected failure, so the day it is fixed this test
-  fails and the marker has to be removed, rather than the gap being forgotten.
-* With a dropout, missions of 2-5 drones often end in the 330 s timeout for the
-  same reason; those rates are measured (bugs/BUG-021.md), not asserted.
+* LIVENESS without a dropout holds at 1, 2, 3, 5 and 10 drones (BUG-021).
+* A dropout can still end in the 330 s timeout, or in a reported circular wait.
+  Those rates are measured in bugs/BUG-021.md. An abort must not be a separation
+  or prediction trip.
 """
 from __future__ import annotations
 
@@ -63,16 +61,18 @@ def test_missions_without_failures_complete_up_to_five_drones(runs, n):
         [(r.scenario.seed, r.final_phase, r.coordinator.reason) for r in clean]
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-021: reservation gridlock; 10 drones never finish")
 def test_ten_drones_complete_without_failures(runs):
     clean = [r for r in runs[10] if r.scenario.dropout_vehicle is None]
-    assert clean and all(r.final_phase == "COMPLETE" for r in clean)
+    assert clean and all(r.final_phase == "COMPLETE" for r in clean), \
+        [(r.scenario.seed, r.final_phase, r.coordinator.reason) for r in clean]
 
 
-def test_ten_drone_runs_end_by_timeout_not_by_a_safety_trip(runs):
-    # Characterizes BUG-021: the coordinator stays safe and gives up on time.
+def test_ten_drone_aborts_are_not_safety_trips(runs):
+    # A dropout may still time out, or stop on a reported circular wait.
+    # It must not be a separation breach or a predicted-separation abort.
     reasons = {r.coordinator.reason for r in runs[10] if r.final_phase == "ABORTED"}
-    assert reasons == {"mission timeout / blocked route"}, reasons
+    for reason in reasons:
+        assert reason == "mission timeout / blocked route" or reason.startswith("deadlock:"), reason
 
 
 def test_one_drone_cannot_recover_from_its_own_failure(runs):

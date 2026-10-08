@@ -4,8 +4,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  483,
-  4.946473,
+  441,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -14,8 +14,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -34,8 +34,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -54,8 +54,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -64,8 +64,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1032,
-  4.875039,
+  943,
+  4.502914,
   [
    "gate_1",
    "gate_2",
@@ -74,8 +74,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -94,8 +94,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -114,8 +114,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -124,8 +124,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1606,
-  4.899009,
+  1470,
+  4.541003,
   [
    "gate_1",
    "gate_2",
@@ -134,8 +134,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -154,8 +154,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -174,8 +174,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -184,8 +184,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  723,
-  4.904737,
+  659,
+  4.525451,
   [
    "gate_1",
    "gate_2",
@@ -194,8 +194,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -213,8 +213,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -233,8 +233,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -243,8 +243,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  723,
-  4.904737,
+  659,
+  4.525451,
   [
    "gate_1",
    "gate_2",
@@ -253,8 +253,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -273,8 +273,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -293,8 +293,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -303,8 +303,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1606,
-  4.899009,
+  1470,
+  4.541003,
   [
    "gate_1",
    "gate_2",
@@ -313,8 +313,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -333,8 +333,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -353,8 +353,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -363,8 +363,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  483,
-  4.946473,
+  441,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -373,8 +373,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -393,8 +393,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -413,8 +413,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -423,8 +423,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  483,
-  4.946473,
+  441,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -433,8 +433,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -453,8 +453,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -463,8 +463,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   1,
-  824,
-  4.393423,
+  812,
+  4.525451,
   [
    "gate_1",
    "gate_2",
@@ -473,8 +473,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_1"
   }
  ],
@@ -483,8 +483,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1032,
-  4.875039,
+  943,
+  4.502914,
   [
    "gate_1",
    "gate_2",
@@ -493,8 +493,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -513,8 +513,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -533,8 +533,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -543,8 +543,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  723,
-  4.904737,
+  659,
+  4.525451,
   [
    "gate_1",
    "gate_2",
@@ -553,8 +553,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -573,8 +573,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -593,8 +593,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -603,8 +603,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  723,
-  4.904737,
+  659,
+  4.525451,
   [
    "gate_1",
    "gate_2",
@@ -613,8 +613,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -633,8 +633,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -653,8 +653,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -663,8 +663,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1032,
-  4.875039,
+  943,
+  4.502914,
   [
    "gate_1",
    "gate_2",
@@ -673,8 +673,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -693,8 +693,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -713,8 +713,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -723,8 +723,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1606,
-  4.899009,
+  1470,
+  4.541003,
   [
    "gate_1",
    "gate_2",
@@ -733,8 +733,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -753,8 +753,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -763,8 +763,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   1,
-  564,
-  4.074649,
+  547,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -773,8 +773,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_1"
   }
  ],
@@ -783,8 +783,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  483,
-  4.946473,
+  441,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -793,8 +793,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -813,8 +813,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -833,8 +833,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -843,8 +843,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1606,
-  4.899009,
+  1470,
+  4.541003,
   [
    "gate_1",
    "gate_2",
@@ -853,8 +853,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -873,8 +873,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -893,8 +893,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -903,8 +903,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  483,
-  4.946473,
+  441,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -913,8 +913,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -923,8 +923,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   1,
-  526,
-  4.946473,
+  558,
+  4.499822,
   [
    "gate_1",
    "gate_2",
@@ -933,8 +933,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -953,8 +953,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_1",
    "land_1": "px4_1",
+   "gate_2": "px4_1",
    "land_2": "px4_1"
   }
  ],
@@ -963,8 +963,8 @@
   "COMPLETE",
   "both vehicles landed at far pad",
   0,
-  1032,
-  4.875039,
+  943,
+  4.502914,
   [
    "gate_1",
    "gate_2",
@@ -973,8 +973,8 @@
   ],
   {
    "gate_1": "px4_1",
-   "gate_2": "px4_2",
    "land_1": "px4_1",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ],
@@ -993,8 +993,8 @@
   ],
   {
    "gate_1": "px4_2",
-   "gate_2": "px4_2",
    "land_1": "px4_2",
+   "gate_2": "px4_2",
    "land_2": "px4_2"
   }
  ]
