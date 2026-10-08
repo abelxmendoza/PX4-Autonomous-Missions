@@ -10,6 +10,9 @@ This is a kinematic fixture around the real coordinator, not PX4 flight evidence
 Invariants implemented so far:
   #2  every one of the four tasks has exactly one owner, the owner is px4_1 or
       px4_2, and report()["assignments"] covers all four tasks.
+  #3  a completed task stays completed and its owner never changes.
+  #5  COMPLETE means every task was actually visited (armed, within 0.6 m),
+      by the same rule as the independent verifier.
 """
 from __future__ import annotations
 
@@ -168,7 +171,74 @@ def assert_every_task_has_one_valid_owner(c: SurveyCoordinator) -> None:
             f"report says {task.name} -> {assignments[task.name]!r}, coordinator state says {task.owner!r}"
 
 
-INVARIANTS: list[Invariant] = [assert_every_task_has_one_valid_owner]
+# --- Invariant #3 ----------------------------------------------------------------
+
+class CompletedTasksStayCompleted:
+    """Once a task is completed it stays completed, and its owner never changes.
+
+    Needs the previous step, so it is stateful; it resets itself when it is
+    handed a different coordinator, so state cannot leak between scenarios."""
+
+    def __init__(self) -> None:
+        self._coordinator: SurveyCoordinator | None = None
+        self._done: dict[str, str] = {}  # task name -> owner at completion
+
+    def __call__(self, c: SurveyCoordinator) -> None:
+        if c is not self._coordinator:
+            self._coordinator, self._done = c, {}
+        for task in c.tasks:
+            if task.name in self._done:
+                assert task.completed, f"{task.name} was completed and is now incomplete again"
+                assert task.owner == self._done[task.name], (
+                    f"{task.name} changed owner after completion: "
+                    f"{self._done[task.name]!r} -> {task.owner!r}")
+            elif task.completed:
+                self._done[task.name] = task.owner
+
+
+# --- Invariant #5 ----------------------------------------------------------------
+
+VISIT_RADIUS_M = 0.6  # the independent verifier's rule (swarm_verify.verify)
+
+
+class CompleteMeansEveryTaskWasVisited:
+    """COMPLETE means all four tasks are completed AND each one was actually
+    visited: some armed vehicle's reported position came within 0.6 m of the task
+    point at some step. Same visit rule as swarm_verify.verify (any vehicle,
+    armed, < 0.6 m); the tasks here have start == end, so that is one point.
+
+    This is the case-study bug as a rule: the coordinator once accepted a task at
+    1.0 m, so it could report COMPLETE for points never visited within 0.6 m."""
+
+    def __init__(self) -> None:
+        self._coordinator: SurveyCoordinator | None = None
+        self._visited: set[str] = set()
+        self._closest: dict[str, float] = {}
+
+    def __call__(self, c: SurveyCoordinator) -> None:
+        if c is not self._coordinator:
+            self._coordinator, self._visited, self._closest = c, set(), {}
+        for task in c.tasks:
+            for t in c.telemetry.values():
+                d = math.dist(t.position, task.end)
+                self._closest[task.name] = min(self._closest.get(task.name, math.inf), d)
+                if t.armed and d < VISIT_RADIUS_M:
+                    self._visited.add(task.name)
+        if c.phase == "COMPLETE":
+            incomplete = [t.name for t in c.tasks if not t.completed]
+            assert not incomplete, f"COMPLETE with incomplete tasks {incomplete}"
+            unvisited = {t.name: round(self._closest.get(t.name, math.inf), 3)
+                         for t in c.tasks if t.name not in self._visited}
+            assert not unvisited, (
+                f"COMPLETE but never visited within {VISIT_RADIUS_M} m "
+                f"(closest approach per task, m): {unvisited}")
+
+
+INVARIANTS: list[Invariant] = [
+    assert_every_task_has_one_valid_owner,  # 2
+    CompletedTasksStayCompleted(),          # 3
+    CompleteMeansEveryTaskWasVisited(),     # 5
+]
 
 
 # --- The invariant on real scenarios ------------------------------------------------
@@ -178,7 +248,7 @@ def results() -> list[RunResult]:
     return [run_scenario(Scenario.from_seed(s), INVARIANTS) for s in SEEDS]
 
 
-def test_invariant_2_holds_across_50_seeded_scenarios(results):
+def test_invariants_2_3_5_hold_across_50_seeded_scenarios(results):
     # run_scenario raised with the failing seed if any step broke the invariant.
     assert len(results) == 50
     assert all(r.checks_run == r.steps * len(INVARIANTS) for r in results)
@@ -237,6 +307,77 @@ def test_invariant_2_detects_a_report_that_disagrees_with_the_tasks():
                                                        if k != "land_2"}}
     with pytest.raises(AssertionError, match="covers"):
         assert_every_task_has_one_valid_owner(c)
+
+
+def test_invariants_3_and_5_are_not_vacuous_on_these_scenarios(results):
+    # #3 only bites on completed tasks and #5 only on COMPLETE runs: make sure both happen a lot.
+    completed = sum(t.completed for r in results for t in r.coordinator.tasks)
+    complete_runs = sum(r.final_phase == "COMPLETE" for r in results)
+    assert completed >= 190, f"only {completed} task completions across 50 runs"
+    assert complete_runs >= 45, f"only {complete_runs} runs reached COMPLETE"
+
+
+def _run_with(seed: int, mutate) -> None:
+    run_scenario(Scenario.from_seed(seed), [CompletedTasksStayCompleted(), CompleteMeansEveryTaskWasVisited()],
+                 mutate=mutate)
+
+
+def test_invariant_3_detects_a_completed_task_becoming_incomplete():
+    def uncomplete(c, tick):
+        done = [t for t in c.tasks if t.completed]
+        if done and tick % 50 == 0:
+            done[0].completed = False
+
+    with pytest.raises(AssertionError, match="now incomplete again"):
+        _run_with(0, uncomplete)
+
+
+def test_invariant_3_detects_ownership_moving_after_completion():
+    def steal(c, tick):
+        for t in c.tasks:
+            if t.completed:
+                t.owner = "px4_2" if t.owner == "px4_1" else "px4_1"
+                return
+
+    with pytest.raises(AssertionError, match="changed owner after completion"):
+        _run_with(0, steal)
+
+
+def test_invariant_5_detects_a_forged_complete():
+    def forge(c, tick):
+        if tick == 30:
+            for t in c.tasks:
+                t.completed = True
+            c.phase = "COMPLETE"
+
+    with pytest.raises(AssertionError, match="never visited within 0.6 m"):
+        _run_with(1, forge)
+
+
+def _accept_task_endpoints_at_1m(c: SurveyCoordinator, tick: int) -> None:
+    """Re-creates the pre-fix coordinator rule from the case study -- a task
+    endpoint accepted at 1.0 m instead of 0.5 m -- from outside, so
+    swarm_logic.py is untouched."""
+    for v in HOMES:
+        t, name = c.telemetry.get(v), c.active.get(v)
+        if v in c.retired or t is None or name is None or len(c.routes[v]) != 1:
+            continue
+        if math.dist(t.position, c.routes[v][0]) < 1.0:
+            c.routes[v].pop(0)
+            next(task for task in c.tasks if task.name == name).completed = True
+            c.active[v] = None
+
+
+def test_invariant_5_catches_the_original_case_study_bug():
+    caught = []
+    for seed in range(12):
+        try:
+            _run_with(seed, _accept_task_endpoints_at_1m)
+        except AssertionError as exc:
+            if "never visited" in str(exc):
+                caught.append(seed)
+    # With the old 1.0 m acceptance, runs reach COMPLETE without real visits, and #5 says so.
+    assert len(caught) >= 6, f"invariant 5 caught the 1.0 m acceptance bug in only {caught} of 12 seeds"
 
 
 def test_the_runner_checks_after_every_step_and_reports_the_failing_seed():
