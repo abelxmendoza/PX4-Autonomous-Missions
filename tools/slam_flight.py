@@ -279,14 +279,24 @@ async def fly(args) -> None:
     node = Node()
     node.subscribe(LaserScan, SCAN_TOPIC, inputs.on_scan)
     node.subscribe(Pose_V, POSE_TOPIC, inputs.on_pose)
-    try:
-        display = GazeboMapDisplay()
-        if not display.available():
-            print("(no Gazebo window answering /marker: running without the map display)", flush=True)
+    display = None
+    if os.environ.get("HEADLESS"):
+        print("(HEADLESS: no map display)", flush=True)
+    else:
+        try:
+            display = GazeboMapDisplay()
+            # The Gazebo window can take a while after PX4 is up; keep asking for a minute.
+            deadline = time.monotonic() + 60.0
+            while not display.available():
+                if time.monotonic() > deadline:
+                    print("(no Gazebo window answering /marker: running without the map display)", flush=True)
+                    display = None
+                    break
+            if display is not None:
+                print("Gazebo window found: drawing costmap, map and trails", flush=True)
+        except Exception as exc:
+            print(f"(no Gazebo display: {exc})", flush=True)
             display = None
-    except Exception as exc:
-        print(f"(no Gazebo display: {exc})", flush=True)
-        display = None
     runs: list[SlamRun] = []
     active, stop_worker = threading.Event(), threading.Event()
     stats = {"processed": 0, "waits": 0}
