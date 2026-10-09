@@ -1,0 +1,61 @@
+{
+  "world": "search_field",
+  "frame": "NED metres from the spawn point (north, east)",
+  "dictionary": "DICT_4X4_50",
+  "marker_length_m": 1.0,
+  "field": {
+    "north_min": 0.0,
+    "north_max": 60.0,
+    "east_min": -30.0,
+    "east_max": 30.0
+  },
+  "placement": {
+    "seed": 7,
+    "edge_margin_m": 4.0,
+    "launch_strip_north_max_m": 10.0,
+    "min_spacing_m": 8.0
+  },
+  "note": "Ground truth for scoring search results. Flight code must not read this file.",
+  "targets": [
+    {
+      "id": 3,
+      "north": 26.82,
+      "east": -22.98
+    },
+    {
+      "id": 4,
+      "north": 14.17,
+      "east": -3.93
+    },
+    {
+      "id": 6,
+      "north": 48.04,
+      "east": -19.56
+    },
+    {
+      "id": 9,
+      "north": 20.27,
+      "east": 6.63
+    },
+    {
+      "id": 20,
+      "north": 53.59,
+      "east": 4.01
+    },
+    {
+      "id": 25,
+      "north": 28.25,
+      "east": 24.77
+    },
+    {
+      "id": 34,
+      "north": 12.14,
+      "east": 18.64
+    },
+    {
+      "id": 41,
+      "north": 36.75,
+      "east": 7.22
+    }
+  ]
+}

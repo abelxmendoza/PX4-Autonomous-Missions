@@ -24,6 +24,7 @@ test-integration:
 evidence:
 	$(PY) scripts/verify_evidence.py
 	$(PY) tools/gen_golden_frames.py --check
+	$(PY) tools/gen_search_world.py --check
 	$(PY) scripts/export_gazebo_world.py --check
 
 faults:
