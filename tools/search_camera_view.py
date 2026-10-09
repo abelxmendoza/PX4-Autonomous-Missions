@@ -11,62 +11,28 @@ drone and it does not read the ground-truth target file.
 from __future__ import annotations
 
 import argparse
-import os
 import signal
-import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
-os.environ.setdefault("GZ_IP", "127.0.0.1")
-os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src" / "px4_offboard"))
+from px4_offboard.gz_camera_feed import SEARCH_DOWN_CAMERA_TOPIC, CameraFeed  # noqa: E402
 
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
-from gz.msgs10.image_pb2 import Image as GzImage  # noqa: E402
-from gz.transport13 import Node as GzNode  # noqa: E402
-
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TOPIC = ("/world/search_field/model/x500_search_cam_0/link/camera_down_link"
-                 "/sensor/down_imager/image")
-
-
-def _cam_sub_binary() -> str:
-    for p in (ROOT / "build" / "cpp" / "gz_cam_sub", ROOT / "scripts" / "gz_cam_sub"):
-        if p.is_file() and os.access(p, os.X_OK):
-            return str(p)
-    raise SystemExit("gz_cam_sub not built: run `make cpp-build` (or launch full_stack once)")
-
-
-class Latest:
-    def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.frame: np.ndarray | None = None
-        self.count = 0
-
-    def on_image(self, msg: GzImage) -> None:
-        if msg.width == 0 or msg.height == 0:
-            return
-        rgb = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
-        with self.lock:
-            self.frame = cv2.cvtColor(rgb[:, :, :3], cv2.COLOR_RGB2BGR)
-            self.count += 1
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--topic", default=DEFAULT_TOPIC)
+    parser.add_argument("--topic", default=SEARCH_DOWN_CAMERA_TOPIC)
     parser.add_argument("--snapshot", type=Path, help="also save the annotated frame here every second")
     parser.add_argument("--no-window", action="store_true")
     args = parser.parse_args()
 
-    waker = subprocess.Popen([_cam_sub_binary(), args.topic], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    latest = Latest()
-    node = GzNode()
-    if not node.subscribe(GzImage, args.topic, latest.on_image):
-        waker.terminate()
-        raise SystemExit(f"could not subscribe to {args.topic}")
+    feed = CameraFeed(args.topic)
 
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     if hasattr(cv2.aruco, "ArucoDetector"):  # OpenCV >= 4.7 (same split as vision_marker_detect.py)
@@ -82,9 +48,7 @@ def main() -> int:
     print(f"viewing {args.topic}", flush=True)
     try:
         while not stop.is_set():
-            with latest.lock:
-                frame = None if latest.frame is None else latest.frame.copy()
-                frames = latest.count
+            frame, frames = feed.latest()
             if frame is None:
                 time.sleep(0.1)
                 continue
@@ -109,7 +73,7 @@ def main() -> int:
             else:
                 time.sleep(0.05)
     finally:
-        waker.terminate()
+        feed.close()
         cv2.destroyAllWindows()
     print(f"ids seen: {sorted(seen)}", flush=True)
     return 0

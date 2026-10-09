@@ -62,6 +62,23 @@ class MarkerDetection:
     side_px: float
 
 
+def detect_markers(gray_image: np.ndarray, dictionary_name: str = "DICT_4X4_50") -> list[MarkerDetection]:
+    """Every ArUco marker in the frame (the search mission needs all of them, not one)."""
+    corners, ids, _rejected = _detect(gray_image, _dictionary(dictionary_name))
+    if ids is None or len(corners) == 0:
+        return []
+    out = []
+    for c, i in zip(corners, ids):
+        pts = c[0]
+        out.append(MarkerDetection(
+            marker_id=int(np.ravel(i)[0]),
+            center_x_px=float(pts[:, 0].mean()),
+            center_y_px=float(pts[:, 1].mean()),
+            side_px=float(np.linalg.norm(pts[0] - pts[1])),
+        ))
+    return out
+
+
 def detect_largest_marker(
     gray_image: np.ndarray, dictionary_name: str = "DICT_4X4_50"
 ) -> MarkerDetection | None:

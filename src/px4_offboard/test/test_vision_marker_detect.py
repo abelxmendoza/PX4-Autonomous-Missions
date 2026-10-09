@@ -55,3 +55,15 @@ def test_unknown_dictionary_raises():
     frame = np.full((480, 640), 200, dtype=np.uint8)
     with pytest.raises(UnknownArucoDictionary):
         detect_largest_marker(frame, dictionary_name="NOT_A_REAL_DICT")
+
+
+def test_detect_markers_returns_every_marker_in_the_frame():
+    from px4_offboard.vision_marker_detect import detect_markers
+
+    frame = np.full((480, 640), 200, dtype=np.uint8)
+    for mid, (x, y) in {3: (40, 40), 9: (300, 60), 25: (420, 300)}.items():
+        frame[y : y + 90, x : x + 90] = generate_marker_image(mid, 90)
+    found = {d.marker_id: d for d in detect_markers(frame)}
+    assert set(found) == {3, 9, 25}
+    assert found[9].center_x_px == pytest.approx(345, abs=2) and found[9].center_y_px == pytest.approx(105, abs=2)
+    assert detect_markers(np.full((480, 640), 200, dtype=np.uint8)) == []

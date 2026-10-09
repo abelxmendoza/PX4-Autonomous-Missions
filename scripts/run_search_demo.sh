@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Watch one drone sweep the search field: PX4 SITL + Gazebo (window, opened by PX4) + the downward
-# camera with live ArUco detections + a scripted lawnmower flight (tools/search_demo_flight.py).
+# camera with live ArUco detections + a scripted lawnmower flight that geolocates every
+# target from PX4's own estimate (tools/search_demo_flight.py), scored after landing.
 #
 #   scripts/run_search_demo.sh            # needs a display; Ctrl-C stops everything
 #
@@ -52,6 +53,8 @@ PIDS+=($!)
 
 sleep 10
 echo "== demo flight"
-python3 "$ROOT/tools/search_demo_flight.py" 2>&1 | tee "$LOG_DIR/flight.log"
+python3 "$ROOT/tools/search_demo_flight.py" --report "$LOG_DIR/search_report.json" 2>&1 | tee "$LOG_DIR/flight.log"
 sleep 3
-echo "== camera summary: $(tail -1 "$LOG_DIR/camera.log")"
+echo "== camera window summary: $(tail -1 "$LOG_DIR/camera.log")"
+echo "== score against ground truth (read only now, after the flight)"
+python3 "$ROOT/tools/score_search.py" "$LOG_DIR/search_report.json" || true
