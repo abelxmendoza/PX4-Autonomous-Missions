@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#050a0b"/>
+<title>SLAM &amp; Costmap — Abel Mendoza</title>
+<meta name="description" content="2-D LiDAR SLAM and a layered costmap running on real PX4/Gazebo scans: dead reckoning drifts 14 m, SLAM tracks the flight to centimetres, and a cost-aware planner routes on the map it builds."/>
+<link rel="icon" href="../favicon.png" type="image/png"/>
+<link rel="apple-touch-icon" href="../apple-touch-icon.png"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="SLAM & Costmap — LiDAR mapping on real PX4/Gazebo scans"/>
+<meta property="og:description" content="Scan-to-map SLAM corrects 14 m of injected odometry drift; the map feeds a Nav2-style layered costmap and a cost-aware planner."/>
+<meta property="og:url" content="https://replay-sepia-tau.vercel.app/slam/"/>
+<style>
+  :root{
+    --ink:#050a0b; --panel:#0a1718; --panel-b:rgba(134,255,222,.15); --line:rgba(134,255,222,.12);
+    --text:#eef7f3; --muted:#9db1ad; --mint:#69f7cd; --amber:#ffb547; --bad:#ff7a6b;
+    --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--ink);color:var(--text);font-family:var(--display);}
+  body{background:radial-gradient(circle at 22% 0%, rgba(105,247,205,.06), transparent 45%), var(--ink);}
+  a{color:var(--mint);}
+  a:focus-visible{outline:2px solid var(--mint);outline-offset:2px;}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:20px max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:12px;color:var(--text);text-decoration:none;}
+  .brand-mark{width:34px;height:34px;border:1px solid var(--mint);display:grid;place-items:center;
+    color:var(--ink);background:var(--mint);font:900 12px var(--mono);}
+  .brand h1{font-size:14px;margin:0;font-weight:720;white-space:nowrap;}
+  .brand .dim{color:var(--muted);font-weight:450;}
+  nav{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  nav a{text-decoration:none;font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text);}
+  nav a:hover,nav a.current{color:var(--mint);}
+  nav a.ext{color:var(--muted);}
+  main{max-width:880px;margin:0 auto;padding:44px max(20px, env(safe-area-inset-right)) 72px max(20px, env(safe-area-inset-left));}
+  .eyebrow{color:var(--amber);font:800 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;margin:0 0 14px;}
+  h2.title{margin:0 0 16px;font:800 clamp(26px,4.8vw,40px)/1.15 var(--display);letter-spacing:-.02em;}
+  h2.title span{color:var(--mint);}
+  h3{font:800 18px/1.3 var(--display);margin:44px 0 12px;}
+  p{font:15.5px/1.7 var(--display);color:var(--muted);margin:0 0 14px;max-width:68ch;}
+  p b, li b{color:var(--text);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+    border:1px solid var(--line);margin:26px 0 8px;}
+  .stats div{background:var(--ink);padding:14px 16px;}
+  .stats .k{display:block;font:700 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+  .stats .v{display:block;font:800 18px var(--mono);color:var(--text);}
+  .stats .v.good{color:var(--mint);}
+  .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:28px 0 6px;}
+  figure{margin:0;background:var(--panel);border:1px solid var(--line);}
+  figure img{display:block;width:100%;height:auto;}
+  figcaption{padding:10px 12px;font:12.5px/1.5 var(--display);color:var(--muted);}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);margin:14px 0 8px;}
+  table{width:100%;border-collapse:collapse;font:13px var(--mono);}
+  th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th{color:var(--muted);font-weight:700;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;}
+  th:first-child,td:first-child{text-align:left;}
+  td.err{color:var(--mint);font-weight:700;}
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0;}
+  ol.steps li{counter-increment:s;position:relative;padding:0 0 14px 42px;font:15px/1.6 var(--display);color:var(--muted);}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;display:grid;place-items:center;
+    border:1px solid var(--panel-b);color:var(--mint);font:800 12px var(--mono);}
+  .limits{border-left:2px solid var(--amber);padding:4px 0 4px 18px;margin:16px 0;}
+  .limits li{font:14.5px/1.65 var(--display);color:var(--muted);margin-bottom:6px;}
+  code{font:13px var(--mono);color:var(--text);background:rgba(105,247,205,.07);padding:1px 5px;}
+  .muted-note{font:12px/1.6 var(--mono);color:var(--muted);}
+  footer{padding:18px 20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    font:11px var(--mono);color:var(--muted);}
+  footer a{color:var(--muted);text-decoration:none;}
+</style>
+<style>
+  .viz{background:var(--panel);border:1px solid var(--line);margin:26px 0 8px;}
+  .viz canvas{display:block;width:100%;height:auto;touch-action:none;}
+  .controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px;border-top:1px solid var(--line);}
+  .controls button{font:800 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:var(--mint);color:var(--ink);
+    border:0;padding:8px 14px;cursor:pointer;min-width:74px;}
+  .controls input[type=range]{flex:1 1 220px;accent-color:var(--mint);}
+  .controls label{font:700 11px var(--mono);color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;}
+  .controls .clock{font:700 12px var(--mono);color:var(--text);min-width:64px;}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;padding:0 12px 12px;font:11px var(--mono);color:var(--muted);}
+  .legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-2px;}
+  .live{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border-top:1px solid var(--line);}
+  .live div{background:var(--panel);padding:10px 12px;}
+  .live .k{display:block;font:700 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  .live .v{font:800 15px var(--mono);}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/">
+    <div class="brand-mark" aria-hidden="true">PX</div>
+    <h1>PX4 <span class="dim">Autonomy &amp; Verification</span></h1>
+  </a>
+  <nav>
+    <a href="/demo/">Swarm Demo</a>
+    <a href="/search-demo/">Search Demo</a>
+    <a href="/search/">Search Results</a>
+    <a class="current" href="/slam/">SLAM &amp; Costmap</a>
+    <a href="/writeup/">Write-up</a>
+    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+  </nav>
+</header>
+
+<main>
+  <div class="eyebrow">New · 2-D LiDAR · PX4 SITL + Gazebo</div>
+  <h2 class="title">SLAM &amp; costmap.<br/><span>The map holds when the odometry doesn't.</span></h2>
+  <p>A drone with a 2-D LiDAR flies the obstacle course in PX4/Gazebo. Every real scan goes into a small SLAM written
+    for this project: it places the scan using odometry, then shifts and rotates it until it lines up with the map built
+    so far, and only then adds it to the map. To show what that buys, the odometry is <b>deliberately degraded</b>
+    (3% scale error, 0.5°/s heading drift, the way dead reckoning drifts without GPS). The map feeds a layered
+    <b>costmap</b> (the cost convention Nav2 uses) and a planner that trades route length for clearance.</p>
+
+  <div class="stats">
+    <div><span class="k">Dead-reckoning error, end</span><span class="v" data-stat="odom">–</span></div>
+    <div><span class="k">SLAM path error (mean)</span><span class="v good" data-stat="ate">–</span></div>
+    <div><span class="k">Map on real surfaces</span><span class="v good" data-stat="map">–</span></div>
+    <div><span class="k">Scans matched</span><span class="v" data-stat="matched">–</span></div>
+  </div>
+  <p class="muted-note">From the recorded flight below (<code>evidence/slam/</code>). Ground truth is Gazebo's own pose, recorded only to score the run; SLAM never reads it. SLAM path error is measured after one rigid fit of SLAM's map frame to Gazebo's (see “What this does not show yet”).</p>
+
+  <div class="viz">
+    <canvas id="view" width="900" height="1000" aria-label="Top-down replay: the obstacle course, the SLAM map and costmap building up, and three paths"></canvas>
+    <div class="controls">
+      <button id="play" type="button">Play</button>
+      <span class="clock" id="clock">0.0 s</span>
+      <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Replay time"/>
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="showCost" checked/> costmap</label>
+      <label><input type="checkbox" id="showPlans" checked/> planned routes</label>
+      <label><input type="checkbox" id="aligned"/> SLAM layers in Gazebo's frame (scoring view)</label>
+    </div>
+    <div class="legend">
+      <span><i style="background:#e8edf5"></i>SLAM map</span>
+      <span><i style="background:rgba(220,38,38,.85)"></i>lethal</span>
+      <span><i style="background:rgba(250,115,23,.7)"></i>inscribed</span>
+      <span><i style="background:rgba(250,191,36,.5)"></i>high cost</span>
+      <span><i style="background:rgba(33,196,94,.3)"></i>low cost</span>
+      <span><i style="border:1.5px solid #9db1ad"></i>real obstacles</span>
+      <span><i style="background:#9db1ad"></i>true path</span>
+      <span><i style="background:#ff6b6b"></i>dead reckoning</span>
+      <span><i style="background:#69f7cd"></i>SLAM</span>
+      <span><i style="background:#ffb547"></i>graded plan</span>
+      <span><i style="background:#c084fc"></i>binary plan</span>
+    </div>
+    <div class="live">
+      <div><span class="k">Dead-reckoning error now</span><span class="v" id="liveOdom">–</span></div>
+      <div><span class="k">SLAM error now</span><span class="v" id="liveSlam">–</span></div>
+      <div><span class="k">Map cells</span><span class="v" id="liveCells">–</span></div>
+    </div>
+  </div>
+
+  <h3>How it works</h3>
+  <ol class="steps">
+    <li><b>Scan.</b> Gazebo's GPU LiDAR: 720 beams over 270°, 30 m, 20 Hz. Each beam is tilted by the drone's roll and pitch (up to 15° in turns) and projected flat; returns from the ground or the drone itself are dropped.</li>
+    <li><b>Predict.</b> The odometry step since the last scan moves the previous SLAM pose forward.</li>
+    <li><b>Match.</b> A search over small shifts and rotations finds where the scan best lines up with the map, scored on a likelihood field around mapped surfaces: a coarse pass on a blurred field, then a fine pass, with a weak pull toward the prediction so a symmetric scene cannot make it jump.</li>
+    <li><b>Map.</b> The scan is added at the corrected pose to a log-odds occupancy grid: cells along each beam become more likely free, the cell at its end more likely occupied.</li>
+    <li><b>Costmap.</b> Occupied cells are lethal; within the drone's radius, inscribed; beyond that, cost decays with clearance; unseen space is unknown. Other drones can be added as a dynamic layer.</li>
+    <li><b>Plan.</b> A* where each step costs its length × (1 + w·cost). With w = 0 it is the old binary planner and squeezes past obstacles at the minimum clearance (purple); with w = 3 it gives them room (amber).</li>
+  </ol>
+
+  <h3>What this does not show yet</h3>
+  <ul class="limits">
+    <li><b>The map frame inherits PX4's heading at takeoff.</b> SLAM's frame is fixed by its first pose, and PX4's heading was about 5° off Gazebo's then, so the raw map is rotated by that much (about 2 m off at the far end of the course). Tick the scoring-view box to see the one rigid fit used for the error figures. The planned routes are drawn in SLAM's frame, which is what makes the purple route look clear; tying the map frame to GPS when it is available is the next step.</li>
+    <li><b>No loop closure.</b> Error that the matcher cannot see still builds up slowly; this course is small enough that it stays at centimetres.</li>
+    <li><b>2-D at one height.</b> Anything above or below the scan plane is invisible: the course beacons are 1.3 m tall and never appear.</li>
+    <li><b>Planning runs after the flight, not in it.</b> The route here is fixed in advance; flying on the costmap's own plans is next.</li>
+  </ul>
+
+  <h3>Run it yourself</h3>
+  <p>With PX4 SITL and Gazebo Harmonic installed: <code>scripts/run_slam_demo.sh</code> flies the course and draws the costmap,
+    map and both trails in the Gazebo window. Source:
+    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/src/px4_offboard/px4_offboard/slam2d.py" target="_blank" rel="noopener">SLAM</a> ·
+    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/src/px4_offboard/px4_offboard/costmap2d.py" target="_blank" rel="noopener">costmap &amp; planner</a> ·
+    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/tools/slam_flight.py" target="_blank" rel="noopener">flight</a>.</p>
+</main>
+
+<footer>
+  <span>PX4 SITL v1.16 · Gazebo Harmonic · MAVSDK · NumPy/OpenCV</span>
+  <a href="/">← Back to the project</a>
+</footer>
+
+<script src="../slam-replay.js"></script>
+<script>
+(async function () {
+  const canvas = document.getElementById('view'), ctx = canvas.getContext('2d');
+  let trace;
+  try {
+    const r = await fetch('../data/slam_trace.json');
+    if (!r.ok) throw new Error(r.status);
+    trace = parseSlamTrace(await r.text());
+  } catch (e) {
+    ctx.fillStyle = '#9db1ad'; ctx.font = '16px monospace';
+    ctx.fillText('Could not load the recorded flight (' + e.message + ').', 20, 40);
+    return;
+  }
+  const g = trace.grid, report = trace.report, run = report.runs.drifting_odometry;
+  const offset = run.map_frame_offset;
+  const costs = decodeRle(trace.costmap.costs_rle, g.rows * g.cols);
+  const samples = trace.samples.drifting_odometry;
+  const t0 = samples[0][0], t1 = samples[samples.length - 1][0];
+  const set = (k, v) => { document.querySelector(`[data-stat="${k}"]`).textContent = v; };
+  set('odom', run.odometry_final_m.toFixed(1) + ' m');
+  set('ate', (run.slam_ate_aligned_mean_m * 100).toFixed(0) + ' cm');
+  set('map', Math.round(report.map.drifting_odometry.within_0_5m_after_frame_alignment * 100) + '%');
+  set('matched', `${run.matched} / ${run.scans}`);
+
+  // View: north up, east right. Show north -8..58, east -30..30 (metres).
+  const view = {n0: -8, n1: 58, e0: -30, e1: 30};
+  const scale = Math.min(canvas.width / (view.e1 - view.e0), canvas.height / (view.n1 - view.n0));
+  const px = (n, e) => [(e - view.e0) * scale, (view.n1 - n) * scale];
+
+  // Costmap as an image, one pixel per cell (row 0 = south, so flip vertically when drawing).
+  const COLORS = {lethal: [220, 38, 38, 217], inscribed: [250, 115, 23, 178], high: [250, 191, 36, 128], low: [33, 196, 94, 77]};
+  const costImg = document.createElement('canvas');
+  costImg.width = g.cols; costImg.height = g.rows;
+  const id = costImg.getContext('2d').createImageData(g.cols, g.rows);
+  for (let i = 0; i < g.rows; i++) for (let j = 0; j < g.cols; j++) {
+    const band = costBand(costs[i * g.cols + j]);
+    if (!band) continue;
+    const k = ((g.rows - 1 - i) * g.cols + j) * 4;
+    id.data.set(COLORS[band], k);
+  }
+  costImg.getContext('2d').putImageData(id, 0, 0);
+
+  // Draw SLAM-frame content with an optional rigid transform onto Gazebo's frame.
+  function slamFrame(aligned, draw) {
+    ctx.save();
+    if (aligned) {
+      const [ox, oy] = px(offset.north_m, offset.east_m), [zx, zy] = px(0, 0);
+      ctx.translate(ox - zx, oy - zy);
+      ctx.translate(zx, zy);
+      ctx.rotate(offset.yaw_deg * Math.PI / 180);  // +yaw turns north toward east: clockwise on screen
+      ctx.translate(-zx, -zy);
+    }
+    draw();
+    ctx.restore();
+  }
+  function path(points, color, width, dash) {
+    if (points.length < 2) return;
+    ctx.beginPath();
+    points.forEach(([n, e], k) => { const [x, y] = px(n, e); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  const showCost = document.getElementById('showCost'), showPlans = document.getElementById('showPlans');
+  const aligned = document.getElementById('aligned'), scrub = document.getElementById('scrub');
+  let t = t0, playing = false, last = 0;
+
+  function render() {
+    const k = sampleIndexAt(samples, t), done = t >= t1;
+    const al = aligned.checked;
+    ctx.fillStyle = '#071112'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 5 m grid
+    ctx.strokeStyle = 'rgba(134,255,222,.07)'; ctx.lineWidth = 1;
+    for (let n = -5; n <= 55; n += 5) { const [x0, y] = px(n, view.e0), [x1] = px(n, view.e1); ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+    for (let e = -30; e <= 30; e += 5) { const [x, y0] = px(view.n1, e), [, y1] = px(view.n0, e); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); }
+    // SLAM layers: final costmap once the flight is done, the map as it grew
+    slamFrame(al, () => {
+      if (showCost.checked && done) {
+        const [x, y] = px(g.north_min + g.rows * g.resolution, g.east_min);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(costImg, x, y, g.cols * g.resolution * scale, g.rows * g.resolution * scale);
+      }
+      ctx.fillStyle = '#e8edf5';
+      const cells = mapCellsAt(trace, costs, t);
+      const s = Math.max(2, g.resolution * scale);
+      for (const idx of cells) { const [x, y] = px(...cellCentre(g, idx)); ctx.fillRect(x - s / 2, y - s / 2, s, s); }
+      document.getElementById('liveCells').textContent = cells.length;
+      if (showPlans.checked && done) {
+        const start = report.plans.start;
+        if (Array.isArray(trace.plans.binary)) path([start, ...trace.plans.binary], '#c084fc', 3, [8, 6]);
+        if (Array.isArray(trace.plans.graded)) path([start, ...trace.plans.graded], '#ffb547', 3);
+      }
+      path(samples.slice(0, k + 1).map(s => [s[7], s[8]]), '#69f7cd', 2.5);
+    });
+    // Real obstacles (Gazebo's frame)
+    ctx.strokeStyle = '#9db1ad'; ctx.lineWidth = 1.5;
+    for (const b of trace.obstacles_truth) {
+      const [x, y] = px(b.north + b.size_north / 2, b.east - b.size_east / 2);
+      ctx.strokeRect(x, y, b.size_east * scale, b.size_north * scale);
+    }
+    path(samples.slice(0, k + 1).map(s => [s[1], s[2]]), 'rgba(157,177,173,.8)', 1.5, [4, 4]);
+    path(samples.slice(0, k + 1).map(s => [s[4], s[5]]), '#ff6b6b', 2);
+    const err = errorsAt(samples[k], al ? offset : null);
+    document.getElementById('liveOdom').textContent = err.odometry.toFixed(2) + ' m';
+    document.getElementById('liveSlam').textContent = err.slam.toFixed(2) + ' m' + (al ? '' : ' (raw frame)');
+    document.getElementById('clock').textContent = (t - t0).toFixed(1) + ' s';
+    scrub.value = Math.round((t - t0) / (t1 - t0) * 1000);
+  }
+  function tick(now) {
+    if (!playing) return;
+    if (last) t = Math.min(t1 + 0.001, t + (now - last) / 1000 * 4);  // 4x speed
+    last = now;
+    render();
+    if (t >= t1) { playing = false; document.getElementById('play').textContent = 'Replay'; return; }
+    requestAnimationFrame(tick);
+  }
+  document.getElementById('play').addEventListener('click', e => {
+    if (t >= t1) t = t0;
+    playing = !playing; last = 0;
+    e.target.textContent = playing ? 'Pause' : 'Play';
+    if (playing) requestAnimationFrame(tick);
+  });
+  scrub.addEventListener('input', () => { playing = false; document.getElementById('play').textContent = 'Play'; t = t0 + scrub.value / 1000 * (t1 - t0) + (scrub.value === '1000' ? 0.001 : 0); render(); });
+  for (const el of [showCost, showPlans, aligned]) el.addEventListener('change', render);
+  t = t1 + 0.001;  // open on the finished map; Play replays the flight
+  render();
+  document.getElementById('play').textContent = 'Replay';
+})();
+</script>
+</body>
+</html>

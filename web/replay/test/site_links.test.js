@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html'];
+const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html', 'slam/index.html'];
 
 function localRefs(html) {
   const refs = [];
@@ -39,7 +39,7 @@ describe('site links', () => {
   });
 
   it('every page links to both demos (other than itself)', () => {
-    for (const page of ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html']) {
+    for (const page of ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html', 'slam/index.html']) {
       const refs = localRefs(readFileSync(join(SITE, page), 'utf8'));
       if (page !== 'demo/index.html') expect(refs, page).toContain('/demo/');
       if (page !== 'search-demo/index.html') expect(refs, page).toContain('/search-demo/');

@@ -116,6 +116,7 @@
     <a href="/demo/">Swarm Demo</a>
     <a href="/search-demo/">Search Demo</a>
     <a href="/search/">Search Results</a>
+    <a href="/slam/">SLAM &amp; Costmap</a>
     <a href="/writeup/">Write-up</a>
     <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
   </nav>
@@ -144,6 +145,11 @@
     <section class="new" aria-label="Recent work">
       <p class="label">New</p>
       <div class="cards">
+        <a class="card" href="/slam/">
+          <span class="h">SLAM &amp; costmap</span>
+          <span class="b">2-D LiDAR SLAM on real PX4/Gazebo scans: odometry drifts <b>14 m</b>, the SLAM path stays within <b>centimetres</b>, and its map feeds a layered costmap and a cost-aware planner.</span>
+          <span class="go">Replay the map building →</span>
+        </a>
         <a class="card" href="/search-demo/">
           <span class="h">Search &amp; find</span>
           <span class="b">A downward-camera drone in PX4/Gazebo finds <b>8 of 8</b> ground targets and locates each to <b>under a metre</b>, using only PX4's own estimate.</span>
@@ -164,7 +170,7 @@
 
     <div class="proof">
       <div><span class="k">Requirement registry</span><span class="v">22 requirements · 3 open</span></div>
-      <div><span class="k">Test suite</span><span class="v" data-tests>570 Python · 50 browser</span></div>
+      <div><span class="k">Test suite</span><span class="v" data-tests>601 Python · 59 browser</span></div>
       <div><span class="k">Verified against</span><span class="v">PX4 SITL + Gazebo · CI</span></div>
     </div>
   </div>
