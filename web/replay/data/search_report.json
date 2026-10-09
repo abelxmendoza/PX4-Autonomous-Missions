@@ -4,69 +4,69 @@
   "camera": "x500_search_cam downward camera, 640x480, hfov 1.74 rad",
   "altitude_m": 8.0,
   "speed_mps": 4.0,
-  "frames_processed": 813,
-  "marker_detections": 393,
+  "frames_processed": 812,
+  "marker_detections": 402,
   "targets": [
     {
       "id": 3,
-      "north": 26.979,
-      "east": -22.885,
+      "north": 27.038,
+      "east": -22.979,
       "detections": 67,
-      "spread_m": 0.509
+      "spread_m": 0.455
     },
     {
       "id": 4,
-      "north": 14.204,
-      "east": -3.47,
-      "detections": 32,
-      "spread_m": 0.299
+      "north": 14.252,
+      "east": -3.442,
+      "detections": 34,
+      "spread_m": 0.89
     },
     {
       "id": 6,
-      "north": 48.059,
-      "east": -19.907,
-      "detections": 31,
-      "spread_m": 0.291
+      "north": 48.016,
+      "east": -19.888,
+      "detections": 32,
+      "spread_m": 1.07
     },
     {
       "id": 9,
-      "north": 20.351,
-      "east": 6.138,
+      "north": 20.367,
+      "east": 6.085,
       "detections": 67,
-      "spread_m": 1.298
+      "spread_m": 1.17
     },
     {
       "id": 20,
-      "north": 53.604,
-      "east": 3.575,
+      "north": 53.656,
+      "east": 3.63,
       "detections": 32,
-      "spread_m": 0.216
+      "spread_m": 0.321
     },
     {
       "id": 25,
-      "north": 28.291,
-      "east": 24.83,
-      "detections": 69,
-      "spread_m": 0.88
+      "north": 28.416,
+      "east": 24.757,
+      "detections": 74,
+      "spread_m": 0.879
     },
     {
       "id": 34,
-      "north": 12.232,
-      "east": 18.629,
+      "north": 12.179,
+      "east": 18.69,
       "detections": 63,
-      "spread_m": 0.783
+      "spread_m": 0.633
     },
     {
       "id": 41,
-      "north": 36.787,
-      "east": 7.662,
-      "detections": 32,
-      "spread_m": 0.171
+      "north": 36.827,
+      "east": 7.626,
+      "detections": 33,
+      "spread_m": 0.25
     }
   ],
   "unconfirmed": [],
   "provenance": {
-    "recorded_utc": "2026-10-09T03:08:50Z",
+    "recorded_utc": "2026-10-09T21:06:05Z",
     "px4_version": "v1.16.0-5-gd26cb57aca",
     "simulator": "PX4 SITL + Gazebo Harmonic, world search_field, model x500_search_cam",
     "flight": "scripted lawnmower sweep (tools/search_demo_flight.py), 8 m, 4 m/s; not the N-drone mission",

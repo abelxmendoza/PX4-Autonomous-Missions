@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html'];
+const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html'];
 
 function localRefs(html) {
   const refs = [];
@@ -36,6 +36,22 @@ describe('site links', () => {
   it('the landing page links to the search page and the search page links back', () => {
     expect(localRefs(readFileSync(join(SITE, 'index.html'), 'utf8'))).toContain('/search/');
     expect(localRefs(readFileSync(join(SITE, 'search/index.html'), 'utf8'))).toContain('/');
+  });
+
+  it('every page links to both demos (other than itself)', () => {
+    for (const page of ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html']) {
+      const refs = localRefs(readFileSync(join(SITE, page), 'utf8'));
+      if (page !== 'demo/index.html') expect(refs, page).toContain('/demo/');
+      if (page !== 'search-demo/index.html') expect(refs, page).toContain('/search-demo/');
+    }
+  });
+
+  it('the search demo replays the committed trace and draws real marker textures', () => {
+    const html = readFileSync(join(SITE, 'search-demo/index.html'), 'utf8');
+    expect(html).toContain('../data/search_trace.json');
+    expect(html).toContain('../search-replay.js');
+    const truth = JSON.parse(readFileSync(join(SITE, 'data/search_targets.json'), 'utf8'));
+    for (const t of truth.targets) expect(existsSync(join(SITE, `search-demo/markers/aruco_${t.id}.png`))).toBe(true);
   });
 
   it('the search page loads its numbers from the committed data, not hard-coded text', () => {
