@@ -28,18 +28,19 @@ class TrailPoints:
         return True
 
 
-def build_trail_marker(points_ned: Sequence[Sequence[float]], marker_id: int = 1):
+def build_trail_marker(points_ned: Sequence[Sequence[float]], marker_id: int = 1,
+                       rgb: Sequence[float] = TRAIL_RGB, ns: str = "flight_trail"):
     from gz.msgs10.marker_pb2 import Marker
 
     if len(points_ned) < 2:
         return None
     m = Marker()
-    m.ns = "flight_trail"
+    m.ns = ns
     m.id = marker_id
     m.action = Marker.ADD_MODIFY
     m.type = Marker.LINE_STRIP
     m.visibility = Marker.GUI
-    r, g, b = TRAIL_RGB
+    r, g, b = rgb
     for color in (m.material.ambient, m.material.diffuse, m.material.emissive):
         color.r, color.g, color.b, color.a = r, g, b, 1.0
     for n, e, d in points_ned:

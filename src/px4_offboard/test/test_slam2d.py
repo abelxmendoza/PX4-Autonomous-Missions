@@ -127,3 +127,48 @@ def test_runs_are_reproducible():
     a, _, _ = _run(drift=True, seed=9)
     b, _, _ = _run(drift=True, seed=9)
     assert a == b
+
+
+def test_level_scan_keeps_a_level_scan_and_drops_ground_hits_when_tilted():
+    from px4_offboard.slam2d import level_scan
+    ranges = simulate_scan(WORLD, (15.0, 2.0, 0.3), ANGLES)
+    b, r = level_scan(ANGLES, ranges, 0.0, 0.0, height_m=3.0)
+    assert np.allclose(b, ANGLES) and np.array_equal(np.isinf(r), np.isinf(ranges))
+    assert np.allclose(r[np.isfinite(r)], ranges[np.isfinite(ranges)])
+    # Pitched 10 deg nose-down: a beam at bearing a meets the ground at 3 / (sin 10 deg cos a).
+    pitch = math.radians(-10.0)
+    ahead = np.abs(ANGLES) < math.radians(60)
+    ground = np.full(len(ANGLES), np.inf)
+    ground[ahead] = 3.0 / (math.sin(math.radians(10.0)) * np.cos(ANGLES[ahead]))
+    b, r = level_scan(ANGLES, ground, 0.0, pitch, height_m=3.0)
+    assert np.isnan(r[ahead]).all()                       # ground, not a wall: ignored
+    assert np.isinf(r[~ahead]).all()                      # beams that hit nothing stay no-return
+    # A wall 5 m ahead seen through the same pitch is kept, at its horizontal distance.
+    b, r = level_scan(np.array([0.0]), np.array([5.0 / math.cos(pitch)]), 0.0, pitch, height_m=3.0)
+    assert r[0] == pytest.approx(5.0) and b[0] == pytest.approx(0.0)
+    # Rolled right: right-hand beams dip; the bearing of a beam at +90 deg stays +90 deg.
+    b, r = level_scan(np.array([math.pi / 2]), np.array([4.0]), math.radians(8), 0.0, height_m=3.0)
+    assert b[0] == pytest.approx(math.pi / 2) and r[0] == pytest.approx(4.0 * math.cos(math.radians(8)))
+    # Returns from the drone's own frame are ignored.
+    _, r = level_scan(np.array([0.0]), np.array([0.3]), 0.0, 0.0, height_m=3.0)
+    assert np.isnan(r[0])
+
+
+def test_ignored_beams_change_nothing_and_no_return_beams_clear_only_so_far():
+    g = OccupancyGrid(resolution=0.25, no_return_clear_m=10.0, **BOUNDS)
+    ranges = np.full(len(ANGLES), np.inf)
+    ranges[: len(ANGLES) // 2] = np.nan
+    g.update((0.0, 0.0, 0.0), ANGLES, ranges)
+    assert g.probability_at(5.0, 5.0) < 0.5       # right half (positive angles): cleared
+    assert g.probability_at(5.0, -5.0) == pytest.approx(0.5)   # left half was NaN: untouched
+    assert g.probability_at(15.0, 0.5) == pytest.approx(0.5)   # beyond the clear limit
+
+
+def test_an_initial_pose_fixes_the_map_frame_and_odometry_is_used_relative_to_it():
+    anchor = (1.0, 2.0, 0.25)
+    slam = Slam2D(OccupancyGrid(resolution=0.25, **BOUNDS), initial_pose=anchor)
+    empty = np.full(len(ANGLES), np.inf)
+    assert slam.step((1.1, 2.1, 0.30), ANGLES, empty) == pytest.approx(anchor)
+    # The next odometry step (1 m forward in odometry's frame) is applied from the anchor.
+    nxt = compose((1.1, 2.1, 0.30), (1.0, 0.0, 0.0))
+    assert slam.step(nxt, ANGLES, empty) == pytest.approx(compose(anchor, (1.0, 0.0, 0.0)))

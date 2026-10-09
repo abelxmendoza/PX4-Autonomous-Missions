@@ -1,0 +1,85 @@
+{
+  "world": "obstacle_world",
+  "vehicle": "x500_lidar_2d (PX4 SITL, Gazebo Harmonic)",
+  "sensor": "lidar_2d_v2: 720 beams over 270 deg, 30 m, 20 Hz (real Gazebo GPU-lidar scans)",
+  "altitude_m": 3.0,
+  "speed_mps": 2.0,
+  "flight_s": 108.8,
+  "slam_rate_hz": 5.0,
+  "scans_received": 2581,
+  "scans_processed": 405,
+  "ground_truth": "Gazebo model pose, used only for these scores; SLAM never reads it",
+  "runs": {
+    "px4_odometry": {
+      "scans": 405,
+      "matched": 404,
+      "slam_mean_m": 1.915,
+      "slam_max_m": 3.878,
+      "slam_final_m": 0.353,
+      "slam_yaw_max_deg": 5.54,
+      "slam_ate_aligned_mean_m": 0.051,
+      "slam_ate_aligned_max_m": 0.764,
+      "map_frame_offset": {
+        "yaw_deg": -4.69,
+        "north_m": 0.029,
+        "east_m": 0.058
+      },
+      "odometry_mean_m": 0.044,
+      "odometry_final_m": 0.032
+    },
+    "drifting_odometry": {
+      "scans": 405,
+      "matched": 404,
+      "slam_mean_m": 2.034,
+      "slam_max_m": 4.128,
+      "slam_final_m": 0.298,
+      "slam_yaw_max_deg": 6.37,
+      "slam_ate_aligned_mean_m": 0.052,
+      "slam_ate_aligned_max_m": 0.782,
+      "map_frame_offset": {
+        "yaw_deg": -5.19,
+        "north_m": 0.036,
+        "east_m": 0.17
+      },
+      "odometry_mean_m": 6.407,
+      "odometry_final_m": 13.911
+    }
+  },
+  "drift_injected": {
+    "scale": 1.03,
+    "yaw_deg_per_s": 0.5
+  },
+  "map": {
+    "px4_odometry": {
+      "occupied_cells": 674,
+      "within_0_5m_of_a_real_surface": 0.472,
+      "within_0_5m_after_frame_alignment": 0.93,
+      "course_boxes_mapped": "5/5"
+    },
+    "drifting_odometry": {
+      "occupied_cells": 672,
+      "within_0_5m_of_a_real_surface": 0.436,
+      "within_0_5m_after_frame_alignment": 0.932,
+      "course_boxes_mapped": "5/5"
+    }
+  },
+  "clock_check": {
+    "px4_position_lead_corrected_s": 0.107,
+    "residual_lag_north_s": -0.005,
+    "residual_lag_east_s": 0.001,
+    "residual_lag_heading_s": -0.002,
+    "px4_heading_bias_deg": -2.0
+  },
+  "plans": {
+    "start": [
+      2.0,
+      0.0
+    ],
+    "goal": [
+      46.0,
+      0.0
+    ],
+    "graded": 4,
+    "binary": 2
+  }
+}

@@ -69,6 +69,9 @@
             <mean>0.0</mean>
             <stddev>0.01</stddev>
           </noise>
+          <!-- Every visibility bit except 2: display-only volumes (the GPS-denied zone in
+               obstacle_world) are flagged 2 so the LiDAR does not map them as walls. -->
+          <visibility_mask>4294967293</visibility_mask>
         </ray>
         <always_on>1</always_on>
         <update_rate>20</update_rate>

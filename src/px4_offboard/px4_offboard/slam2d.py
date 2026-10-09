@@ -12,7 +12,8 @@ horizontal 2-D map at the flight altitude, not 3-D; and it assumes the vehicle i
 level, so a scan is a horizontal slice.
 
 Conventions: poses are (north, east, yaw) in NED metres/radians; beam angles are relative to
-the heading, positive to the right; an out-of-range beam is +inf (free space, no return).
+the heading, positive to the right; an out-of-range beam is +inf (free space, no return) and
+a NaN beam is ignored entirely (see ``level_scan``).
 """
 
 from __future__ import annotations
@@ -43,10 +44,39 @@ def relative(a: Pose, b: Pose) -> Pose:
     return (c * dn + s * de, -s * dn + c * de, _wrap(b[2] - a[2]))
 
 
+def level_scan(angles: np.ndarray, ranges: np.ndarray, roll: float, pitch: float, height_m: float,
+               min_hit_height_m: float = 0.3, min_range_m: float = 0.6) -> tuple[np.ndarray, np.ndarray]:
+    """Project a scan taken by a tilted drone onto the horizontal plane.
+
+    A 2-D LiDAR on a multicopter tilts with it: while it accelerates, beams on one side dip
+    and can hit the ground, which would map the ground as a wall. Each return is rotated by
+    roll and pitch (body FRD to a level frame), and a return whose point lies less than
+    ``min_hit_height_m`` above the ground (``height_m`` is the sensor's height) becomes NaN,
+    as does anything nearer than ``min_range_m`` (the drone's own frame). Returns the
+    horizontal bearings and ranges of the remaining points; no-return beams stay +inf.
+    """
+    a = np.asarray(angles, dtype=float)
+    r = np.asarray(ranges, dtype=float)
+    cr, sr, cp, sp = math.cos(roll), math.sin(roll), math.cos(pitch), math.sin(pitch)
+    x, y = np.cos(a), np.sin(a)                 # unit beam in body FRD (z = 0)
+    # level = R_pitch @ R_roll @ body  (FRD: x fwd, y right, z down)
+    lx = cp * x + sp * sr * y
+    ly = cr * y
+    lz = -sp * x + cp * sr * y
+    horiz = np.hypot(lx, ly)
+    bearing = np.arctan2(ly, lx)
+    finite = np.isfinite(r)
+    rf = np.where(finite, r, 0.0)  # keep inf and NaN out of the arithmetic
+    out = np.where(finite, rf * horiz, np.inf)
+    drop = finite & ((height_m - rf * lz < min_hit_height_m) | (rf < min_range_m))
+    out[drop | np.isnan(r)] = np.nan
+    return bearing, out
+
+
 class OccupancyGrid:
     def __init__(self, resolution: float, north_min: float, north_max: float, east_min: float,
                  east_max: float, l_occ: float = 0.85, l_free: float = -0.4, l_limit: float = 4.0,
-                 max_range: float = 30.0) -> None:
+                 max_range: float = 30.0, no_return_clear_m: float | None = None) -> None:
         self.res = resolution
         self.north_min, self.east_min = north_min, east_min
         self.rows = int(math.ceil((north_max - north_min) / resolution))
@@ -54,6 +84,9 @@ class OccupancyGrid:
         self.logodds = np.zeros((self.rows, self.cols), dtype=np.float32)
         self.l_occ, self.l_free, self.l_limit = l_occ, l_free, l_limit
         self.max_range = max_range
+        # How far a beam with no return clears. A slightly upward-tilted beam can pass over a
+        # low obstacle, so in flight this is kept shorter than the sensor's range.
+        self.no_return_clear_m = max_range if no_return_clear_m is None else no_return_clear_m
         # Where inside each cell the returns actually landed (sum and count): the matcher
         # aligns scans to these sub-cell surface estimates, not to cell centres, which
         # would bias every pose by up to half a cell.
@@ -92,9 +125,11 @@ class OccupancyGrid:
     def update(self, pose: Pose, angles: np.ndarray, ranges: np.ndarray) -> None:
         n0, e0, yaw = pose
         ranges = np.asarray(ranges, dtype=float)
+        use = ~np.isnan(ranges)
+        ranges, angles = ranges[use], np.asarray(angles, dtype=float)[use]
         hit = np.isfinite(ranges) & (ranges > 0.1)
-        reach = np.where(hit, np.minimum(ranges, self.max_range), self.max_range)
-        bearing = yaw + np.asarray(angles, dtype=float)
+        reach = np.where(hit, np.minimum(ranges, self.max_range), self.no_return_clear_m)
+        bearing = yaw + angles
         cn, ce = np.cos(bearing), np.sin(bearing)
 
         # Free: sample each beam every half cell, stopping half a cell short of its return.
@@ -204,8 +239,11 @@ class Slam2D:
     """Predict with odometry, correct by scan-to-map matching, then map."""
 
     def __init__(self, grid: OccupancyGrid, min_map_cells: int = 40, min_returns: int = 30,
-                 min_score: float = 0.15) -> None:
+                 min_score: float = 0.15, initial_pose: Pose | None = None) -> None:
+        """``initial_pose`` fixes the map frame (e.g. an averaged heading); by default the
+        first odometry pose does, noise and all, and nothing later can rotate it back."""
         self.grid = grid
+        self.initial_pose = initial_pose
         self.min_map_cells, self.min_returns, self.min_score = min_map_cells, min_returns, min_score
         self.pose: Pose | None = None
         self._last_odom: Pose | None = None
@@ -215,7 +253,7 @@ class Slam2D:
         odom = (float(odom[0]), float(odom[1]), float(odom[2]))
         self.stats["scans"] += 1
         if self.pose is None:
-            pose = odom
+            pose = self.initial_pose if self.initial_pose is not None else odom
         else:
             predicted = compose(self.pose, relative(self._last_odom, odom))
             returns = int(np.count_nonzero(np.isfinite(ranges)))

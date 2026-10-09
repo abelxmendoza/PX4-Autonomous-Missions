@@ -321,11 +321,15 @@
     <!-- ── GPS-denied visualization (NED N[15.5,31.5] E[-8,8]).
          Gazebo pose is ENU: x=east, y=north, z=up. Translucent prism only —
          does not disable NavSat/EKF GPS (that is Pass 2). ── -->
+    <!-- Display-only volume: the drone flies through it. Its visuals carry visibility flag 2,
+         which the 2-D LiDAR's visibility_mask excludes, or the GPU LiDAR (which renders
+         visuals, not collisions) maps its faces as walls. Cameras still see it. -->
     <model name="gps_denied_zone">
       <static>true</static>
       <pose>0 23.5 6 0 0 0</pose>
       <link name="link">
         <visual name="volume">
+          <visibility_flags>2</visibility_flags>
           <transparency>0.82</transparency>
           <geometry><box><size>16 16 12</size></box></geometry>
           <material>
@@ -336,6 +340,7 @@
           </material>
         </visual>
         <visual name="outline">
+          <visibility_flags>2</visibility_flags>
           <transparency>0.62</transparency>
           <geometry><box><size>16.18 16.18 12.18</size></box></geometry>
           <material>
