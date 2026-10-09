@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#050a0b"/>
+<title>Search &amp; Find — Abel Mendoza</title>
+<meta name="description" content="A downward-camera drone in PX4/Gazebo sweeps a 60 x 60 m field, finds eight ArUco targets and locates each from PX4's own position estimate, scored against ground truth."/>
+<link rel="icon" href="../favicon.png" type="image/png"/>
+<link rel="apple-touch-icon" href="../apple-touch-icon.png"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Search & Find — one drone, eight targets, each located to within 0.63 m"/>
+<meta property="og:description" content="PX4 SITL + Gazebo: downward camera, ArUco detection, geolocation from PX4's own estimate, scored against ground truth."/>
+<meta property="og:image" content="https://replay-sepia-tau.vercel.app/search/camera-detection.png"/>
+<meta property="og:url" content="https://replay-sepia-tau.vercel.app/search/"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<style>
+  :root{
+    --ink:#050a0b; --panel:#0a1718; --panel-b:rgba(134,255,222,.15); --line:rgba(134,255,222,.12);
+    --text:#eef7f3; --muted:#9db1ad; --mint:#69f7cd; --amber:#ffb547; --bad:#ff7a6b;
+    --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--ink);color:var(--text);font-family:var(--display);}
+  body{background:radial-gradient(circle at 22% 0%, rgba(105,247,205,.06), transparent 45%), var(--ink);}
+  a{color:var(--mint);}
+  a:focus-visible{outline:2px solid var(--mint);outline-offset:2px;}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:20px max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:12px;color:var(--text);text-decoration:none;}
+  .brand-mark{width:34px;height:34px;border:1px solid var(--mint);display:grid;place-items:center;
+    color:var(--ink);background:var(--mint);font:900 12px var(--mono);}
+  .brand h1{font-size:14px;margin:0;font-weight:720;white-space:nowrap;}
+  .brand .dim{color:var(--muted);font-weight:450;}
+  nav{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  nav a{text-decoration:none;font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text);}
+  nav a:hover,nav a.current{color:var(--mint);}
+  nav a.ext{color:var(--muted);}
+  main{max-width:880px;margin:0 auto;padding:44px max(20px, env(safe-area-inset-right)) 72px max(20px, env(safe-area-inset-left));}
+  .eyebrow{color:var(--amber);font:800 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;margin:0 0 14px;}
+  h2.title{margin:0 0 16px;font:800 clamp(26px,4.8vw,40px)/1.15 var(--display);letter-spacing:-.02em;}
+  h2.title span{color:var(--mint);}
+  h3{font:800 18px/1.3 var(--display);margin:44px 0 12px;}
+  p{font:15.5px/1.7 var(--display);color:var(--muted);margin:0 0 14px;max-width:68ch;}
+  p b, li b{color:var(--text);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+    border:1px solid var(--line);margin:26px 0 8px;}
+  .stats div{background:var(--ink);padding:14px 16px;}
+  .stats .k{display:block;font:700 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+  .stats .v{display:block;font:800 18px var(--mono);color:var(--text);}
+  .stats .v.good{color:var(--mint);}
+  .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:28px 0 6px;}
+  figure{margin:0;background:var(--panel);border:1px solid var(--line);}
+  figure img{display:block;width:100%;height:auto;}
+  figcaption{padding:10px 12px;font:12.5px/1.5 var(--display);color:var(--muted);}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);margin:14px 0 8px;}
+  table{width:100%;border-collapse:collapse;font:13px var(--mono);}
+  th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th{color:var(--muted);font-weight:700;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;}
+  th:first-child,td:first-child{text-align:left;}
+  td.err{color:var(--mint);font-weight:700;}
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0;}
+  ol.steps li{counter-increment:s;position:relative;padding:0 0 14px 42px;font:15px/1.6 var(--display);color:var(--muted);}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;display:grid;place-items:center;
+    border:1px solid var(--panel-b);color:var(--mint);font:800 12px var(--mono);}
+  .limits{border-left:2px solid var(--amber);padding:4px 0 4px 18px;margin:16px 0;}
+  .limits li{font:14.5px/1.65 var(--display);color:var(--muted);margin-bottom:6px;}
+  code{font:13px var(--mono);color:var(--text);background:rgba(105,247,205,.07);padding:1px 5px;}
+  .muted-note{font:12px/1.6 var(--mono);color:var(--muted);}
+  footer{padding:18px 20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    font:11px var(--mono);color:var(--muted);}
+  footer a{color:var(--muted);text-decoration:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/">
+    <div class="brand-mark" aria-hidden="true">PX</div>
+    <h1>PX4 <span class="dim">Autonomy &amp; Verification</span></h1>
+  </a>
+  <nav>
+    <a href="/demo/">Demo</a>
+    <a class="current" href="/search/">Search &amp; Find</a>
+    <a href="/writeup/">Write-up</a>
+    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+  </nav>
+</header>
+
+<main>
+  <div class="eyebrow">New · Single drone · PX4 SITL + Gazebo</div>
+  <h2 class="title">Search &amp; find.<br/><span>Eight targets, each located to under a metre.</span></h2>
+  <p>A drone with a downward camera sweeps a 60 × 60 m field in PX4/Gazebo. Eight ArUco markers sit on the ground at
+    seeded positions. Every time the camera sees one, the drone works out where it is on the ground using
+    <b>PX4's own position and attitude estimate</b>. The simulator's true positions are never given to the drone; they are only used
+    afterwards, to score the result.</p>
+
+  <div class="stats" id="stats">
+    <div><span class="k">Targets found</span><span class="v good" data-stat="found">–</span></div>
+    <div><span class="k">False detections</span><span class="v" data-stat="false">–</span></div>
+    <div><span class="k">Mean position error</span><span class="v" data-stat="mean">–</span></div>
+    <div><span class="k">Worst position error</span><span class="v" data-stat="max">–</span></div>
+  </div>
+  <p class="muted-note">Figures from the recorded run below. Three runs so far, all 8/8 with no false ids; worst-case error 0.50–0.63 m across them.</p>
+
+  <div class="shots">
+    <figure>
+      <img src="camera-detection.png" alt="The drone's downward camera: green grass, the white field boundary, and ArUco marker 34 outlined with its id label; the drone's shadow is visible nearby." width="640" height="480" loading="lazy"/>
+      <figcaption>The drone's downward camera during the sweep: marker <b>34</b> detected and labelled. The small shape is the drone's own shadow.</figcaption>
+    </figure>
+    <figure>
+      <img src="gazebo-field.png" alt="Gazebo view of the 60 by 60 metre search field outlined in white, with small square markers spread across it and the launch grid at the near edge." width="580" height="560" loading="lazy"/>
+      <figcaption>The search field in Gazebo: white outline, eight targets on the ground, launch grid at the near edge.</figcaption>
+    </figure>
+  </div>
+
+  <h3>Result, target by target</h3>
+  <p>Reported position (from the drone's estimate) against the true position (from the world file), in metres north and east of the launch point.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Marker id</th><th>Reported N, E</th><th>True N, E</th><th>Error</th><th>Sightings</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="5">Loading the recorded report…</td></tr></tbody>
+    </table>
+  </div>
+  <p class="muted-note">Loaded from <code>data/search_report.json</code> (the committed evidence file, <code>evidence/search/</code>) and
+    <code>data/search_targets.json</code> (the world's ground truth). A test keeps both byte-identical to the repository copies.</p>
+
+  <h3>How it works</h3>
+  <ol class="steps">
+    <li><b>World.</b> A generated Gazebo world: open field, eight textured ArUco markers, and a ground-truth file that only the scorer reads (a test fails if flight code opens it).</li>
+    <li><b>Camera.</b> An x500 drone with a camera pointing straight down (640 × 480, 100° field of view). At 8 m a 1 m marker is about 34 pixels wide.</li>
+    <li><b>Detect.</b> OpenCV finds every marker in each frame.</li>
+    <li><b>Locate.</b> Each detection becomes a ray from the camera, rotated by PX4's attitude estimate and intersected with the ground. A target is reported once it has been seen three times; its position is the median of the sightings.</li>
+    <li><b>Score.</b> After landing, a separate scorer compares the report with the ground truth: found, missed, false ids, and position error.</li>
+  </ol>
+
+  <h3>What this does not show yet</h3>
+  <ul class="limits">
+    <li><b>One drone, a scripted sweep.</b> The lanes are fixed in advance and the drone does not react to what it sees. Splitting the search across several drones, with the fault-tolerant coordinator, is the next step.</li>
+    <li><b>Simulation only.</b> Gazebo renders an ideal camera: no lens distortion, motion blur, lighting changes or wind, and the ground is perfectly flat.</li>
+    <li><b>Remaining error</b> is mostly along the flight lanes, which fits a small delay between when a frame is taken and the pose it is paired with. That delay has not been measured.</li>
+  </ul>
+
+  <h3>Run it yourself</h3>
+  <p>With PX4 SITL and Gazebo Harmonic installed: <code>scripts/run_search_demo.sh</code> opens the Gazebo window and the live camera
+    view, flies the sweep and prints the score. Source:
+    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/src/px4_offboard/px4_offboard/search_geolocate.py" target="_blank" rel="noopener">geolocation</a> ·
+    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/tools/search_demo_flight.py" target="_blank" rel="noopener">flight</a> ·
+    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/tools/gen_search_world.py" target="_blank" rel="noopener">world generator</a>.</p>
+</main>
+
+<footer>
+  <span>PX4 SITL v1.16 · Gazebo Harmonic · OpenCV · MAVSDK</span>
+  <a href="/">← Back to the project</a>
+</footer>
+
+<script>
+(async function () {
+  const rows = document.getElementById('rows');
+  try {
+    const [report, truth] = await Promise.all(
+      ['../data/search_report.json', '../data/search_targets.json'].map(u => fetch(u).then(r => {
+        if (!r.ok) throw new Error(u + ' ' + r.status);
+        return r.json();
+      })));
+    const t = Object.fromEntries(truth.targets.map(x => [x.id, x]));
+    const found = report.targets.filter(x => t[x.id]);
+    const errs = found.map(x => Math.hypot(x.north - t[x.id].north, x.east - t[x.id].east));
+    const falseIds = report.targets.filter(x => !t[x.id]).length;
+    rows.innerHTML = found.map((x, i) => {
+      const g = t[x.id];
+      return `<tr><td>${x.id}</td><td>${x.north.toFixed(2)}, ${x.east.toFixed(2)}</td>` +
+             `<td>${g.north.toFixed(2)}, ${g.east.toFixed(2)}</td><td class="err">${errs[i].toFixed(2)} m</td><td>${x.detections}</td></tr>`;
+    }).join('');
+    const set = (k, v) => { document.querySelector(`[data-stat="${k}"]`).textContent = v; };
+    set('found', `${found.length} / ${truth.targets.length}`);
+    set('false', String(falseIds));
+    set('mean', `${(errs.reduce((a, b) => a + b, 0) / errs.length).toFixed(2)} m`);
+    set('max', `${Math.max(...errs).toFixed(2)} m`);
+  } catch (e) {
+    rows.innerHTML = `<tr><td colspan="5">Could not load the recorded report (${e.message}).</td></tr>`;
+  }
+})();
+</script>
+</body>
+</html>

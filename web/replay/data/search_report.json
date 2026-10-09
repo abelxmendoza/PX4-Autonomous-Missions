@@ -1,0 +1,75 @@
+{
+  "world": "search_field",
+  "position_source": "PX4 local position + attitude estimate (MAVSDK telemetry); ground truth not used",
+  "camera": "x500_search_cam downward camera, 640x480, hfov 1.74 rad",
+  "altitude_m": 8.0,
+  "speed_mps": 4.0,
+  "frames_processed": 813,
+  "marker_detections": 393,
+  "targets": [
+    {
+      "id": 3,
+      "north": 26.979,
+      "east": -22.885,
+      "detections": 67,
+      "spread_m": 0.509
+    },
+    {
+      "id": 4,
+      "north": 14.204,
+      "east": -3.47,
+      "detections": 32,
+      "spread_m": 0.299
+    },
+    {
+      "id": 6,
+      "north": 48.059,
+      "east": -19.907,
+      "detections": 31,
+      "spread_m": 0.291
+    },
+    {
+      "id": 9,
+      "north": 20.351,
+      "east": 6.138,
+      "detections": 67,
+      "spread_m": 1.298
+    },
+    {
+      "id": 20,
+      "north": 53.604,
+      "east": 3.575,
+      "detections": 32,
+      "spread_m": 0.216
+    },
+    {
+      "id": 25,
+      "north": 28.291,
+      "east": 24.83,
+      "detections": 69,
+      "spread_m": 0.88
+    },
+    {
+      "id": 34,
+      "north": 12.232,
+      "east": 18.629,
+      "detections": 63,
+      "spread_m": 0.783
+    },
+    {
+      "id": 41,
+      "north": 36.787,
+      "east": 7.662,
+      "detections": 32,
+      "spread_m": 0.171
+    }
+  ],
+  "unconfirmed": [],
+  "provenance": {
+    "recorded_utc": "2026-10-09T03:08:50Z",
+    "px4_version": "v1.16.0-5-gd26cb57aca",
+    "simulator": "PX4 SITL + Gazebo Harmonic, world search_field, model x500_search_cam",
+    "flight": "scripted lawnmower sweep (tools/search_demo_flight.py), 8 m, 4 m/s; not the N-drone mission",
+    "command": "scripts/run_search_demo.sh"
+  }
+}

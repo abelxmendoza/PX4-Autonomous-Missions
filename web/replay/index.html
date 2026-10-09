@@ -73,6 +73,16 @@
     text-decoration:none;color:var(--text);border-bottom:1px solid var(--amber);padding-bottom:3px;}
   .textlink:hover{color:var(--amber);}
 
+  .new{margin:0 0 36px;}
+  .new .label{color:var(--amber);font:800 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;margin:0 0 12px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;}
+  .card{display:block;padding:16px 16px 14px;border:1px solid var(--panel-b);background:rgba(105,247,205,.035);
+    text-decoration:none;color:var(--text);transition:border-color .18s,background .18s,transform .18s;}
+  .card:hover{border-color:rgba(105,247,205,.5);background:#0f2223;transform:translateY(-1px);}
+  .card .h{display:block;font:800 14px/1.3 var(--display);margin-bottom:6px;}
+  .card .b{display:block;font:13px/1.55 var(--display);color:var(--muted);}
+  .card .b b{color:var(--mint);font-weight:700;}
+  .card .go{display:block;margin-top:10px;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mint);}
   .proof{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
     background:var(--line);border:1px solid var(--line);}
   .proof div{background:var(--ink);padding:14px 16px;}
@@ -104,6 +114,7 @@
   </div>
   <nav>
     <a href="/demo/">Demo</a>
+    <a href="/search/">Search &amp; Find</a>
     <a href="/writeup/">Write-up</a>
     <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
   </nav>
@@ -128,10 +139,31 @@
     </div>
     <p class="mobile-note">Built desktop-first — the replay works on phones as a fallback, but it's made for a bigger screen.</p>
 
+    <section class="new" aria-label="Recent work">
+      <p class="label">New</p>
+      <div class="cards">
+        <a class="card" href="/search/">
+          <span class="h">Search &amp; find</span>
+          <span class="b">A downward-camera drone in PX4/Gazebo finds <b>8 of 8</b> ground targets and locates each to <b>under a metre</b>, using only PX4's own estimate.</span>
+          <span class="go">See the results →</span>
+        </a>
+        <a class="card" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/bugs/BUG-021.md" target="_blank" rel="noopener">
+          <span class="h">From 2 drones to 10</span>
+          <span class="b">The coordinator now runs any fleet size. Testing 1–10 drones kept every safety rule but exposed a <b>gridlock</b> at 10; found, traced and fixed. Simulated model, not PX4, above two drones.</span>
+          <span class="go">Read the bug report ↗</span>
+        </a>
+        <a class="card" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/docs/TEST_PLAN.md" target="_blank" rel="noopener">
+          <span class="h">Validation platform</span>
+          <span class="b">CI on every push, a requirement registry with evidence for each claim, fault injection, and a MAVLink codec checked <b>byte-for-byte</b> against the reference library.</span>
+          <span class="go">Read the test plan ↗</span>
+        </a>
+      </div>
+    </section>
+
     <div class="proof">
-      <div><span class="k">Requirements</span><span class="v">21 catalog requirements</span></div>
-      <div><span class="k">Test suite</span><span class="v">166 Python · 24 browser tests</span></div>
-      <div><span class="k">Verified against</span><span class="v">SITL + negative regression cases</span></div>
+      <div><span class="k">Requirement registry</span><span class="v">22 requirements · 3 open</span></div>
+      <div><span class="k">Test suite</span><span class="v" data-tests>561 Python · 39 browser</span></div>
+      <div><span class="k">Verified against</span><span class="v">PX4 SITL + Gazebo · CI</span></div>
     </div>
   </div>
 </main>
