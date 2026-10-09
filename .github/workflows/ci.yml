@@ -90,19 +90,24 @@ jobs:
 
   ros2:
     # Builds the ament package against px4_msgs and runs the full suite with ROS available,
-    # including the ROS-node tests the jobs above skip. Blocking since its first green run
-    # on GitHub (it was non-blocking while unproven; see docs/CI.md for the history).
+    # including the ROS-node tests the jobs above skip. Blocking since its first green run.
+    # ROS is installed on the runner with ros-tooling/setup-ros (as unit-tests.yml's
+    # ros-adapters job does) rather than from the ros:humble Docker Hub image: a Docker Hub
+    # pull failure ("Docker pull failed with exit code 1", run 37992618556) stopped this job
+    # before any test ran. See docs/CI.md for the history.
     name: ROS 2 Humble build and node tests
     runs-on: ubuntu-22.04
     timeout-minutes: 45
-    container: ros:humble
     steps:
       - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
       - name: Dependencies
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git python3-pip python3-colcon-common-extensions
-          pip3 install -r requirements-ci.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-colcon-common-extensions
+          python3 -m pip install -r requirements-ci.txt
       - name: px4_msgs (pinned to the commit this repository was developed against)
         run: |
           git clone https://github.com/PX4/px4_msgs.git src/px4_msgs
@@ -114,10 +119,9 @@ jobs:
           colcon build --packages-select px4_msgs px4_offboard
       - name: Full pytest with ROS available (nothing skipped for lack of rclpy)
         shell: bash
-        # ros:humble ships launch_testing / launch_testing_ros pytest plugins whose hooks are
+        # ROS Humble ships launch_testing / launch_testing_ros pytest plugins whose hooks are
         # incompatible with current pytest (PluginValidationError before any test is collected).
-        # No test here uses them, so third-party plugin autoloading is turned off. Reproduced and
-        # verified in the same ros:humble image: 466 passed, 1 skipped (no gz Python bindings).
+        # No test here uses them, so third-party plugin autoloading is turned off.
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
