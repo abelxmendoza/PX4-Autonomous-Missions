@@ -45,3 +45,16 @@ def test_intrinsics_match_the_forward_cameras_and_resolve_a_1m_marker_at_8m():
     marker_px_at_8m = focal_px * 1.0 / 8.0
     # ArUco 4x4 + border = 6 cells; ~5 px per cell is a practical detection floor.
     assert marker_px_at_8m >= 30, marker_px_at_8m
+
+
+def test_tracking_aids_are_visual_only_and_hidden_from_the_search_camera():
+    aids = next(l for l in MODEL.findall("link") if l.get("name") == "tracking_aids_link")
+    assert aids.find("collision") is None  # cannot touch anything
+    visuals = aids.findall("visual")
+    assert {v.get("name") for v in visuals} >= {"geo_cage", "beacon"}
+    mask = int(_camera_link().find("sensor/camera").findtext("visibility_mask"))
+    for v in visuals:
+        flags = int(v.findtext("visibility_flags"))
+        assert mask & flags == 0, f"{v.get('name')} would appear in the downward camera"
+    # ...while ordinary visuals (default flags: all bits) stay visible to it.
+    assert mask & 0xFFFFFFFF != 0

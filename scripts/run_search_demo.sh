@@ -53,7 +53,7 @@ PIDS+=($!)
 
 sleep 10
 echo "== demo flight"
-python3 "$ROOT/tools/search_demo_flight.py" --report "$LOG_DIR/search_report.json" 2>&1 | tee "$LOG_DIR/flight.log"
+python3 "$ROOT/tools/search_demo_flight.py" --report "$LOG_DIR/search_report.json" --trace "$LOG_DIR/search_trace.json" 2>&1 | tee "$LOG_DIR/flight.log"
 sleep 3
 echo "== camera window summary: $(tail -1 "$LOG_DIR/camera.log")"
 echo "== score against ground truth (read only now, after the flight)"

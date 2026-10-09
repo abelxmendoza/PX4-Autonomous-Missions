@@ -34,6 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "px4_offboard"))
 from px4_offboard.gz_camera_feed import CameraFeed  # noqa: E402
 from px4_offboard.search_geolocate import SEARCH_CAMERA, TargetTracker, geolocate  # noqa: E402
+from px4_offboard.search_trace import TraceRecorder  # noqa: E402
+from px4_offboard.gz_trail import GazeboTrail  # noqa: E402
 from px4_offboard.vision_marker_detect import detect_markers  # noqa: E402
 
 # Lanes over the 60 x 60 m field (NED metres from home). At 8 m the camera footprint is
@@ -62,7 +64,8 @@ class Pose:
     q_wxyz: tuple[float, float, float, float] | None = None
 
 
-async def _follow_pose(drone: System, pose: Pose, stop: asyncio.Event) -> None:
+async def _follow_pose(drone: System, pose: Pose, stop: asyncio.Event, trace: TraceRecorder, t0: float,
+                       trail: GazeboTrail | None) -> None:
     # Each loop breaks out on its own: leaving `async for` closes the MAVSDK stream
     # properly. Cancelling these tasks from outside instead left a stream thread blocked
     # and the process never exited after landing.
@@ -71,6 +74,10 @@ async def _follow_pose(drone: System, pose: Pose, stop: asyncio.Event) -> None:
             if stop.is_set():
                 break
             pose.position_ned = (pv.position.north_m, pv.position.east_m, pv.position.down_m)
+            if pose.q_wxyz is not None:
+                trace.pose(time.monotonic() - t0, pose.position_ned, pose.q_wxyz)
+            if trail is not None:
+                trail.points.add(pose.position_ned)
 
     async def attitude():
         async for q in drone.telemetry.attitude_quaternion():
@@ -82,7 +89,7 @@ async def _follow_pose(drone: System, pose: Pose, stop: asyncio.Event) -> None:
 
 
 async def _geolocate_detections(feed: CameraFeed, pose: Pose, tracker: TargetTracker, active: asyncio.Event,
-                                stats: dict, stop: asyncio.Event) -> None:
+                                stats: dict, stop: asyncio.Event, trace: TraceRecorder, t0: float) -> None:
     last = 0
     while not stop.is_set():
         await asyncio.sleep(0.05)
@@ -96,13 +103,29 @@ async def _geolocate_detections(feed: CameraFeed, pose: Pose, tracker: TargetTra
             hit = geolocate(SEARCH_CAMERA, pose.position_ned, pose.q_wxyz, d.center_x_px, d.center_y_px)
             if hit is None:
                 continue
-            for mid in tracker.add(d.marker_id, hit[0], hit[1], time.monotonic()):
+            now = time.monotonic() - t0
+            trace.sighting(now, d.marker_id, hit[0], hit[1])
+            for mid in tracker.add(d.marker_id, hit[0], hit[1], now):
+                trace.confirmed(now, mid)
                 est = tracker.estimates()[mid]
                 print(f"  found marker {mid} at north {est.north:+.1f} m, east {est.east:+.1f} m", flush=True)
 
 
-async def fly(altitude: float, speed: float, report_path: Path) -> None:
+async def _draw_trail(trail: GazeboTrail, stop: asyncio.Event) -> None:
+    """Refresh the pink path in the Gazebo window (GUI-only marker) twice a second."""
+    while not stop.is_set():
+        await asyncio.to_thread(trail.publish)  # blocking gz request, off the event loop
+        await asyncio.sleep(0.5)
+
+
+async def fly(altitude: float, speed: float, report_path: Path, trace_path: Path | None) -> None:
     feed = CameraFeed()
+    trace = TraceRecorder(rate_hz=10.0)
+    try:
+        trail = GazeboTrail(min_step_m=0.5)
+    except Exception as exc:  # a missing marker service must never stop the flight
+        print(f"(no Gazebo trail: {exc})", flush=True)
+        trail = None
     tracker = TargetTracker(min_detections=3)
     pose, active, stop = Pose(), asyncio.Event(), asyncio.Event()
     stats = {"frames": 0, "detections": 0}
@@ -123,8 +146,11 @@ async def fly(altitude: float, speed: float, report_path: Path) -> None:
             await setter(hz)
         except Exception as exc:  # not every PX4 build accepts every rate; defaults still work
             print(f"(telemetry rate request refused: {exc})", flush=True)
-    tasks = [asyncio.create_task(_follow_pose(drone, pose, stop)),
-             asyncio.create_task(_geolocate_detections(feed, pose, tracker, active, stats, stop))]
+    t0 = time.monotonic()  # trace time zero: telemetry ready, just before arming
+    tasks = [asyncio.create_task(_follow_pose(drone, pose, stop, trace, t0, trail)),
+             asyncio.create_task(_geolocate_detections(feed, pose, tracker, active, stats, stop, trace, t0))]
+    if trail is not None:
+        tasks.append(asyncio.create_task(_draw_trail(trail, stop)))
 
     await drone.action.set_takeoff_altitude(altitude)
     await drone.action.arm()
@@ -173,6 +199,16 @@ async def fly(altitude: float, speed: float, report_path: Path) -> None:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     print(f"report: {report_path} ({len(confirmed)} targets)", flush=True)
+    if trace_path is not None:
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text(json.dumps(trace.to_dict(
+            altitude_m=altitude, speed_mps=speed,
+            position_source="PX4 local position + attitude estimate (MAVSDK telemetry)",
+            camera={"width_px": SEARCH_CAMERA.width_px, "height_px": SEARCH_CAMERA.height_px,
+                    "hfov_rad": SEARCH_CAMERA.horizontal_fov_rad},
+            final_targets=report["targets"],
+        ), separators=(",", ":")) + "\n")
+        print(f"trace: {trace_path} ({len(trace.frames)} poses, {len(trace.sightings)} sightings)", flush=True)
 
 
 def main() -> int:
@@ -180,8 +216,9 @@ def main() -> int:
     parser.add_argument("--altitude", type=float, default=8.0)
     parser.add_argument("--speed", type=float, default=4.0)
     parser.add_argument("--report", type=Path, default=Path("/tmp/search_demo/search_report.json"))
+    parser.add_argument("--trace", type=Path, help="also save the flight for the browser replay")
     args = parser.parse_args()
-    asyncio.run(fly(args.altitude, args.speed, args.report))
+    asyncio.run(fly(args.altitude, args.speed, args.report, args.trace))
     return 0
 
 

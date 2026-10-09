@@ -42,12 +42,59 @@
             <near>0.1</near>
             <far>80</far>
           </clip>
+          <!-- All bits except 2: the tracking aids below (flags = 2) are invisible to this
+               camera, so they can never hide a target from the search. -->
+          <visibility_mask>4294967293</visibility_mask>
         </camera>
         <always_on>1</always_on>
         <update_rate>10</update_rate>
         <visualize>false</visualize>
       </sensor>
     </link>
+    <!-- Tracking aids so the drone is easy to follow in the Gazebo window: a translucent
+         amber cage around the airframe and a beacon above it. Visual only (no collision,
+         negligible mass) and flagged 2, which the downward camera's visibility_mask
+         excludes. -->
+    <link name="tracking_aids_link">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <mass>0.001</mass>
+        <inertia><ixx>1e-7</ixx><iyy>1e-7</iyy><izz>1e-7</izz></inertia>
+      </inertial>
+      <visual name="geo_cage">
+        <pose>0 0 0.2 0 0 0</pose>
+        <geometry><box><size>2.2 2.2 1.2</size></box></geometry>
+        <transparency>0.75</transparency>
+        <cast_shadows>false</cast_shadows>
+        <visibility_flags>2</visibility_flags>
+        <material>
+          <ambient>1.0 0.71 0.28 1</ambient><diffuse>1.0 0.71 0.28 1</diffuse>
+          <emissive>0.6 0.35 0.05 1</emissive>
+        </material>
+      </visual>
+      <visual name="beacon">
+        <pose>0 0 1.6 0 0 0</pose>
+        <geometry><sphere><radius>0.35</radius></sphere></geometry>
+        <cast_shadows>false</cast_shadows>
+        <visibility_flags>2</visibility_flags>
+        <material>
+          <ambient>1.0 0.71 0.28 1</ambient><diffuse>1.0 0.71 0.28 1</diffuse>
+          <emissive>1.0 0.6 0.1 1</emissive>
+        </material>
+      </visual>
+      <visual name="beacon_mast">
+        <pose>0 0 1.05 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.9</length></cylinder></geometry>
+        <cast_shadows>false</cast_shadows>
+        <visibility_flags>2</visibility_flags>
+        <material><ambient>1.0 0.71 0.28 1</ambient><diffuse>1.0 0.71 0.28 1</diffuse></material>
+      </visual>
+    </link>
+    <joint name="TrackingAidsJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>tracking_aids_link</child>
+    </joint>
+
     <joint name="CameraDownJoint" type="fixed">
       <parent>base_link</parent>
       <child>camera_down_link</child>
