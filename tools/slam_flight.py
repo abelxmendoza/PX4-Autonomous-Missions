@@ -46,6 +46,7 @@ from px4_offboard.costmap_markers import GazeboMapDisplay  # noqa: E402
 from px4_offboard.gz_trail import build_trail_marker  # noqa: E402
 from px4_offboard.mission_logic import DEFAULT_OBSTACLE_COURSE  # noqa: E402
 from px4_offboard.slam2d import OccupancyGrid, Slam2D, compose, level_scan  # noqa: E402
+from px4_offboard.slam_eval import GRID, LIDAR_FORWARD_M, NO_RETURN_CLEAR_M, map_precision  # noqa: E402
 from px4_offboard.slam_runtime import (DriftingOdometry, PoseBuffer, align_se2,  # noqa: E402
                                        euler_from_quaternion, gazebo_pose_to_ned)
 
@@ -53,7 +54,6 @@ WORLD = "obstacle_world"
 MODEL = "x500_lidar_2d_0"
 SCAN_TOPIC = f"/world/{WORLD}/model/{MODEL}/link/link/sensor/lidar_2d_v2/scan"
 POSE_TOPIC = f"/world/{WORLD}/dynamic_pose/info"
-LIDAR_FORWARD_M = 0.12      # lidar_2d_v2 sits 12 cm ahead of the x500's base_link
 LIDAR_ABOVE_BASE_M = 0.31   # 0.26 mount + 0.055 sensor
 # PX4's odometry position leads Gazebo's pose by 0.107 s x velocity (measured on both axes),
 # while its attitude is on time (heading error shows no correlation with yaw rate). So only
@@ -66,14 +66,7 @@ EARTH_M_PER_DEG = 111_320.0
 # through the middle and home. Every leg keeps >= 3.5 m from every course obstacle.
 ROUTE = [(4.0, 0.0), (4.0, -14.0), (31.0, -14.0), (46.0, -9.0), (46.0, 9.0), (31.0, 15.0),
          (4.0, 15.0), (4.0, 0.0), (30.0, 0.0), (4.0, 0.0)]
-GRID = dict(resolution=0.25, north_min=-12.0, north_max=62.0, east_min=-32.0, east_max=32.0)
 PLAN_START, PLAN_GOAL = (2.0, 0.0), (46.0, 0.0)
-# What a horizontal scan at ~3.3 m can hit in obstacle_world.sdf, for SCORING the map only:
-# the five course boxes, plus (from landscape_landmarks) four tree crowns and the shelter
-# roof. Boxes are (north, east, size_north, size_east); trees are (north, east, radius).
-TRUTH_BOXES = [(o.north, o.east, o.size_north, o.size_east) for o in DEFAULT_OBSTACLE_COURSE] + [
-    (-2.0, 22.0, 5.5, 7.5)]
-TRUTH_TREES = [(8.0, -28.0, 1.8), (31.0, -25.0, 2.1), (18.0, 27.0, 1.9), (43.0, 30.0, 2.2)]
 
 
 def offset(lat: float, lon: float, north: float, east: float) -> tuple[float, float]:
@@ -123,7 +116,7 @@ class SlamRun:
     def __init__(self, name: str, drift: DriftingOdometry | None, anchor) -> None:
         self.name = name
         self.drift = drift
-        self.slam = Slam2D(OccupancyGrid(**GRID, no_return_clear_m=12.0), initial_pose=anchor)
+        self.slam = Slam2D(OccupancyGrid(**GRID, no_return_clear_m=NO_RETURN_CLEAR_M), initial_pose=anchor)
         self.samples: list[list[float]] = []   # t, truth(3), odom(3), slam(3)
         self.first_seen: dict[int, float] = {}
 
@@ -160,34 +153,6 @@ class SlamRun:
                 "map_frame_offset": {"yaw_deg": round(math.degrees(al[2]), 2),
                                      "north_m": round(al[0], 3), "east_m": round(al[1], 3)},
                 "odometry_mean_m": round(float(odom.mean()), 3), "odometry_final_m": round(float(odom[-1]), 3)}
-
-
-def _box_dist(n: float, e: float, box) -> float:
-    bn, be, sn, se = box
-    return math.hypot(max(abs(n - bn) - sn / 2, 0.0), max(abs(e - be) - se / 2, 0.0))
-
-
-def _tree_dist(n: float, e: float, tree) -> float:
-    return abs(math.hypot(n - tree[0], e - tree[1]) - tree[2])
-
-
-def map_precision(grid: OccupancyGrid, alignment=(0.0, 0.0, 0.0)) -> dict:
-    """Occupied map cells vs the real surfaces in the world (ground truth, scoring only),
-    as built and after the run's frame alignment."""
-    pts = grid.occupied_points(0.7)
-    shapes = [(_box_dist, b) for b in TRUTH_BOXES] + [(_tree_dist, t) for t in TRUTH_TREES]
-
-    def on_surface(points):
-        d = np.array([min(f(n, e, s) for f, s in shapes) for n, e in points]) if points else np.array([])
-        return round(float((d <= 0.5).mean()), 3) if len(d) else None
-
-    aligned = [compose(alignment, (n, e, 0.0))[:2] for n, e in pts]
-    course = sum(1 for b in TRUTH_BOXES[:len(DEFAULT_OBSTACLE_COURSE)]
-                 if any(_box_dist(n, e, b) <= 0.5 for n, e in aligned))
-    return {"occupied_cells": len(pts),
-            "within_0_5m_of_a_real_surface": on_surface(pts),
-            "within_0_5m_after_frame_alignment": on_surface(aligned),
-            "course_boxes_mapped": f"{course}/{len(DEFAULT_OBSTACLE_COURSE)}"}
 
 
 def clock_check(run: SlamRun) -> dict:
