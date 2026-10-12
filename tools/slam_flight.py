@@ -46,8 +46,10 @@ from px4_offboard.costmap_markers import GazeboMapDisplay  # noqa: E402
 from px4_offboard.gz_trail import build_trail_marker  # noqa: E402
 from px4_offboard.mission_logic import DEFAULT_OBSTACLE_COURSE  # noqa: E402
 from px4_offboard.slam2d import OccupancyGrid, Slam2D, compose, level_scan  # noqa: E402
-from px4_offboard.slam_eval import GRID, LIDAR_FORWARD_M, NO_RETURN_CLEAR_M, map_precision  # noqa: E402
-from px4_offboard.slam_runtime import (DriftingOdometry, PoseBuffer, align_se2,  # noqa: E402
+from px4_offboard.slam_eval import (CHECKPOINTS, GRID, LIDAR_FORWARD_M, NO_RETURN_CLEAR_M,  # noqa: E402
+                                    clearance_to_truth, map_precision, registration_errors,
+                                    world_of_px4_frames)
+from px4_offboard.slam_runtime import (DriftingOdometry, MapFrameTracker, PoseBuffer, align_se2,  # noqa: E402
                                        euler_from_quaternion, gazebo_pose_to_ned)
 
 WORLD = "obstacle_world"
@@ -119,10 +121,15 @@ class SlamRun:
         self.slam = Slam2D(OccupancyGrid(**GRID, no_return_clear_m=NO_RETURN_CLEAR_M), initial_pose=anchor)
         self.samples: list[list[float]] = []   # t, truth(3), odom(3), slam(3)
         self.first_seen: dict[int, float] = {}
+        # map -> PX4 frame: fitted to GPS positions with PX4's estimate, follows the drift without.
+        self.tracker = MapFrameTracker(mode="odometry" if drift else "gps")
+        self.transforms: list = []
 
     def step(self, t: float, px4_sensor_pose, angles, ranges, truth_sensor_pose) -> None:
         odom = self.drift.update(t, px4_sensor_pose) if self.drift else px4_sensor_pose
         pose = self.slam.step(odom, angles, ranges)
+        self.tracker.update(t, pose, odom)
+        self.transforms.append(self.tracker.transform())
         self.samples.append([round(t, 3), *(round(v, 4) for v in truth_sensor_pose),
                              *(round(v, 4) for v in odom), *(round(v, 4) for v in pose)])
 
@@ -134,6 +141,10 @@ class SlamRun:
     def alignment(self):
         a = np.array(self.samples)
         return align_se2(a[:, 7:9], a[:, 1:3])
+
+    def world_of_px4(self) -> list:
+        a = np.array(self.samples)
+        return world_of_px4_frames(a[:, 4:7], a[:, 1:4], gps=self.drift is None)
 
     def errors(self) -> dict:
         a = np.array(self.samples)
@@ -152,7 +163,10 @@ class SlamRun:
                 "slam_ate_aligned_max_m": round(float(ate.max()), 3),
                 "map_frame_offset": {"yaw_deg": round(math.degrees(al[2]), 2),
                                      "north_m": round(al[0], 3), "east_m": round(al[1], 3)},
-                "odometry_mean_m": round(float(odom.mean()), 3), "odometry_final_m": round(float(odom[-1]), 3)}
+                "odometry_mean_m": round(float(odom.mean()), 3), "odometry_final_m": round(float(odom[-1]), 3),
+                "map_to_px4": {"mode": self.tracker.mode,
+                               **{k: round(v, 3) for k, v in registration_errors(
+                                   self.transforms, self.world_of_px4(), al, CHECKPOINTS).items()}}}
 
 
 def clock_check(run: SlamRun) -> dict:
@@ -375,13 +389,23 @@ def finish(args, runs: list[SlamRun], stats: dict, flight_s: float, display) -> 
             display.publish(cm, shown.slam.grid.occupied_points(0.7), args.altitude + LIDAR_ABOVE_BASE_M)
         except Exception:
             pass
-    plans = {}
+    plans, plan_checks = {}, {}
+    world_now = shown.world_of_px4()[-1]       # PX4's frame -> world at the last scan (scoring)
     for name, weight in (("graded", 3.0), ("binary", 0.0)):
         try:
-            plans[name] = [[round(n, 2), round(e, 2)] for n, e in
-                           plan_on_costmap(cm, PLAN_START, PLAN_GOAL, cost_weight=weight, allow_unknown=False)]
+            route = plan_on_costmap(cm, PLAN_START, PLAN_GOAL, cost_weight=weight, allow_unknown=False)
         except (RuntimeError, ValueError) as exc:
             plans[name] = f"no route: {exc}"
+            continue
+        plans[name] = [[round(n, 2), round(e, 2)] for n, e in route]
+        # As setpoints: through the map->PX4 tracker, and (for comparison) unconverted.
+        pts = [PLAN_START] + list(route)
+        sent = [shown.tracker.to_px4(p) for p in pts]
+        plans[name + "_px4"] = [[round(n, 2), round(e, 2)] for n, e in sent[1:]]
+        in_world = [compose(world_now, (n, e, 0.0))[:2] for n, e in sent]
+        raw_world = [compose(world_now, (n, e, 0.0))[:2] for n, e in pts]
+        plan_checks[name] = {"clearance_to_real_obstacles_m": round(clearance_to_truth(in_world), 2),
+                             "clearance_if_sent_unconverted_m": round(clearance_to_truth(raw_world), 2)}
     report = {
         "world": WORLD, "vehicle": "x500_lidar_2d (PX4 SITL, Gazebo Harmonic)",
         "sensor": "lidar_2d_v2: 720 beams over 270 deg, 30 m, 20 Hz (real Gazebo GPU-lidar scans)",
@@ -392,8 +416,9 @@ def finish(args, runs: list[SlamRun], stats: dict, flight_s: float, display) -> 
         "drift_injected": {"scale": args.drift_scale, "yaw_deg_per_s": args.drift_deg_per_s},
         "map": {r.name: map_precision(r.slam.grid, r.alignment()) for r in runs},
         "clock_check": clock_check(runs[0]),
-        "plans": {"start": PLAN_START, "goal": PLAN_GOAL, **{k: (v if isinstance(v, str) else len(v))
-                                                             for k, v in plans.items()}},
+        "plans": {"start": PLAN_START, "goal": PLAN_GOAL, "frame": "SLAM map frame (run: drifting_odometry)",
+                  **{k: (v if isinstance(v, str) else len(v)) for k, v in plans.items() if not k.endswith("_px4")},
+                  "as_flown": plan_checks},
     }
     print(json.dumps(report, indent=2), flush=True)
     if args.report:

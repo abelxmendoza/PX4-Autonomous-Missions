@@ -4,45 +4,59 @@
   "sensor": "lidar_2d_v2: 720 beams over 270 deg, 30 m, 20 Hz (real Gazebo GPU-lidar scans)",
   "altitude_m": 3.0,
   "speed_mps": 2.0,
-  "flight_s": 108.8,
+  "flight_s": 107.1,
   "slam_rate_hz": 5.0,
-  "scans_received": 2581,
-  "scans_processed": 405,
+  "scans_received": 2580,
+  "scans_processed": 423,
   "ground_truth": "Gazebo model pose, used only for these scores; SLAM never reads it",
   "runs": {
     "px4_odometry": {
-      "scans": 405,
-      "matched": 404,
-      "slam_mean_m": 1.915,
-      "slam_max_m": 3.878,
-      "slam_final_m": 0.353,
-      "slam_yaw_max_deg": 5.54,
-      "slam_ate_aligned_mean_m": 0.051,
-      "slam_ate_aligned_max_m": 0.764,
+      "scans": 423,
+      "matched": 422,
+      "slam_mean_m": 2.038,
+      "slam_max_m": 4.099,
+      "slam_final_m": 0.305,
+      "slam_yaw_max_deg": 6.11,
+      "slam_ate_aligned_mean_m": 0.044,
+      "slam_ate_aligned_max_m": 0.85,
       "map_frame_offset": {
-        "yaw_deg": -4.69,
-        "north_m": 0.029,
-        "east_m": 0.058
+        "yaw_deg": -5.15,
+        "north_m": -0.024,
+        "east_m": 0.162
       },
-      "odometry_mean_m": 0.044,
-      "odometry_final_m": 0.032
+      "odometry_mean_m": 0.037,
+      "odometry_final_m": 0.022,
+      "map_to_px4": {
+        "mode": "gps",
+        "tracked_mean_m": 0.043,
+        "tracked_max_m": 0.7,
+        "untransformed_mean_m": 1.903,
+        "untransformed_max_m": 3.254
+      }
     },
     "drifting_odometry": {
-      "scans": 405,
-      "matched": 404,
-      "slam_mean_m": 2.034,
-      "slam_max_m": 4.128,
-      "slam_final_m": 0.298,
-      "slam_yaw_max_deg": 6.37,
-      "slam_ate_aligned_mean_m": 0.052,
-      "slam_ate_aligned_max_m": 0.782,
+      "scans": 423,
+      "matched": 422,
+      "slam_mean_m": 2.058,
+      "slam_max_m": 4.187,
+      "slam_final_m": 0.314,
+      "slam_yaw_max_deg": 6.26,
+      "slam_ate_aligned_mean_m": 0.045,
+      "slam_ate_aligned_max_m": 0.809,
       "map_frame_offset": {
-        "yaw_deg": -5.19,
-        "north_m": 0.036,
-        "east_m": 0.17
+        "yaw_deg": -5.22,
+        "north_m": -0.019,
+        "east_m": 0.172
       },
-      "odometry_mean_m": 6.407,
-      "odometry_final_m": 13.911
+      "odometry_mean_m": 6.434,
+      "odometry_final_m": 13.909,
+      "map_to_px4": {
+        "mode": "odometry",
+        "tracked_mean_m": 0.138,
+        "tracked_max_m": 0.529,
+        "untransformed_mean_m": 4.625,
+        "untransformed_max_m": 12.994
+      }
     }
   },
   "drift_injected": {
@@ -51,24 +65,24 @@
   },
   "map": {
     "px4_odometry": {
-      "occupied_cells": 674,
-      "within_0_5m_of_a_real_surface": 0.472,
-      "within_0_5m_after_frame_alignment": 0.93,
+      "occupied_cells": 682,
+      "within_0_5m_of_a_real_surface": 0.419,
+      "within_0_5m_after_frame_alignment": 0.913,
       "course_boxes_mapped": "5/5"
     },
     "drifting_odometry": {
-      "occupied_cells": 672,
-      "within_0_5m_of_a_real_surface": 0.436,
-      "within_0_5m_after_frame_alignment": 0.932,
+      "occupied_cells": 670,
+      "within_0_5m_of_a_real_surface": 0.416,
+      "within_0_5m_after_frame_alignment": 0.918,
       "course_boxes_mapped": "5/5"
     }
   },
   "clock_check": {
     "px4_position_lead_corrected_s": 0.107,
-    "residual_lag_north_s": -0.005,
-    "residual_lag_east_s": 0.001,
-    "residual_lag_heading_s": -0.002,
-    "px4_heading_bias_deg": -2.0
+    "residual_lag_north_s": -0.0,
+    "residual_lag_east_s": 0.003,
+    "residual_lag_heading_s": -0.001,
+    "px4_heading_bias_deg": -2.25
   },
   "plans": {
     "start": [
@@ -79,7 +93,18 @@
       46.0,
       0.0
     ],
+    "frame": "SLAM map frame (run: drifting_odometry)",
     "graded": 4,
-    "binary": 2
+    "binary": 2,
+    "as_flown": {
+      "graded": {
+        "clearance_to_real_obstacles_m": 2.65,
+        "clearance_if_sent_unconverted_m": 0.0
+      },
+      "binary": {
+        "clearance_to_real_obstacles_m": 0.76,
+        "clearance_if_sent_unconverted_m": 0.0
+      }
+    }
   }
 }

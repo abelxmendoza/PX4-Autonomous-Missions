@@ -13,8 +13,8 @@ from pathlib import Path
 import numpy as np
 
 from .mission_logic import DEFAULT_OBSTACLE_COURSE
-from .slam2d import OccupancyGrid, Slam2D, compose, level_scan
-from .slam_runtime import DriftingOdometry, align_se2
+from .slam2d import OccupancyGrid, Slam2D, compose, level_scan, relative
+from .slam_runtime import DriftingOdometry, MapFrameTracker, align_se2
 
 LIDAR_FORWARD_M = 0.12  # lidar_2d_v2 sits 12 cm ahead of the x500's base_link
 GRID = dict(resolution=0.25, north_min=-12.0, north_max=62.0, east_min=-32.0, east_max=32.0)
@@ -78,10 +78,62 @@ def load_recorded_flight(path: str | Path) -> dict:
             "attitude": d["attitude"], "truth": d["truth"]}
 
 
+def registration_errors(transforms, world_of_px4, alignment, checkpoints, warmup: int = 20) -> dict:
+    """How far a map point lands from where it really is once converted into PX4's frame and
+    flown: for each world checkpoint w, x = alignment^-1(w) is where the map has it; at scan k
+    it is sent to PX4 as T_k(x), which in the world is W_k(T_k(x)). Also reports the same
+    with no transform (map coordinates sent to PX4 as they are). ``alignment`` (map->world)
+    and W_k (PX4 frame->world at scan k) come from ground truth: scoring only. With GPS, W is
+    one fit of PX4's position track onto the true track; GPS-denied, PX4's frame drifts and
+    W_k is truth_k o odometry_k^-1 at each scan."""
+    inv_al = relative(alignment, (0.0, 0.0, 0.0))
+    xs = [compose(inv_al, (n, e, 0.0)) for n, e in checkpoints]
+    with_t, without = [], []
+    for k in range(warmup, len(transforms)):
+        if transforms[k] is None:
+            continue
+        for (wn, we), x in zip(checkpoints, xs):
+            got = compose(world_of_px4[k], compose(transforms[k], x))
+            raw = compose(world_of_px4[k], x)
+            with_t.append(math.hypot(got[0] - wn, got[1] - we))
+            without.append(math.hypot(raw[0] - wn, raw[1] - we))
+    return {"tracked_mean_m": float(np.mean(with_t)), "tracked_max_m": float(np.max(with_t)),
+            "untransformed_mean_m": float(np.mean(without)), "untransformed_max_m": float(np.max(without))}
+
+
+def world_of_px4_frames(odometry, truth, gps: bool) -> list:
+    """PX4 frame -> world, per scan. With GPS, a position setpoint lands where PX4's position
+    estimate says, whatever its heading error: one fit of PX4's position track onto the
+    true track. GPS-denied, PX4's frame drifts: truth_k o odometry_k^-1 at each scan."""
+    if gps:
+        return [align_se2(odometry, truth)] * len(odometry)
+    return [compose(g, relative(o, (0.0, 0.0, 0.0))) for o, g in zip(odometry, truth)]
+
+
+def clearance_to_truth(route, step_m: float = 0.1) -> float:
+    """Closest approach (metres) of a world-frame polyline to any real surface."""
+    shapes = [(_box_dist, b) for b in TRUTH_BOXES] + [(_tree_dist, t) for t in TRUTH_TREES]
+    best = math.inf
+    for (n0, e0), (n1, e1) in zip(route, route[1:]):
+        k = max(1, int(math.ceil(math.hypot(n1 - n0, e1 - e0) / step_m)))
+        for i in range(k + 1):
+            n, e = n0 + (n1 - n0) * i / k, e0 + (e1 - e0) * i / k
+            best = min(best, min(f(n, e, x) for f, x in shapes))
+    return best
+
+
+# Registration checkpoints: the centres of the five course boxes (world frame).
+CHECKPOINTS = [(o.north, o.east) for o in DEFAULT_OBSTACLE_COURSE]
+
+
 def replay(flight: dict, drift: DriftingOdometry | None = None) -> dict:
-    """Run SLAM over a recorded flight exactly as slam_flight.py does live; score it."""
+    """Run SLAM over a recorded flight exactly as slam_flight.py does live; score it.
+    The map->PX4 frame tracker runs in gps mode with PX4's estimate as odometry, and in
+    odometry mode when the odometry is degraded (GPS-denied)."""
     lever = (LIDAR_FORWARD_M, 0.0, 0.0)
     slam = Slam2D(OccupancyGrid(**GRID, no_return_clear_m=NO_RETURN_CLEAR_M))
+    tracker = MapFrameTracker(mode="odometry" if drift is not None else "gps")
+    transforms = []
     est, gt, odo = [], [], []
     for k in range(len(flight["t"])):
         height, roll, pitch = flight["attitude"][k]
@@ -92,9 +144,13 @@ def replay(flight: dict, drift: DriftingOdometry | None = None) -> dict:
         est.append(slam.step(odom, bearings, flat))
         gt.append(compose(tuple(flight["truth"][k]), lever))
         odo.append(odom)
+        tracker.update(float(flight["t"][k]), est[-1], odom)
+        transforms.append(tracker.transform())
+    world_of_px4 = world_of_px4_frames(odo, gt, gps=drift is None)
     errors = trajectory_errors(est, gt)
     odometry = trajectory_errors(odo, gt)
     return {"slam": slam, "errors": errors, "odometry_final_m": float(np.hypot(*(np.array(odo[-1][:2]) - gt[-1][:2]))),
             "odometry_raw_mean_m": odometry["raw_mean_m"],
             "map": map_precision(slam.grid, errors["alignment"]), "matched": slam.stats["matched"],
-            "scans": len(est)}
+            "scans": len(est), "tracker": tracker,
+            "registration": registration_errors(transforms, world_of_px4, errors["alignment"], CHECKPOINTS)}

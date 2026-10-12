@@ -85,3 +85,20 @@ describe('slam replay', () => {
     expect(() => R.parseSlamTrace(JSON.stringify(bad))).toThrow();
   });
 });
+
+describe('slam routes as flown', () => {
+  it('both routes clear the real obstacles once converted, and would hit one unconverted', () => {
+    const flown = report.plans.as_flown;
+    for (const name of ['graded', 'binary']) {
+      expect(flown[name].clearance_to_real_obstacles_m, name).toBeGreaterThanOrEqual(0.6);  // the drone's radius
+      expect(flown[name].clearance_if_sent_unconverted_m, name).toBe(0);
+    }
+    expect(flown.graded.clearance_to_real_obstacles_m).toBeGreaterThan(flown.binary.clearance_to_real_obstacles_m);
+  });
+
+  it('the page reads the as-flown numbers from the report', () => {
+    const html = readFileSync(join(SITE, 'slam/index.html'), 'utf8');
+    expect(html).toContain('report.plans.as_flown');
+    expect(html).toContain('map_to_px4');
+  });
+});

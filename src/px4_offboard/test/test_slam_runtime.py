@@ -71,3 +71,59 @@ def test_align_se2_recovers_a_rigid_offset_and_ignores_none():
     dn, de, dyaw = align_se2(pts, moved)
     assert (dn, de, dyaw) == pytest.approx(offset, abs=1e-9)
     assert align_se2(pts, pts) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9)
+
+
+def _rot(offset, pose):
+    from px4_offboard.slam2d import compose
+    return compose(offset, pose)
+
+
+def test_gps_mode_recovers_the_map_frame_rotation_from_positions_not_from_a_biased_heading():
+    import numpy as np
+
+    from px4_offboard.slam_runtime import MapFrameTracker
+    # Truth path: an L-shaped survey. SLAM's map is the world rotated 4.4 deg about a point
+    # near the start (its first pose); PX4 (GPS) has positions to 5 cm and a heading 2 deg off.
+    rng = np.random.default_rng(1)
+    path = [(n, 0.0, 0.0) for n in np.linspace(0, 30, 61)] + [(30.0, e, math.pi / 2) for e in np.linspace(0, 20, 41)]
+    world_to_map = (0.3, -0.2, math.radians(4.4))
+    tracker = MapFrameTracker(mode="gps")
+    for k, p in enumerate(path):
+        map_pose = _rot(world_to_map, p)
+        px4 = (p[0] + rng.normal(0, 0.05), p[1] + rng.normal(0, 0.05), p[2] + math.radians(-2.0))
+        tracker.update(k * 0.5, map_pose, px4)
+    # map -> px4 should undo world_to_map, i.e. a -4.4 deg rotation, NOT -4.4 + (-2) deg.
+    dn, de, dyaw = tracker.transform()
+    assert math.degrees(dyaw) == pytest.approx(-4.4, abs=0.3)
+    x_map = _rot(world_to_map, (40.0, 10.0, 0.0))
+    n, e = tracker.to_px4(x_map[:2])
+    assert math.dist((n, e), (40.0, 10.0)) < 0.25
+
+
+def test_gps_mode_uses_the_pose_pair_until_the_path_has_spread_out():
+    from px4_offboard.slam_runtime import MapFrameTracker
+    tracker = MapFrameTracker(mode="gps", min_spread_m=5.0)
+    assert tracker.transform() is None
+    tracker.update(0.0, (1.0, 0.0, 0.1), (11.0, 5.0, 0.3))
+    dn, de, dyaw = tracker.transform()
+    assert dyaw == pytest.approx(0.2)
+    assert tracker.to_px4((1.0, 0.0)) == pytest.approx((11.0, 5.0))
+
+
+def test_odometry_mode_follows_a_drifting_px4_frame():
+    from px4_offboard.slam_runtime import DriftingOdometry, MapFrameTracker
+    # GPS-denied: PX4's own frame drifts. A map point must be sent to wherever PX4's *current*
+    # frame puts it, so the transform has to move with the drift.
+    drift = DriftingOdometry(scale=1.05, yaw_drift_deg_per_s=1.0)
+    tracker = MapFrameTracker(mode="odometry", smoothing_s=0.0)
+    for k in range(80):
+        t = k * 0.5
+        truth = (0.5 * k, 0.0, 0.0)
+        tracker.update(t, truth, drift.update(t, truth))   # SLAM exact: map == world
+    target_world = (45.0, 5.0)
+    # Where PX4's drifting frame says that world point is, right now:
+    from px4_offboard.slam2d import compose, relative
+    world_to_px4 = compose(drift.pose, relative((0.5 * 79, 0.0, 0.0), (0.0, 0.0, 0.0)))
+    expected = compose(world_to_px4, (*target_world, 0.0))[:2]
+    assert tracker.to_px4(target_world) == pytest.approx(expected, abs=1e-6)
+    assert math.dist(expected, target_world) > 2.0       # the drift is real...

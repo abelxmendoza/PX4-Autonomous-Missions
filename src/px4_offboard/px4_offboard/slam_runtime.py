@@ -104,3 +104,81 @@ def align_se2(source, target) -> tuple[float, float, float]:
     rotated = np.array([c * sc[0] - sn * sc[1], sn * sc[0] + c * sc[1]])
     dn, de = gc - rotated
     return float(dn), float(de), yaw
+
+
+def _inverse(p: Pose) -> Pose:
+    return relative(p, (0.0, 0.0, 0.0))
+
+
+class MapFrameTracker:
+    """Keeps the transform from SLAM's map frame to the frame PX4 flies in (ROS's map->odom).
+
+    SLAM's map frame is fixed by its first pose; PX4 flies in its own local frame. A route
+    planned on the map must be converted before it can be sent as setpoints, and the
+    conversion is learned from the pose pairs SLAM and PX4 report for the same scan:
+
+    gps       PX4's positions are good (GPS) but its heading carries a few degrees of bias, so
+              the rotation is fitted to the POSITION tracks (``align_se2``), which the heading
+              bias cannot touch. Until the track has spread ``min_spread_m``, the latest pose
+              pair is used instead.
+    odometry  GPS-denied: PX4's frame itself drifts, and a setpoint must be where PX4's frame
+              currently puts the target. The transform is the latest pose pair
+              (px4 o map^-1), optionally smoothed over ``smoothing_s``.
+    """
+
+    def __init__(self, mode: str = "gps", min_spread_m: float = 5.0, smoothing_s: float = 1.0,
+                 sample_every_s: float = 0.25) -> None:
+        if mode not in ("gps", "odometry"):
+            raise ValueError("mode must be 'gps' or 'odometry'")
+        self.mode, self.min_spread_m, self.smoothing_s = mode, min_spread_m, smoothing_s
+        self.sample_every_s = sample_every_s
+        self._map_xy: list[tuple[float, float]] = []
+        self._px4_xy: list[tuple[float, float]] = []
+        self._last_sample_t: float | None = None
+        self._pair: Pose | None = None        # latest px4 o map^-1
+        self._smoothed: Pose | None = None
+        self._last_t: float | None = None
+        self._fit: Pose | None = None
+
+    def update(self, t: float, map_pose: Pose, px4_pose: Pose) -> None:
+        pair = compose(px4_pose, _inverse(map_pose))
+        self._pair = pair
+        if self._smoothed is None or self.smoothing_s <= 0 or self._last_t is None:
+            self._smoothed = pair
+        else:
+            k = min(1.0, max(0.0, t - self._last_t) / self.smoothing_s)
+            s = self._smoothed
+            self._smoothed = (s[0] + (pair[0] - s[0]) * k, s[1] + (pair[1] - s[1]) * k,
+                              _wrap(s[2] + _wrap(pair[2] - s[2]) * k))
+        self._last_t = t
+        if self.mode == "gps" and (self._last_sample_t is None or t - self._last_sample_t >= self.sample_every_s):
+            self._last_sample_t = t
+            self._map_xy.append((map_pose[0], map_pose[1]))
+            self._px4_xy.append((px4_pose[0], px4_pose[1]))
+            self._fit = None
+
+    def spread_m(self) -> float:
+        if len(self._map_xy) < 2:
+            return 0.0
+        import numpy as np
+
+        xy = np.asarray(self._map_xy)
+        return float(np.hypot(*(xy - xy.mean(axis=0)).T).max())
+
+    def transform(self) -> Pose | None:
+        """map -> PX4 frame as (dn, de, dyaw), or None before the first update."""
+        if self._pair is None:
+            return None
+        if self.mode == "gps" and self.spread_m() >= self.min_spread_m:
+            if self._fit is None:
+                self._fit = align_se2(self._map_xy, self._px4_xy)
+            return self._fit
+        return self._smoothed
+
+    def to_px4(self, point_map: tuple[float, float]) -> tuple[float, float]:
+        n, e, _ = compose(self.transform(), (point_map[0], point_map[1], 0.0))
+        return n, e
+
+    def to_map(self, point_px4: tuple[float, float]) -> tuple[float, float]:
+        n, e, _ = compose(_inverse(self.transform()), (point_px4[0], point_px4[1], 0.0))
+        return n, e
