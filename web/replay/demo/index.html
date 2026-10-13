@@ -59,27 +59,64 @@
 
   header{position:fixed;top:0;left:0;right:0;
     padding:max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
-    display:flex;align-items:center;justify-content:space-between;gap:12px;
-    background:linear-gradient(180deg,rgba(5,10,11,.94),rgba(5,10,11,.55) 62%,transparent);z-index:5;}
+    display:flex;flex-direction:column;align-items:stretch;gap:10px;
+    background:linear-gradient(180deg,rgba(5,10,11,.96),rgba(5,10,11,.72) 70%,transparent);z-index:30;}
   .brand{display:flex;align-items:center;gap:12px;min-width:0;}
   .brand-mark{position:relative;width:34px;height:34px;flex:none;border:1px solid var(--mint);display:grid;place-items:center;
     color:var(--ink);background:var(--mint);font:900 12px var(--mono);box-shadow:0 0 26px rgba(105,247,205,.17);}
   .brand-mark::after{content:"";position:absolute;inset:4px;border:1px solid rgba(5,10,11,.34);}
   header h1{font-size:15px;line-height:1;margin:4px 0 0;font-weight:720;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   header h1 .dim{color:var(--muted);font-weight:450;}
-  .header-tools{display:flex;align-items:center;gap:10px;min-width:0;flex:1;justify-content:flex-end;}
+  .header-top{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;}
+  .header-tools{display:flex;align-items:center;gap:10px;min-width:0;justify-content:flex-end;}
   .live-pill{display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--panel-b);background:rgba(6,16,17,.72);
     font:700 9px var(--mono);letter-spacing:.12em;color:var(--muted);text-transform:uppercase;white-space:nowrap;}
   .live-pill i{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);animation:pulse 1.8s ease-out infinite;}
   header a{color:var(--text);text-decoration:none;font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;
     border-bottom:1px solid var(--amber);padding:8px 0 5px;transition:.2s ease;white-space:nowrap;}
   header a:hover{color:var(--amber);}
-  #missionSelect{max-width:min(280px,42vw);min-width:0;}
+  #missionSelect{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);}
+  #missionPickerBtn{display:flex;align-items:center;gap:8px;padding:4px 16px;min-height:40px;
+    border:1px solid rgba(255,181,71,.55);border-radius:999px;background:rgba(35,25,8,.88);color:var(--amber);
+    font:800 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;}
+  #missionPickerBtn:hover{color:var(--ink);background:var(--amber);border-color:var(--amber);}
+  .mission-menu{position:fixed;z-index:25;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    padding:120px 20px 28px;background:radial-gradient(circle at 50% 42%, rgba(5,10,11,.35), rgba(5,10,11,.78) 70%);
+    backdrop-filter:blur(5px);}
+  .mission-menu[hidden]{display:none;}
+  .mission-menu-card{width:min(860px,100%);max-height:min(78dvh,760px);overflow:auto;
+    padding:28px 28px 22px;text-align:center;
+    background:linear-gradient(180deg,rgba(10,26,28,.94),rgba(5,10,11,.96));
+    border:1px solid rgba(105,247,205,.45);box-shadow:0 30px 90px rgba(0,0,0,.55);}
+  .mission-kicker{margin:0 0 8px;color:var(--amber);font:800 11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;}
+  .mission-menu-card h2{margin:0 0 8px;font:800 clamp(28px,4.5vw,42px)/1.08 var(--display);letter-spacing:-.03em;}
+  .mission-menu-blurb{margin:0 auto 18px;max-width:52ch;font:15px/1.5 var(--display);color:var(--muted);}
+  .mission-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;text-align:left;}
+  .mission-board h3{margin:0 0 8px;font:800 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--amber);}
+  .mission-grid{display:grid;gap:8px;}
+  .mission-card{display:block;width:100%;text-align:left;padding:10px 12px;min-height:0;transform:none;
+    background:rgba(105,247,205,.04);border:1px solid rgba(134,255,222,.22);border-radius:2px;}
+  .mission-card:hover{transform:none;border-color:rgba(105,247,205,.6);background:#102224;}
+  .mission-card.is-current{background:rgba(105,247,205,.16);border-color:var(--mint);box-shadow:inset 3px 0 0 var(--mint);}
+  .mission-result{display:block;margin-bottom:3px;font:700 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--mint);}
+  .mission-title{display:block;font:800 14px/1.25 var(--display);letter-spacing:-.01em;text-transform:none;color:var(--text);}
+  .mission-care{display:none;}
+  .mission-actions{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:12px 18px;margin-top:18px;}
+  .mission-actions .primary{min-height:52px;padding:0 22px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;}
+  #missionFree{background:none;border:none;color:var(--muted);min-height:0;text-transform:uppercase;letter-spacing:.08em;}
+  #missionFree:hover{color:var(--amber);background:none;transform:none;}
+  body.menu-open .hud,
+  body.menu-open .transport,
+  body.menu-open .story-panel,
+  body.menu-open .story-resume,
+  body.menu-open .decision,
+  body.menu-open .hint,
+  body.menu-open .loading{visibility:hidden;}
 
   .hud-toggle{display:none;}
   .hud-scrim{display:none;}
 
-  .hud{position:fixed;top:76px;right:18px;width:260px;max-height:calc(100dvh - 170px);overflow-y:auto;
+  .hud{position:fixed;top:118px;right:18px;width:260px;max-height:calc(100dvh - 200px);overflow-y:auto;
     display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--mint-2) transparent;
     -webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .card{position:relative;overflow:hidden;flex-shrink:0;background:var(--panel);border:1px solid var(--panel-b);border-radius:2px;
@@ -94,9 +131,7 @@
   .row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0;}
   .row+.row{border-top:1px solid rgba(255,255,255,.025);}
   .row .k{color:var(--muted);}.row .v{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
-  /* Persistent re-entry point for guided story mode — otherwise it's only
-     reachable once, from the landing hero, before localStorage hides that
-     for the rest of this browser's visits. */
+  /* Replays the guide from the first beat of the flight already on screen. */
   .hud-story-btn{width:100%;margin-top:10px;padding:8px 10px;
     background:rgba(105,247,205,.08);border:1px solid rgba(105,247,205,.3);
     color:var(--mint);font:700 10px var(--mono);letter-spacing:.04em;
@@ -143,7 +178,7 @@
   .hint{position:fixed;bottom:calc(83px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
     color:var(--muted);font:9px var(--mono);letter-spacing:.08em;text-transform:uppercase;opacity:.72;
     max-width:min(90vw,520px);text-align:center;padding:0 12px;pointer-events:none;}
-  .decision{position:fixed;top:88px;left:max(16px, env(safe-area-inset-left));width:min(390px,calc(100vw - 320px));padding:11px 14px;
+  .decision{position:fixed;top:118px;left:max(16px, env(safe-area-inset-left));width:min(390px,calc(100vw - 320px));padding:11px 14px;
     border-left:3px solid var(--mint);background:rgba(6,17,18,.82);backdrop-filter:blur(12px);font:750 11px var(--mono);
     letter-spacing:.04em;color:var(--muted);box-shadow:0 12px 36px rgba(0,0,0,.22);transition:.22s ease;z-index:4;}
   .decision::before{content:"FLIGHT DIRECTOR";display:block;margin-bottom:5px;color:var(--mint);font-size:8px;letter-spacing:.18em;}
@@ -169,11 +204,16 @@
   .story-panel[hidden]{display:none;}
   .story-eyebrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
   .story-eyebrow span{color:var(--amber);font:800 9px var(--mono);letter-spacing:.18em;text-transform:uppercase;}
-  .story-exit{background:none;border:none;color:var(--muted);font:700 10px var(--mono);
+  .story-exit{background:none;border:none;color:var(--muted);font:700 10px var(--mono);min-height:0;
     cursor:pointer;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;}
-  .story-exit:hover{color:var(--text);}
+  .story-exit:hover{color:var(--text);transform:none;background:none;}
+  .story-care{margin:0 0 8px;font:13px/1.5 var(--display);color:var(--text);}
   .story-title{margin:0 0 6px;font:800 17px var(--display);color:var(--text);letter-spacing:-.01em;}
   .story-text{margin:0;font:13px/1.6 var(--display);color:var(--muted);}
+  .story-resume{position:fixed;z-index:20;left:50%;bottom:calc(var(--transport-h) + 16px + env(safe-area-inset-bottom));
+    transform:translateX(-50%);background:var(--mint);color:var(--ink);border-color:var(--mint);
+    box-shadow:0 12px 40px rgba(0,0,0,.4);white-space:nowrap;}
+  .story-resume[hidden]{display:none;}
   .story-text b{color:var(--text);}
   @media(max-width:760px){
     .story-panel{width:calc(100vw - 24px);padding:14px 16px;}
@@ -189,41 +229,8 @@
 
   .sensor-cell span{display:block;color:var(--muted);font-size:8px;letter-spacing:.12em;}.sensor-cell b{display:block;margin-top:3px;font-size:10px;color:var(--mint);}
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mint);font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;padding:24px;text-align:center;z-index:40;}
-
-  /* Landing hero — visible by default (no [hidden] until JS dismisses it),
-     so it renders even if the 3D viewer's script never runs at all (WebGL
-     unavailable, a blocked CDN script, etc.) — see the try/catch around
-     WebGLRenderer construction below for why that's a real, not
-     hypothetical, failure mode this page needs a legible fallback for. */
-  .landing-hero{position:fixed;inset:0;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;
-    background:radial-gradient(circle at 28% 18%, rgba(105,247,205,.07), transparent 55%), var(--ink);
-    display:flex;align-items:center;justify-content:center;
-    padding:max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));}
-  .landing-hero[hidden]{display:none;}
-  .landing-card{position:relative;width:min(640px,100%);max-height:min(92dvh,780px);overflow-y:auto;-webkit-overflow-scrolling:touch;
-    background:linear-gradient(145deg,rgba(17,39,39,.96),rgba(6,16,17,.98));
-    border:1px solid rgba(105,247,205,.3);border-top:3px solid var(--mint);border-radius:2px;
-    padding:40px 36px;box-shadow:0 35px 100px rgba(0,0,0,.7);animation:modal-in .5s both;}
-  .landing-eyebrow{color:var(--amber);font:800 10px var(--mono);letter-spacing:.2em;text-transform:uppercase;margin-bottom:18px;}
-  .landing-title{margin:0 0 16px;font:800 clamp(24px,5vw,36px)/1.14 var(--display);letter-spacing:-.02em;color:var(--text);}
-  .landing-title span{color:var(--mint);}
-  .landing-pitch{margin:0 0 22px;font:14px/1.65 var(--display);color:var(--muted);max-width:58ch;}
-  .landing-pitch b{color:var(--text);}
-  .landing-badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px;}
-  .landing-badges span,.landing-badges a{padding:5px 11px;border:1px solid var(--panel-b);border-radius:999px;font:700 10px var(--mono);letter-spacing:.06em;color:var(--mint);background:rgba(105,247,205,.06);text-decoration:none;}
-  .landing-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin-bottom:26px;}
-  .landing-actions button{min-height:50px;padding:0 22px;font-size:13px;}
-  .landing-actions a{color:var(--text);text-decoration:none;font:700 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--amber);padding-bottom:3px;white-space:nowrap;}
-  .landing-actions a:hover{color:var(--amber);}
-  .landing-tips{border-top:1px solid var(--line);padding-top:18px;}
-  .landing-tips p{margin:0 0 8px;font:12px/1.65 var(--mono);color:var(--muted);}
-  .landing-tips p:last-child{margin-bottom:0;}
-  .landing-tips p b{color:var(--text);font-weight:700;}
-  .landing-mobile-note{display:none;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(105,247,205,.65)}70%{box-shadow:0 0 0 7px rgba(105,247,205,0)}100%{box-shadow:0 0 0 0 rgba(105,247,205,0)}}
   @keyframes card-in{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
-  @keyframes modal-in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
-  @keyframes sheet-in{from{transform:translateY(110%)}to{transform:none}}
 
   /* Tablet / narrow laptop */
   @media(max-width:900px){
@@ -239,9 +246,13 @@
     header h1{font-size:13px;}
     header h1 .dim{display:none;}
     .eyebrow{font-size:8px;letter-spacing:.14em;}
-    .live-pill,header a,.hint,.scrubwrap::before{display:none;}
+    .live-pill,.hint,.scrubwrap::before{display:none;}
     .header-tools{flex:1;max-width:none;}
-    #missionSelect{flex:1;max-width:none;width:100%;min-height:40px;font-size:11px;}
+    .mission-menu{padding:96px 12px 16px;}
+    .mission-menu-card{padding:18px 14px 14px;}
+    .mission-board{grid-template-columns:1fr;}
+    .mission-actions{flex-direction:column;}
+    .mission-actions .primary{width:100%;}
 
     .decision{
       top:auto;left:max(10px, env(safe-area-inset-left));
@@ -317,12 +328,6 @@
     #scrub{grid-area:scrub;width:100%;min-width:0;height:32px;}
     .time{grid-area:time;display:block;min-width:0;text-align:center;font-size:11px;}
     .scrubwrap button,.scrubwrap select{width:100%;white-space:nowrap;padding:8px 6px;font-size:10px;}
-
-    .landing-hero{align-items:flex-end;}
-    .landing-card{padding:26px 20px 20px;border-radius:14px 14px 2px 2px;}
-    .landing-actions{gap:12px 16px;}
-    .landing-actions button{width:100%;}
-    .landing-mobile-note{display:block;margin-top:10px;color:var(--amber);font:700 11px/1.45 var(--mono);}
   }
 
   @media(max-width:380px){
@@ -353,77 +358,73 @@
 
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
+<link rel="stylesheet" href="../site-nav.css"/>
 </head>
-<body>
+<body class="menu-open">
 
 <div id="scene"></div>
 <div id="loading" class="loading">Loading flight log…</div>
 
-<div id="landingHero" class="landing-hero">
-  <div class="landing-card">
-    <div class="landing-eyebrow">Autonomy Lab / 001 · Portfolio Demo</div>
-    <h1 class="landing-title">A flight fault, <span>tested and verified.</span></h1>
-    <p class="landing-pitch">A <b>64-second recorded PX4/Gazebo recovery flight</b>. One vehicle is commanded to land; the coordinator waits for landing and disarming before reassigning its work. The remaining vehicle completes four point visits. Inspect the replay and the independently computed post-flight verdict.</p>
-    <div class="landing-badges">
-      <a href="https://px4.io/" target="_blank" rel="noopener noreferrer">PX4</a><a href="https://www.ros.org/" target="_blank" rel="noopener noreferrer">ROS 2</a><a href="https://gazebosim.org/" target="_blank" rel="noopener noreferrer">Gazebo</a><a href="https://www.python.org/" target="_blank" rel="noopener noreferrer">Python</a><a href="https://threejs.org/" target="_blank" rel="noopener noreferrer">Three.js</a>
-    </div>
-    <div class="landing-actions">
-      <button id="landingStory" class="primary">▶ Watch recovery (64s)</button>
-      <button id="landingLaunch">Explore Freely</button>
-      <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
-      <a href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
-    </div>
-    <div class="landing-tips">
-      <p><b>Once inside:</b> press play, switch missions from the top-right
-        dropdown, or toggle <b>Top-Down</b> for a map view. Cyan and pink trails identify the two vehicles. This scenario uses known-map routes; it does not use LiDAR or camera navigation.</p>
-      <p class="landing-mobile-note"><b>Built desktop-first</b> — this runs on
-        phones as a fallback, but drag-to-orbit and the full HUD are made for
-        a bigger screen. On iPhone: starts in Top-Down map view — pinch to
-        zoom, open <b>Telemetry</b> for live HUD, swipe it down to close.</p>
-    </div>
-  </div>
-</div>
-
 <div class="overlay">
   <header>
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true">PX</div>
-      <div><div class="eyebrow">Autonomy Lab / 001</div><h1>PX4 Mission <span class="dim">Flight Replay</span></h1></div>
+    <div class="header-top">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">PX</div>
+        <div><div class="eyebrow">Autonomy Lab / 001</div><h1>PX4 Mission <span class="dim">Flight Replay</span></h1></div>
+      </div>
+      <div class="header-tools">
+        <div class="live-pill"><i></i> recorded telemetry</div>
+        <button type="button" id="missionPickerBtn" aria-expanded="true" aria-controls="missionPicker" aria-haspopup="dialog">Missions</button>
+        <select id="missionSelect" hidden aria-hidden="true" tabindex="-1"></select>
+      </div>
     </div>
-    <div class="header-tools">
-      <div class="live-pill"><i></i> recorded telemetry</div>
-      <select id="missionSelect" aria-label="Select mission recording"></select>
-      <a href="/">home</a>
-      <a href="/search-demo/">search demo</a>
-      <a href="/slam/">slam</a>
-      <a href="/writeup/">writeup ↗</a>
-      <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">
-        source ↗
-      </a>
-    </div>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/">Home</a>
+      <a href="/demo/" aria-current="page">Swarm Demo</a>
+      <a href="/search-demo/">Search Demo</a>
+      <a href="/search/">Search Results</a>
+      <a href="/slam/">SLAM</a>
+      <a href="/seeding/">Seeding</a>
+      <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source</a>
+    </nav>
   </header>
+
+  <div id="missionPicker" class="mission-menu" role="dialog" aria-modal="true" aria-label="Choose a mission">
+    <div class="mission-menu-card">
+      <p class="mission-kicker">Flight replay</p>
+      <h2 id="missionMenuTitle">One drone fails</h2>
+      <p id="missionMenuBlurb" class="mission-menu-blurb">If one drone drops out, the job should still finish, and a separate check should be able to say whether it really did.</p>
+      <div id="missionCards" class="mission-board"></div>
+      <div class="mission-actions">
+        <button type="button" id="missionStart" class="primary">Start · One drone fails</button>
+        <button type="button" id="missionFree">Fly it yourself</button>
+      </div>
+    </div>
+  </div>
 
   <div id="decision" class="decision">Tracking waypoint corridor <strong>— nominal flight</strong></div>
 
   <div id="storyPanel" class="story-panel" hidden>
     <div class="story-eyebrow">
-      <span>Guided Story</span>
-      <button type="button" id="storyExit" class="story-exit">✕ Exit</button>
+      <span id="storyProgress">Why this matters</span>
+      <button type="button" id="storyExit" class="story-exit">Fly it yourself</button>
     </div>
-    <h2 id="storyTitle" class="story-title">Mission Start</h2>
-    <p id="storyText" class="story-text">—</p>
+    <p id="storyCare" class="story-care">A video cannot show whether the software made a safe decision. This is the recorded flight, and the caption says what it is proving.</p>
+    <h2 id="storyTitle" class="story-title">One drone fails. The other finishes the job.</h2>
+    <p id="storyText" class="story-text">Playback starts on its own. The words change when the flight reaches the next decision.</p>
   </div>
+  <button type="button" id="storyResume" class="story-resume" hidden>Turn the guide back on</button>
 
   <button type="button" id="hudToggle" class="hud-toggle" aria-expanded="false" aria-controls="hudPanel">Telemetry</button>
   <div id="hudScrim" class="hud-scrim" hidden></div>
 
   <div id="hudPanel" class="hud" role="region" aria-label="Flight telemetry">
     <div class="card">
-      <h2>Active recording</h2>
+      <h2>This flight</h2>
       <div id="missionLabel" style="font:750 12px/1.35 var(--display);margin-bottom:8px;letter-spacing:-.01em">Mission</div>
       <div class="row"><span class="k">Avoidance maneuvers</span><span id="hudEvents" class="v">–</span></div>
       <div class="row"><span class="k">Duration</span><span id="hudDuration" class="v">–</span></div>
-      <button type="button" id="hudStoryBtn" class="hud-story-btn">▶ Watch the guided story</button>
+      <button type="button" id="hudStoryBtn" class="hud-story-btn">Replay the guide from the start</button>
     </div>
     <div class="card">
       <h2>Mission Phase</h2>
@@ -937,28 +938,34 @@ drone.add(droneLight);
 // are produced (scripts/run_demo.sh).
 // ---------------------------------------------------------------------------
 const MISSIONS = [
-  {id:'golden', label:'Flagship — Fault, Recovery, Verification (64s)', file:'../data/golden_recovery.json', swarm:true},
-  {id:'swarm', label:'Two-Drone Nominal — Gate / Landing Visits', file:'../data/swarm.json', swarm:true},
-  {
-    id: 'full', file: '../data/mission_full_avoidance.csv',
-    label: 'Reactive Avoidance — Full Course',
-  },
-  {
-    id: 'clean', file: '../data/mission_clean_pass.csv',
-    label: 'Clean Pass — No Obstacles Triggered',
-  },
-  {
-    id: 'quick', file: '../data/mission_quick_avoidance.csv',
-    label: 'Reactive Avoidance — Quick Run',
-  },
-  {
-    id: 'course', file: '../data/mission_course_attitude.csv',
-    label: 'Pre-Planned Course — Real Attitude',
-  },
-  {
-    id: 'stereo', file: '../data/mission_stereo_vo.csv',
-    label: 'Stereo+IMU Fusion + Velocity PID — Live Flight',
-  },
+  {id:'golden', group:'Two drones', title:'One drone fails', result:'Verified pass · 64 s',
+    file:'../data/golden_recovery.json', swarm:true,
+    care:'If one drone drops out, the job should still finish, and a separate check should be able to say whether it really did.',
+    label:'One drone fails'},
+  {id:'swarm', group:'Two drones', title:'Both drones finish', result:'Verified pass · 50 s',
+    file:'../data/swarm.json', swarm:true,
+    care:'The same two-drone job with no failure. Both aircraft finish their own visits.',
+    label:'Both drones finish'},
+  {id:'full', group:'Around obstacles', title:'Sidestep the whole course', result:'Two sidesteps · then landing',
+    file:'../data/mission_full_avoidance.csv',
+    care:'A planned route is not enough when something sits on it. This flight leaves the corridor and comes back.',
+    label:'Sidestep the whole course'},
+  {id:'quick', group:'Around obstacles', title:'A shorter sidestep', result:'Same idea · less flight',
+    file:'../data/mission_quick_avoidance.csv',
+    care:'The same kind of correction, on a shorter recording, so each sidestep is easy to catch.',
+    label:'A shorter sidestep'},
+  {id:'clean', group:'Around obstacles', title:'Nothing in the way', result:'Clear corridor · no sidestep',
+    file:'../data/mission_clean_pass.csv',
+    care:'The corridor with nothing triggering a sidestep. Compare it with the flights that do step aside.',
+    label:'Nothing in the way'},
+  {id:'course', group:'Where the drone is', title:'The aircraft’s real attitude', result:'Roll, pitch, and yaw recorded',
+    file:'../data/mission_course_attitude.csv',
+    care:'Roll, pitch, and yaw come from the log, so the model tilts the way the aircraft did.',
+    label:'The aircraft’s real attitude'},
+  {id:'stereo', group:'Where the drone is', title:'Camera estimate beside PX4', result:'7.3 m apart at the end',
+    file:'../data/mission_stereo_vo.csv',
+    care:'A camera-and-IMU estimate is drawn next to PX4’s own path. The gap is the error, left visible on purpose.',
+    label:'Camera estimate beside PX4'},
 ];
 
 let rows = [];
@@ -1055,57 +1062,94 @@ let acc = 0;
 let dragging = false;
 let animating = false;
 
-// Landing hero — visible by default in the HTML itself (see the markup:
-// no [hidden] attribute), so it renders as a real pitch page even if this
-// script never runs at all. If it *does* run and the visitor already
-// dismissed it before (localStorage), skip straight to the viewer instead
-// of showing it again. While showing, missions load paused so nobody
-// misses the opening seconds reading it.
-let introShowing = false;
-// Guided story mode is the default viewing experience, first-time or
-// returning. A first-time visitor's default path through the landing hero
-// is already "Watch recovery" (the story-mode CTA); a returning visitor
-// skips the hero entirely, so without this they'd land silently in the
-// freeform viewer with no narration. Both "Explore Freely" on the hero and
-// the in-story Exit button remain real, one-click ways to leave it.
-let autoEnterStory = false;
-(function checkIntro() {
-  const SEEN_KEY = 'px4_replay_seen_landing';
-  const hero = document.getElementById('landingHero');
-  let seen = false;
-  try { seen = localStorage.getItem(SEEN_KEY) === '1'; } catch (e) {}
-  if (seen) {
-    hero.hidden = true;
-    autoEnterStory = true;
-    return;
-  }
-  introShowing = true;
-  const dismiss = () => {
-    introShowing = false;
-    hero.hidden = true;
-    try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
-  };
-  document.getElementById('landingLaunch').addEventListener('click', () => {
-    dismiss();
-    playing = true;
-    document.getElementById('btnPlay').textContent = '⏸ Pause';
-  });
-  document.getElementById('landingStory').addEventListener('click', () => {
-    dismiss();
-    enterStoryMode();
-  });
-})();
+// The centered mission menu is the first screen. Playback stays paused
+// until Start or Fly it yourself.
+let introShowing = true;
+document.getElementById('decision').style.display = 'none';
 
 const missionSelect = document.getElementById('missionSelect');
 for (const m of MISSIONS) {
   const opt = document.createElement('option');
-  opt.value = m.id; opt.textContent = m.label;
+  opt.value = m.id; opt.textContent = m.title;
   missionSelect.appendChild(opt);
 }
-missionSelect.addEventListener('change', () => {
-  const m = MISSIONS.find(x => x.id === missionSelect.value);
-  loadMission(m);
+
+const missionPicker = document.getElementById('missionPicker');
+const missionPickerBtn = document.getElementById('missionPickerBtn');
+const missionCards = document.getElementById('missionCards');
+let selectedMissionId = 'golden';
+let flightStarted = false;
+let pendingLaunch = null;
+let wasPlaying = false;
+function paintMissionSelection() {
+  const mission = MISSIONS.find(m => m.id === selectedMissionId) || MISSIONS[0];
+  document.getElementById('missionMenuTitle').textContent = mission.title;
+  document.getElementById('missionMenuBlurb').textContent = mission.care;
+  document.getElementById('missionStart').textContent = 'Start · ' + mission.title;
+  document.getElementById('storyCare').textContent = mission.care;
+  missionCards.querySelectorAll('.mission-card').forEach(btn => {
+    const on = btn.dataset.mission === mission.id;
+    btn.classList.toggle('is-current', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+(function renderMissionPicker() {
+  const groups = [];
+  for (const m of MISSIONS) {
+    let group = groups.find(g => g.name === m.group);
+    if (!group) { group = {name: m.group, items: []}; groups.push(group); }
+    group.items.push(m);
+  }
+  missionCards.innerHTML = groups.map(group => `
+    <section>
+      <h3>${group.name}</h3>
+      <div class="mission-grid">
+        ${group.items.map(m => `<button type="button" class="mission-card" data-mission="${m.id}">
+          <span class="mission-result">${m.result}</span>
+          <span class="mission-title">${m.title}</span>
+        </button>`).join('')}
+      </div>
+    </section>`).join('');
+  missionCards.querySelectorAll('.mission-card').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mission === selectedMissionId) launchSelected(true);
+      else { selectedMissionId = btn.dataset.mission; paintMissionSelection(); }
+    });
+  });
+  paintMissionSelection();
+})();
+function closeMissionPicker(resume) {
+  missionPicker.hidden = true;
+  missionPickerBtn.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('menu-open');
+  if (resume && flightStarted) {
+    playing = wasPlaying;
+    document.getElementById('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play';
+  }
+}
+function openMissionPicker() {
+  wasPlaying = playing;
+  playing = false;
+  document.getElementById('btnPlay').textContent = '▶ Play';
+  selectedMissionId = missionSelect.value || selectedMissionId;
+  paintMissionSelection();
+  missionPicker.hidden = false;
+  missionPickerBtn.setAttribute('aria-expanded', 'true');
+  document.body.classList.add('menu-open');
+}
+missionPickerBtn.addEventListener('click', () => {
+  if (missionPicker.hidden) openMissionPicker();
+  else if (flightStarted) closeMissionPicker(true);
 });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || missionPicker.hidden) return;
+  if (flightStarted) closeMissionPicker(true);
+  else launchSelected(true);
+});
+function syncMissionPicker(m) {
+  selectedMissionId = m.id;
+  paintMissionSelection();
+}
 
 function positionReplayPads(homes) {
   const visuals = GAZEBO_WORLD.models.find(m => m.name === 'training_course').links.flatMap(l => l.visuals);
@@ -1239,6 +1283,7 @@ function summarizeMission(data) {
 function loadMission(m, onLoaded) {
   const loadId = ++missionLoadId;
   missionSelect.value = m.id;
+  syncMissionPicker(m);
   document.getElementById('loading').style.display = 'flex';
   document.getElementById('loading').textContent = 'Loading flight log…';
   playing = false;
@@ -1257,7 +1302,7 @@ function loadMission(m, onLoaded) {
       lidarGroup.visible = !m.swarm && hud.toggleLidar.checked;
       if (m.swarm) {
         swarmData = parseSwarmReplay(text);
-        document.getElementById('missionLabel').textContent = m.label;
+        document.getElementById('missionLabel').textContent = m.title;
         positionReplayPads(swarmData.homes);
         rows = swarmData.frames.map(f => {
           const p = f.vehicles.px4_1.position;
@@ -1275,6 +1320,7 @@ function loadMission(m, onLoaded) {
         document.getElementById('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play';
         if (!animating) { animating = true; animate(); }
         onLoaded && onLoaded();
+        finishLaunch();
         return;
       }
       drone.visible = viewMode !== VIEW_CAM;
@@ -1291,7 +1337,7 @@ function loadMission(m, onLoaded) {
       }
       document.getElementById('toggleFusionRow').hidden = !fusionSummaryCache;
       fitCamera();
-      document.getElementById('missionLabel').textContent = m.label;
+      document.getElementById('missionLabel').textContent = m.title;
       const { maneuvers, minClearance, breaches } = summarizeMission(rows);
       document.getElementById('hudEvents').textContent = maneuvers;
       document.getElementById('hudManeuvers').textContent = maneuvers;
@@ -1306,6 +1352,7 @@ function loadMission(m, onLoaded) {
       document.getElementById('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play';
       if (!animating) { animating = true; animate(); }
       onLoaded && onLoaded();
+      finishLaunch();
     })
     .catch(err => {
       if (loadId !== missionLoadId) return;
@@ -1314,9 +1361,7 @@ function loadMission(m, onLoaded) {
     });
 }
 
-loadMission(MISSIONS[0], () => {
-  if (autoEnterStory) enterStoryMode();
-});
+loadMission(MISSIONS[0]);
 
 // parseCsv() is defined in lib.js (shared with the test suite).
 
@@ -1328,80 +1373,180 @@ loadMission(MISSIONS[0], () => {
 // found by inspecting the actual recorded obstacle/wp_index transitions —
 // not arbitrary timestamps, so the narration stays true to what's on screen.
 // ---------------------------------------------------------------------------
-const STORY_MISSION_ID = 'golden';
-// Times are observed events in the immutable golden SITL recording, not a
-// fabricated mission sequence. Raw evidence and acceptance live in evidence/.
-const STORY_BEATS = [
-  {atFrame: 0, title: 'Preflight: wait for both vehicles',
-    text: 'PX4 controls stabilization. Abel’s ROS 2 coordinator assigns tasks and records synchronized evidence. This is a recorded simulation, not hardware flight.'},
-  {atFrame: 113, title: 'Arm and take off',
-    text: 'Both PX4 vehicles enter takeoff. Independent controllers stream targets and monitor local command and telemetry health.'},
-  {atFrame: 178, title: 'Fault injected: vehicle 2 must land',
-    text: 'An explicit simulated dropout commands vehicle 2 to land. The coordinator holds vehicle 1 and keeps the failed vehicle’s work reserved.'},
-  {atFrame: 283, title: 'Landed and disarmed — wait for confirmation',
-    text: 'A landing flag alone is insufficient. Fresh landed and disarmed evidence must persist for at least one second before tasks are released.'},
-  {atFrame: 294, title: 'Two tasks reassigned',
-    text: 'Vehicle 1 takes over the unfinished work. A* transit routes use the known obstacle map and reserve clearance around the retired vehicle. No LiDAR or camera navigation is used in this scenario.'},
-  {atFrame: 411, title: 'Verify visits, not completion flags',
-    text: 'The surviving vehicle reaches the task points. Testing found that a one-metre near miss used to count as completion; the fix requires a closer observed visit.'},
-  {atFrame: 540, title: 'All four visits complete — land',
-    text: 'The surviving vehicle enters landing. COMPLETE still requires both vehicles to be observed landed and disarmed.'},
-  {atFrame: 639, title: 'Evidence result: PASS',
-    text: '641 synchronized samples; two reassignments; minimum separation 8.10 m against a 2.50 m limit. Raw telemetry is checked independently. This proves sampled task visits and landing, not continuous collision freedom or landing-pad accuracy.'},
-];
+// Frame indexes are observed rows in each committed recording.
+const STORY_BEATS = {
+  golden: [
+    {atFrame: 0, title: 'Both drones wait',
+      text: 'PX4 holds the aircraft steady. A coordinator assigns the work and records both vehicles together. This is a recorded simulation, not a flight of a physical aircraft.'},
+    {atFrame: 113, title: 'Both take off',
+      text: 'Each drone has its own controller. The coordinator watches their telemetry and does not fly them by hand.'},
+    {atFrame: 178, title: 'Drone 2 is told to land',
+      text: 'A simulated dropout orders drone 2 down. Drone 1 holds, and the unfinished work stays reserved instead of being dropped on the floor.'},
+    {atFrame: 283, title: 'Wait until it is really down',
+      text: 'A landing flag is not enough. Landed and disarmed have to stay true for at least a second before that work can move.'},
+    {atFrame: 294, title: 'Drone 1 takes the leftover work',
+      text: 'Two tasks move to the surviving drone. The route uses the known obstacle map and keeps clear of the drone that landed. This scenario does not use LiDAR or a camera to navigate.'},
+    {atFrame: 411, title: 'A near miss does not count',
+      text: 'Testing once treated a pass about a metre from the point as a completed visit. The check now requires the drone to have actually been there.'},
+    {atFrame: 540, title: 'Four visits done — now land',
+      text: 'The surviving drone starts landing. The flight is not finished until both aircraft are observed landed and disarmed.'},
+    {atFrame: 639, title: 'An independent check says pass',
+      text: '641 samples, two reassigned tasks, and the drones never came closer than 8.10 m. The limit was 2.50 m. The check reads the log. It does not prove there was never a collision between samples, and it does not grade landing-pad accuracy.'},
+  ],
+  swarm: [
+    {atFrame: 0, title: 'The same job, with no failure',
+      text: 'Both drones wait for each other. Nothing is injected. This is the flight to set beside the recovery.'},
+    {atFrame: 115, title: 'Both take off',
+      text: 'Each drone lifts off on its own controller, the same way the recovery flight starts.'},
+    {atFrame: 178, title: 'Each drone keeps its own visits',
+      text: 'Work is not handed from one aircraft to the other. The coordinator records the visits as they happen.'},
+    {atFrame: 402, title: 'All four visits are done',
+      text: 'Both drones turn toward the landing pad together.'},
+    {atFrame: 502, title: 'Pass, and nobody had to take over',
+      text: '503 samples and zero reassignments. The closest the drones came was 3.57 m, against a 2.50 m limit.'},
+  ],
+  full: [
+    {atFrame: 0, title: 'A corridor with obstacles on it',
+      text: 'One drone, a planned route. The mint line is where it actually flew. The amber line is the corridor it was given.'},
+    {atFrame: 23, title: 'Something is on the left',
+      text: 'The drone steps off the corridor instead of flying through the obstacle, then works back toward the route.'},
+    {atFrame: 217, title: 'A second obstacle, later in the course',
+      text: 'The same kind of correction happens again, this time with the blockage in front.'},
+    {atFrame: 409, title: 'It reaches the landing',
+      text: 'Every sample in this recording stays inside the geofence. The sidesteps are the avoidance, not a fence breach.'},
+  ],
+  quick: [
+    {atFrame: 0, title: 'Same course, shorter flight',
+      text: 'Use this when you want to see the correction without waiting through the long run.'},
+    {atFrame: 22, title: 'First sidestep',
+      text: 'The drone leaves the corridor as soon as the first obstacle shows up, then returns.'},
+    {atFrame: 140, title: 'It steps aside again',
+      text: 'A later blockage produces another correction. Between them the drone is back on the planned route.'},
+    {atFrame: 249, title: 'Landing',
+      text: 'The recording ends in landing, still inside the geofence.'},
+  ],
+  clean: [
+    {atFrame: 0, title: 'The corridor stays clear',
+      text: 'Nothing in this log triggers a sidestep. The path you see is the route with the obstacles left alone.'},
+    {atFrame: 210, title: 'Straight through to landing',
+      text: 'No avoidance event is recorded. Set this next to the sidestep flights to see what those corrections change.'},
+  ],
+  course: [
+    {atFrame: 0, title: 'The model uses the recorded tilt',
+      text: 'This log includes roll, pitch, and yaw. The aircraft banks the way the flight did, instead of sliding along as a flat marker.'},
+    {atFrame: 319, title: 'Landing, with no sidestep',
+      text: 'No avoidance trigger is in this recording. The point of the flight is the attitude, not an obstacle.'},
+  ],
+  stereo: [
+    {atFrame: 0, title: 'Two lines, on purpose',
+      text: 'The mint path is PX4’s position. The orange line is a camera-and-IMU estimate. They are not supposed to be read as the same number.'},
+    {atFrame: 100, title: 'A marked patch with GPS called denied',
+      text: 'The vehicle enters that patch. On this recording PX4’s position source stays GPS. The orange line is still the separate camera estimate.'},
+    {atFrame: 298, title: 'The landing uses position commands',
+      text: 'Earlier, the drone was steered with velocity commands. Landing switches that outer loop back to position.'},
+    {atFrame: 364, title: 'The gap at the end is 7.3 m',
+      text: 'The camera estimate finishes 7.3 m from PX4’s position, about 9.3% of a 78 m path. That distance is the result, not a display error.'},
+  ],
+};
 
-let storyModeActive = false;
+let storyModeActive = true;
 let lastStoryBeatIdx = -1;
 
-function enterStoryMode() {
+function currentMission() {
+  return MISSIONS.find(m => m.id === missionSelect.value) || MISSIONS[0];
+}
+
+function showGuide(restart) {
   storyModeActive = true;
   lastStoryBeatIdx = -1;
   document.getElementById('storyPanel').hidden = false;
+  document.getElementById('storyResume').hidden = true;
   hud.decision.style.display = 'none';
+  document.body.classList.remove('hud-open');
   document.getElementById('speed').value = '1';
   speed = 1;
-  // Close the mobile Telemetry drawer if it's the thing that triggered
-  // this (the "Watch the guided story" re-entry button lives inside it) —
-  // otherwise the drawer would keep covering the 3D scene and the story
-  // panel it's supposed to show.
-  document.body.classList.remove('hud-open');
-  if (missionSelect.value !== STORY_MISSION_ID) {
-    missionSelect.value = STORY_MISSION_ID;
-    loadMission(MISSIONS.find(m => m.id === STORY_MISSION_ID));
-  } else {
+  if (restart) {
     updateFrame(0, true);
+    playing = true;
+    document.getElementById('btnPlay').textContent = '⏸ Pause';
+  } else {
+    updateStoryPanel(frameIndex);
+  }
+}
+
+function finishLaunch() {
+  if (!pendingLaunch) return;
+  const mode = pendingLaunch;
+  pendingLaunch = null;
+  if (mode === 'guide') showGuide(true);
+  else {
     playing = true;
     document.getElementById('btnPlay').textContent = '⏸ Pause';
   }
 }
 
+function launchSelected(guided) {
+  const mission = MISSIONS.find(m => m.id === selectedMissionId) || MISSIONS[0];
+  flightStarted = true;
+  introShowing = false;
+  missionPicker.hidden = true;
+  missionPickerBtn.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('menu-open');
+  if (!guided) {
+    exitStoryMode();
+    if (mission.id !== missionSelect.value || !rows.length) {
+      pendingLaunch = 'free';
+      if (mission.id !== missionSelect.value) loadMission(mission);
+    } else {
+      playing = true;
+      document.getElementById('btnPlay').textContent = '⏸ Pause';
+    }
+    return;
+  }
+  storyModeActive = true;
+  document.getElementById('storyPanel').hidden = false;
+  document.getElementById('storyResume').hidden = true;
+  hud.decision.style.display = 'none';
+  if (mission.id !== missionSelect.value || !rows.length) {
+    pendingLaunch = 'guide';
+    if (mission.id !== missionSelect.value) loadMission(mission);
+    return;
+  }
+  showGuide(true);
+}
+
+document.getElementById('missionStart').addEventListener('click', () => launchSelected(true));
+document.getElementById('missionFree').addEventListener('click', () => launchSelected(false));
+
+function enterStoryMode() {
+  showGuide(true);
+}
+
 function exitStoryMode() {
   storyModeActive = false;
   document.getElementById('storyPanel').hidden = true;
+  document.getElementById('storyResume').hidden = false;
   hud.decision.style.display = '';
 }
 
 function updateStoryPanel(frameIndex) {
   if (!storyModeActive) return;
+  const beats = STORY_BEATS[currentMission().id] || [];
   let idx = -1;
-  for (let i = 0; i < STORY_BEATS.length; i++) {
-    if (STORY_BEATS[i].atFrame <= frameIndex) idx = i;
+  for (let i = 0; i < beats.length; i++) {
+    if (beats[i].atFrame <= frameIndex) idx = i;
     else break;
   }
   if (idx < 0 || idx === lastStoryBeatIdx) return;
   lastStoryBeatIdx = idx;
-  document.getElementById('storyTitle').textContent = STORY_BEATS[idx].title;
-  document.getElementById('storyText').textContent = STORY_BEATS[idx].text;
+  document.getElementById('storyProgress').textContent = `Guide · ${idx + 1} of ${beats.length}`;
+  document.getElementById('storyTitle').textContent = beats[idx].title;
+  document.getElementById('storyText').textContent = beats[idx].text;
 }
 
 document.getElementById('storyExit').addEventListener('click', exitStoryMode);
+document.getElementById('storyResume').addEventListener('click', () => showGuide(false));
 document.getElementById('hudStoryBtn').addEventListener('click', enterStoryMode);
-// Switching missions mid-story would desync the script from what's on
-// screen (beats are keyed to the "full avoidance" recording specifically),
-// so treat a manual mission change as leaving the guided tour.
-missionSelect.addEventListener('change', () => {
-  if (storyModeActive && missionSelect.value !== STORY_MISSION_ID) exitStoryMode();
-});
 
 let totalWaypoints = 0;
 

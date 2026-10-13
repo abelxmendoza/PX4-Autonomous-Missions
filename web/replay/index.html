@@ -32,7 +32,7 @@
   ::selection{background:var(--mint);color:var(--ink);}
   a{color:inherit;}
 
-  header{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
     padding:20px max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));
     border-bottom:1px solid var(--line);}
   .brand{display:flex;align-items:center;gap:12px;min-width:0;}
@@ -104,21 +104,23 @@
     .btn{justify-content:center;}
   }
 </style>
+<link rel="stylesheet" href="site-nav.css"/>
 </head>
 <body>
 
-<header>
+<header class="site-header">
   <div class="brand">
     <div class="brand-mark" aria-hidden="true">PX</div>
     <h1>PX4 <span class="dim">Autonomy & Verification</span></h1>
   </div>
-  <nav>
+  <nav class="site-nav" aria-label="Site">
+    <a href="/" aria-current="page">Home</a>
     <a href="/demo/">Swarm Demo</a>
     <a href="/search-demo/">Search Demo</a>
     <a href="/search/">Search Results</a>
-    <a href="/slam/">SLAM &amp; Costmap</a>
-    <a href="/writeup/">Write-up</a>
-    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+    <a href="/slam/">SLAM</a>
+    <a href="/seeding/">Seeding</a>
+    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source</a>
   </nav>
 </header>
 
@@ -137,7 +139,6 @@
     <div class="actions">
       <a class="btn primary" href="/demo/">▶ Swarm recovery replay</a>
       <a class="btn primary" href="/search-demo/">▶ Search &amp; find replay</a>
-      <a class="btn" href="/writeup/">Read the engineering case study</a>
       <a class="textlink" href="mailto:abelxmendoza@gmail.com">Email me ↗</a>
     </div>
     <p class="mobile-note">Built desktop-first — the replay works on phones as a fallback, but it's made for a bigger screen.</p>
@@ -145,6 +146,11 @@
     <section class="new" aria-label="Recent work">
       <p class="label">New</p>
       <div class="cards">
+        <a class="card" href="/seeding/">
+          <span class="h">Cloud seeding</span>
+          <span class="b">A PX4 SITL sortie releases <b>0.080 kg</b> only after altitude, weather, airspace, traffic, and communications allow it, then precision-lands on marker 4 with <b>9.8 cm</b> horizontal error.</span>
+          <span class="go">Open the sortie →</span>
+        </a>
         <a class="card" href="/slam/">
           <span class="h">SLAM &amp; costmap</span>
           <span class="b">2-D LiDAR SLAM on real PX4/Gazebo scans: odometry drifts <b>14 m</b>, the SLAM path stays within <b>centimetres</b>, and its map feeds a layered costmap and a cost-aware planner.</span>
@@ -155,11 +161,6 @@
           <span class="b">A downward-camera drone in PX4/Gazebo finds <b>8 of 8</b> ground targets and locates each to <b>under a metre</b>, using only PX4's own estimate.</span>
           <span class="go">Watch it in 3D →</span>
         </a>
-        <a class="card" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/bugs/BUG-021.md" target="_blank" rel="noopener">
-          <span class="h">From 2 drones to 10</span>
-          <span class="b">The coordinator now runs any fleet size. Testing 1–10 drones kept every safety rule but exposed a <b>gridlock</b> at 10; found, traced and fixed. Simulated model, not PX4, above two drones.</span>
-          <span class="go">Read the bug report ↗</span>
-        </a>
         <a class="card" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/docs/TEST_PLAN.md" target="_blank" rel="noopener">
           <span class="h">Validation platform</span>
           <span class="b">CI on every push, a requirement registry with evidence for each claim, fault injection, and a MAVLink codec checked <b>byte-for-byte</b> against the reference library.</span>
@@ -169,7 +170,8 @@
     </section>
 
     <div class="proof">
-      <div><span class="k">Requirement registry</span><span class="v">22 requirements · 3 open</span></div>
+      <div><span class="k">Requirement registry</span><span class="v">35 requirements · 3 open</span></div>
+      <div><span class="k">Cloud seeding</span><span class="v">9.8 cm · one completed flight</span></div>
       <div><span class="k">Test suite</span><span class="v" data-tests>613 Python · 61 browser</span></div>
       <div><span class="k">Verified against</span><span class="v">PX4 SITL + Gazebo · CI</span></div>
     </div>

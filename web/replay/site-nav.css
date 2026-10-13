@@ -1,0 +1,73 @@
+.site-header nav.site-nav,
+.sitenav nav.site-nav {
+  flex: 1 1 280px;
+  min-width: 0;
+  justify-content: flex-end;
+}
+nav.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: auto;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid rgba(105, 247, 205, 0.34);
+  border-radius: 999px;
+  background: rgba(5, 10, 11, 0.88);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+nav.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #c5d7d2;
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+nav.site-nav a:hover {
+  color: #69f7cd;
+  background: rgba(105, 247, 205, 0.08);
+}
+nav.site-nav a[aria-current="page"] {
+  color: #050a0b;
+  background: #69f7cd;
+  box-shadow: 0 0 0 1px #69f7cd, 0 0 18px rgba(105, 247, 205, 0.35);
+}
+nav.site-nav a.ext {
+  color: #9db1ad;
+}
+nav.site-nav a.ext:hover {
+  color: #ffb547;
+  background: rgba(255, 181, 71, 0.1);
+}
+
+.recording-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid rgba(255, 181, 71, 0.55);
+  border-radius: 999px;
+  background: rgba(35, 25, 8, 0.82);
+}
+.recording-switch .recording-label {
+  color: #ffb547;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.recording-switch select {
+  max-width: min(260px, 42vw);
+  border-radius: 999px;
+}

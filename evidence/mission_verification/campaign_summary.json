@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "kind": "mission_verification_summary",
+  "simulated": true,
+  "physical_flight_validated": false,
+  "population_reliability": false,
+  "sample_note": "Rates use the runs in this campaign only. They are not a population reliability claim.",
+  "run_count": 5,
+  "planned_not_started": {
+    "nominal": 4,
+    "weather_during_dispense": 2,
+    "airspace_during_dispense": 2,
+    "geofence_boundary": 2,
+    "marker_loss": 2
+  },
+  "nominal_completion_rate": 0.0,
+  "nominal_run_count": 1,
+  "nominal_completed": 0,
+  "release_authorization_correct": 0,
+  "fault_detection_rate": 1.0,
+  "fault_run_count": 4,
+  "fault_responses_meeting_expectation": 4,
+  "fault_response_latency_s": {
+    "sample_count": 2,
+    "mean": 0.0,
+    "median": 0.0,
+    "minimum": 0.0,
+    "maximum": 0.0,
+    "standard_deviation": 0.0,
+    "p95": null,
+    "p95_note": "not computed; fewer than 5 samples"
+  },
+  "geofence_outside_decision_count": 0,
+  "unsafe_setpoint_rejection_count": 1000,
+  "precision_landing_success_rate": 0.0,
+  "touchdown_horizontal_error_m": {
+    "sample_count": 2,
+    "mean": 0.039,
+    "median": 0.039,
+    "minimum": 0.021,
+    "maximum": 0.057,
+    "standard_deviation": 0.018000000000000002,
+    "p95": null,
+    "p95_note": "not computed; fewer than 5 samples"
+  },
+  "touchdown_note": "Horizontal error includes completed and aborted_recovered landings. Marker-loss positions are listed separately and are not in this distribution.",
+  "marker_loss_outcomes": [
+    {
+      "mission_result": "failed",
+      "touchdown_horizontal_error_m": 12.169
+    }
+  ],
+  "class_counts": {
+    "controller_outcome": 5,
+    "infrastructure_failure": 0,
+    "incomplete_run": 0
+  },
+  "runs": [
+    {
+      "scenario_id": "nominal",
+      "simulation_seed": 0,
+      "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
+      "mission_result": "failed",
+      "expectation_met": false,
+      "class": "controller_outcome",
+      "release_sample_count": 77,
+      "touchdown_horizontal_error_m": 0.119,
+      "rejected_setpoints": 14,
+      "fault_codes": [
+        "marker_lost"
+      ]
+    },
+    {
+      "scenario_id": "weather_during_dispense",
+      "simulation_seed": 0,
+      "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
+      "mission_result": "aborted_recovered",
+      "expectation_met": true,
+      "class": "controller_outcome",
+      "release_sample_count": 1,
+      "touchdown_horizontal_error_m": 0.057,
+      "rejected_setpoints": 8,
+      "fault_codes": []
+    },
+    {
+      "scenario_id": "airspace_during_dispense",
+      "simulation_seed": 0,
+      "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
+      "mission_result": "aborted_recovered",
+      "expectation_met": true,
+      "class": "controller_outcome",
+      "release_sample_count": 1,
+      "touchdown_horizontal_error_m": 0.021,
+      "rejected_setpoints": 6,
+      "fault_codes": []
+    },
+    {
+      "scenario_id": "geofence_boundary",
+      "simulation_seed": 0,
+      "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
+      "mission_result": "simulation_terminated",
+      "expectation_met": true,
+      "class": "controller_outcome",
+      "release_sample_count": 0,
+      "touchdown_horizontal_error_m": null,
+      "rejected_setpoints": 967,
+      "fault_codes": [
+        "setpoint_outside"
+      ]
+    },
+    {
+      "scenario_id": "marker_loss",
+      "simulation_seed": 0,
+      "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
+      "mission_result": "failed",
+      "expectation_met": true,
+      "class": "controller_outcome",
+      "release_sample_count": 78,
+      "touchdown_horizontal_error_m": 12.169,
+      "rejected_setpoints": 5,
+      "fault_codes": [
+        "marker_lost_during_descent"
+      ]
+    }
+  ],
+  "evidence_paths": [
+    "evidence/mission_verification/00_nominal/sitl_report.json",
+    "evidence/mission_verification/01_weather_during_dispense/sitl_report.json",
+    "evidence/mission_verification/02_airspace_during_dispense/sitl_report.json",
+    "evidence/mission_verification/03_geofence_boundary/sitl_report.json",
+    "evidence/mission_verification/04_marker_loss/sitl_report.json"
+  ],
+  "campaign_outcome": {
+    "passed": false,
+    "detail": "5 SITL reports read. 4 met the scenario expectation. Unstarted scenarios are listed in the summary and are not counted as verified. This is not a physical flight and not a population reliability claim.",
+    "run_count": 5,
+    "physical_flight_validated": false
+  }
+}

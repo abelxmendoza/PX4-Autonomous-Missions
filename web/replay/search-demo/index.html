@@ -49,19 +49,21 @@
   #nowebgl{display:none;position:fixed;inset:0;place-items:center;text-align:center;padding:24px;z-index:5;}
   @media(max-width:760px){#hud{top:auto;bottom:122px;right:8px;left:8px;width:auto;max-height:34vh;} .legend{display:none;}}
 </style>
+<link rel="stylesheet" href="../site-nav.css"/>
 </head>
 <body>
 <div id="scene" aria-label="3D replay of the search flight"></div>
 
-<header>
+<header class="site-header">
   <a class="brand" href="/"><div class="brand-mark" aria-hidden="true">PX</div><h1>Search &amp; Find <span class="dim">3D replay</span></h1></a>
-  <nav>
+  <nav class="site-nav" aria-label="Site">
     <a href="/">Home</a>
     <a href="/demo/">Swarm Demo</a>
-    <a class="current" href="/search-demo/">Search Demo</a>
+    <a href="/search-demo/" aria-current="page">Search Demo</a>
     <a href="/search/">Search Results</a>
-    <a href="/slam/">SLAM &amp; Costmap</a>
-    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source ↗</a>
+    <a href="/slam/">SLAM</a>
+    <a href="/seeding/">Seeding</a>
+    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source</a>
   </nav>
 </header>
 

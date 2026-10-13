@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#050a0b"/>
+<title>Cloud Seeding — Abel Mendoza</title>
+<meta name="description" content="A PX4 SITL cloud-seeding sortie releases only after altitude, weather, airspace, traffic, and communications allow it, then precision-lands on an ArUco marker."/>
+<link rel="icon" href="../favicon.png" type="image/png"/>
+<link rel="apple-touch-icon" href="../apple-touch-icon.png"/>
+<meta property="og:type" content="article"/>
+<meta property="og:title" content="Cloud seeding — one completed PX4 SITL sortie, 9.8 cm touchdown"/>
+<meta property="og:description" content="Release authorization, return, and ArUco precision landing in PX4 SITL. A later five-flight check is shown separately."/>
+<meta property="og:url" content="https://replay-sepia-tau.vercel.app/seeding/"/>
+<meta name="twitter:card" content="summary"/>
+<style>
+  :root{
+    --ink:#050a0b; --panel:#0a1718; --panel-b:rgba(134,255,222,.15); --line:rgba(134,255,222,.12);
+    --text:#eef7f3; --muted:#9db1ad; --mint:#69f7cd; --amber:#ffb547; --bad:#ff7a6b;
+    --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--ink);color:var(--text);font-family:var(--display);}
+  body{background:radial-gradient(circle at 22% 0%, rgba(105,247,205,.06), transparent 45%), var(--ink);}
+  a{color:var(--mint);}
+  a:focus-visible{outline:2px solid var(--mint);outline-offset:2px;}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:20px max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:12px;color:var(--text);text-decoration:none;}
+  .brand-mark{width:34px;height:34px;border:1px solid var(--mint);display:grid;place-items:center;
+    color:var(--ink);background:var(--mint);font:900 12px var(--mono);}
+  .brand h1{font-size:14px;margin:0;font-weight:720;white-space:nowrap;}
+  .brand .dim{color:var(--muted);font-weight:450;}
+  main{max-width:880px;margin:0 auto;padding:44px max(20px, env(safe-area-inset-right)) 72px max(20px, env(safe-area-inset-left));}
+  .eyebrow{color:var(--amber);font:800 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;margin:0 0 14px;}
+  h2.title{margin:0 0 16px;font:800 clamp(26px,4.8vw,40px)/1.15 var(--display);letter-spacing:-.02em;}
+  h2.title span{color:var(--mint);}
+  h3{font:800 18px/1.3 var(--display);margin:44px 0 12px;}
+  p{font:15.5px/1.7 var(--display);color:var(--muted);margin:0 0 14px;max-width:68ch;}
+  p b, li b{color:var(--text);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+    border:1px solid var(--line);margin:26px 0 8px;}
+  .stats div{background:var(--ink);padding:14px 16px;}
+  .stats .k{display:block;font:700 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+  .stats .v{display:block;font:800 18px var(--mono);color:var(--text);}
+  .stats .v.good{color:var(--mint);}
+  .stats .v.warn{color:var(--amber);}
+  .phases{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 8px;padding:0;list-style:none;}
+  .phases li{padding:10px 12px;border:1px solid var(--panel-b);background:rgba(105,247,205,.04);min-width:140px;}
+  .phases .t{display:block;font:700 10px var(--mono);letter-spacing:.08em;color:var(--amber);margin-bottom:4px;}
+  .phases .n{display:block;font:800 13px/1.3 var(--display);color:var(--text);}
+  .phases .r{display:block;margin-top:3px;font:12px/1.4 var(--display);color:var(--muted);}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);margin:14px 0 8px;}
+  table{width:100%;border-collapse:collapse;font:13px var(--mono);}
+  th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th{color:var(--muted);font-weight:700;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;}
+  th:first-child,td:first-child{text-align:left;}
+  td.good{color:var(--mint);font-weight:700;}
+  td.bad{color:var(--bad);font-weight:700;}
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0;}
+  ol.steps li{counter-increment:s;position:relative;padding:0 0 14px 42px;font:15px/1.6 var(--display);color:var(--muted);}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;display:grid;place-items:center;
+    border:1px solid var(--panel-b);color:var(--mint);font:800 12px var(--mono);}
+  .limits{border-left:2px solid var(--amber);padding:4px 0 4px 18px;margin:16px 0;}
+  .limits li{font:14.5px/1.65 var(--display);color:var(--muted);margin-bottom:6px;}
+  code{font:13px var(--mono);color:var(--text);background:rgba(105,247,205,.07);padding:1px 5px;}
+  .muted-note{font:12px/1.6 var(--mono);color:var(--muted);}
+  footer{padding:18px 20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    font:11px var(--mono);color:var(--muted);}
+  footer a{color:var(--muted);text-decoration:none;}
+</style>
+<link rel="stylesheet" href="../site-nav.css"/>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="/">
+    <div class="brand-mark" aria-hidden="true">PX</div>
+    <h1>PX4 <span class="dim">Autonomy &amp; Verification</span></h1>
+  </a>
+  <nav class="site-nav" aria-label="Site">
+    <a href="/">Home</a>
+    <a href="/demo/">Swarm Demo</a>
+    <a href="/search-demo/">Search Demo</a>
+    <a href="/search/">Search Results</a>
+    <a href="/slam/">SLAM</a>
+    <a href="/seeding/" aria-current="page">Seeding</a>
+    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source</a>
+  </nav>
+</header>
+
+<main>
+  <div class="eyebrow">Cloud seeding · PX4 SITL + Gazebo</div>
+  <h2 class="title">Release, return,<br/><span>then a precision landing.</span></h2>
+  <p>One vehicle climbs to a release point in <b>search_field</b>, holds, and opens a simulated dispenser only when altitude, weather, airspace, traffic, and communications all allow it. It then returns to staging and hands trajectory ownership to the precision-landing controller, which follows an ArUco marker. MAVSDK is the only setpoint publisher. ROS is unused on this flight.</p>
+
+  <div class="stats" id="flight-stats">
+    <div><span class="k">Completed flight</span><span class="v" data-flight="result">–</span></div>
+    <div><span class="k">Touchdown error</span><span class="v" data-flight="error">–</span></div>
+    <div><span class="k">Release</span><span class="v" data-flight="release">–</span></div>
+    <div><span class="k">Duration</span><span class="v" data-flight="duration">–</span></div>
+  </div>
+  <p class="muted-note" id="flight-note">Loading the completed sortie…</p>
+
+  <h3>What the completed sortie did</h3>
+  <ol class="phases" id="phases"></ol>
+
+  <h3>How a release is allowed</h3>
+  <ol class="steps">
+    <li><b>Climb and transit.</b> PX4 takes off to about 8 m. The orchestrator then flies to the release station at north 30 m, east 10 m.</li>
+    <li><b>Hold.</b> The vehicle waits on station inside the local altitude band.</li>
+    <li><b>Authorize.</b> The dispenser opens only in the dispense phase, and only after altitude, weather, airspace, traffic, and simulated communications agree, in that order.</li>
+    <li><b>Close and return.</b> The simulated dispenser closes, then the vehicle returns to the staging point at the field origin.</li>
+    <li><b>Precision land.</b> At staging, ownership moves to the marker controller. Ground truth is used only to score the touchdown.</li>
+  </ol>
+
+  <h3>Five later flights</h3>
+  <p>A separate campaign flew the same sortie with faults. Those runs are listed on their own. The completed flight above is the earlier nominal sortie, with no geofence in that report.</p>
+  <div class="stats" id="campaign-stats">
+    <div><span class="k">Runs flown</span><span class="v" data-campaign="runs">–</span></div>
+    <div><span class="k">Nominal completion</span><span class="v" data-campaign="nominal">–</span></div>
+    <div><span class="k">Fault responses</span><span class="v" data-campaign="faults">–</span></div>
+    <div><span class="k">Unsafe setpoints rejected</span><span class="v" data-campaign="rejected">–</span></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Scenario</th><th>Result</th><th>Expectation</th><th>Touchdown</th><th>Rejected setpoints</th></tr></thead>
+      <tbody id="runs"><tr><td colspan="5">Loading the campaign…</td></tr></tbody>
+    </table>
+  </div>
+  <p class="muted-note" id="campaign-note"></p>
+
+  <h3>What this page is showing</h3>
+  <ul class="limits">
+    <li><b>Simulation only.</b> Weather is a static simulated observation. The dispenser is a software flag. <code>operational_approval</code> stays false, and no physical aircraft has flown this sortie.</li>
+    <li><b>One completed flight.</b> The 9.8 cm touchdown is that single run, on marker 4. It is the integrated seeding sortie, scored from PX4’s position estimate.</li>
+    <li><b>The later nominal run failed.</b> Marker age reached the 5 s timeout at the surface, so that campaign did not pass as a set. Guided touchdowns in the two recovered aborts were 2.1 cm and 5.7 cm. The marker-loss landing, 12.2 m from the last marker, is kept out of that pair.</li>
+    <li><b>The swarm and search replays are other recordings.</b> This sortie does not have a 3D playback trace yet.</li>
+  </ul>
+
+  <h3>Source</h3>
+  <p>Completed flight: <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/evidence/integrated_seeding/sitl_report.json" target="_blank" rel="noopener">evidence/integrated_seeding/sitl_report.json</a>.
+    Campaign: <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/evidence/mission_verification/campaign_summary.json" target="_blank" rel="noopener">evidence/mission_verification/campaign_summary.json</a>.
+    Orchestrator: <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/src/px4_offboard/px4_offboard/mission_orchestrator.py" target="_blank" rel="noopener">mission_orchestrator.py</a>.</p>
+</main>
+
+<footer>
+  <span>PX4 SITL · MAVSDK · Gazebo Harmonic · simulated dispenser</span>
+  <a href="/">← Back to the project</a>
+</footer>
+
+<script>
+const PHASE = {
+  preflight: 'Preflight',
+  takeoff: 'Takeoff',
+  transit_to_release: 'Transit to release',
+  hold_for_release: 'Hold for release',
+  dispensing: 'Dispensing',
+  return_to_recovery: 'Return',
+  precision_landing: 'Precision landing',
+  landed: 'Landed',
+};
+const SCENARIO = {
+  nominal: 'Nominal',
+  weather_during_dispense: 'Weather during dispense',
+  airspace_during_dispense: 'Airspace during dispense',
+  geofence_boundary: 'Geofence boundary',
+  marker_loss: 'Marker loss',
+};
+function text(sel, value) {
+  const node = document.querySelector(sel);
+  if (node) node.textContent = value;
+}
+function load(url) {
+  return fetch(url).then(r => {
+    if (!r.ok) throw new Error(url + ' ' + r.status);
+    return r.json();
+  });
+}
+(async function () {
+  try {
+    const flight = await load('../data/seeding_flight.json');
+    const cm = flight.touchdown_horizontal_error_m * 100;
+    text('[data-flight="result"]', flight.mission_result);
+    document.querySelector('[data-flight="result"]').classList.add('good');
+    text('[data-flight="error"]', cm.toFixed(1) + ' cm');
+    document.querySelector('[data-flight="error"]').classList.add('good');
+    text('[data-flight="release"]', flight.release_sample_count + ' samples');
+    text('[data-flight="duration"]', flight.mission_duration_s.toFixed(1) + ' s');
+    const kg = flight.release_amount_kg.toFixed(3);
+    document.getElementById('flight-note').textContent =
+      `Marker ${flight.marker_id} · ${kg} kg released · PX4 ${flight.px4_version} · ${flight.validation}. Weather provenance is ${flight.provenance}.`;
+    document.getElementById('phases').innerHTML = flight.phases.map(p =>
+      `<li><span class="t">${p.time_s.toFixed(1)} s</span><span class="n">${PHASE[p.destination] || p.destination}</span><span class="r">${p.reason}</span></li>`
+    ).join('');
+  } catch (err) {
+    document.getElementById('flight-note').textContent = 'The completed-flight file did not load.';
+  }
+
+  try {
+    const campaign = await load('../data/seeding_campaign.json');
+    text('[data-campaign="runs"]', String(campaign.run_count));
+    text('[data-campaign="nominal"]', campaign.nominal_completed + ' / ' + campaign.nominal_run_count);
+    document.querySelector('[data-campaign="nominal"]').classList.add('warn');
+    text('[data-campaign="faults"]', campaign.fault_responses_meeting_expectation + ' / ' + campaign.fault_run_count);
+    text('[data-campaign="rejected"]', String(campaign.unsafe_setpoint_rejection_count));
+    document.getElementById('runs').innerHTML = campaign.runs.map(run => {
+      const touch = run.touchdown_horizontal_error_m == null
+        ? '—'
+        : (run.touchdown_horizontal_error_m * 100).toFixed(1) + ' cm';
+      const expect = run.expectation_met ? 'met' : 'missed';
+      const cls = run.expectation_met ? 'good' : 'bad';
+      return `<tr><td>${SCENARIO[run.scenario_id] || run.scenario_id}</td><td>${run.mission_result}</td>` +
+        `<td class="${cls}">${expect}</td><td>${touch}</td><td>${run.rejected_setpoints}</td></tr>`;
+    }).join('');
+    const touch = campaign.touchdown_horizontal_error_m;
+    document.getElementById('campaign-note').textContent =
+      `Guided touchdowns on recovered landings: n=${touch.sample_count}, mean ${(touch.mean * 100).toFixed(1)} cm. ` +
+      campaign.campaign_outcome.detail;
+  } catch (err) {
+    document.getElementById('runs').innerHTML = '<tr><td colspan="5">The campaign file did not load.</td></tr>';
+  }
+})();
+</script>
+</body>
+</html>

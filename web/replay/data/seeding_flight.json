@@ -1,0 +1,87 @@
+{
+  "mission_id": "integrated-seeding-sitl",
+  "scenario_id": "search_field_low_altitude",
+  "mission_result": "completed",
+  "validation": "PX4 SITL VALIDATED",
+  "physical_flight_validated": false,
+  "ros_distribution": "not_used",
+  "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
+  "world": "search_field",
+  "vehicle": "x500_search_cam",
+  "release_sample_count": 78,
+  "release_amount_kg": 0.08000000000000002,
+  "dispenser_closed": true,
+  "marker_id": 4,
+  "touchdown_horizontal_error_m": 0.098,
+  "touchdown_position": {
+    "frame": "local_ned",
+    "north_m": 14.256,
+    "east_m": -3.883,
+    "down_m": 0.173,
+    "source": "px4_local_position",
+    "estimated": true,
+    "simulated": true,
+    "units": "m"
+  },
+  "marker_ground_truth": {
+    "id": 4,
+    "north_m": 14.17,
+    "east_m": -3.93
+  },
+  "mission_duration_s": 56.06,
+  "descent_tag_age_max_s": 4.096026315000017,
+  "marker_timeout_s": 5,
+  "fault_codes": [],
+  "operational_approval": false,
+  "provenance": "simulated",
+  "phases": [
+    {
+      "time_s": 0.0,
+      "source": "idle",
+      "destination": "preflight",
+      "reason": "start"
+    },
+    {
+      "time_s": 0.05093627899987041,
+      "source": "preflight",
+      "destination": "takeoff",
+      "reason": "estimates valid and armed"
+    },
+    {
+      "time_s": 0.05093627899987041,
+      "source": "takeoff",
+      "destination": "transit_to_release",
+      "reason": "above takeoff altitude"
+    },
+    {
+      "time_s": 3.704259496999839,
+      "source": "transit_to_release",
+      "destination": "hold_for_release",
+      "reason": "on station"
+    },
+    {
+      "time_s": 5.713755323999976,
+      "source": "hold_for_release",
+      "destination": "dispensing",
+      "reason": "hold complete"
+    },
+    {
+      "time_s": 9.730354664999822,
+      "source": "dispensing",
+      "destination": "return_to_recovery",
+      "reason": "release complete"
+    },
+    {
+      "time_s": 14.46845486999996,
+      "source": "return_to_recovery",
+      "destination": "precision_landing",
+      "reason": "staging conditions met"
+    },
+    {
+      "time_s": 56.04303734700011,
+      "source": "precision_landing",
+      "destination": "landed",
+      "reason": "precision landing complete"
+    }
+  ]
+}
