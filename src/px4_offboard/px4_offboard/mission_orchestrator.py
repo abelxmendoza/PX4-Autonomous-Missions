@@ -10,9 +10,11 @@ gap (``offboard_gap_s`` = 0.5) matches a 2 Hz minimum: the process that calls
 orchestrator does not sleep to create one.
 
 Release authorization is the existing ``SeedingSupervisor``: mission phase,
-release volume, altitude frame, estimator health, sensor freshness, and the
-weather authorizer. ``require_weather`` defaults true. Setting it false is an
-invalid configuration, so a release cannot be authorized by skipping weather.
+release volume, altitude frame, estimator health, sensor freshness, the
+weather authorizer, and the airspace authorizer. ``require_weather`` defaults
+true. Setting it false is an invalid configuration, so a release cannot be
+authorized by skipping weather. A clear airspace chart is recorded the same
+way and is still not an approval to fly.
 A simulated provider is allowed only through that authorizer, and the evidence
 keeps the provider's provenance. A denial is not turned into an approval by a
 later state.
@@ -150,6 +152,20 @@ class VehicleInput:
     altitude: Px4AltitudeSnapshot
     tag: CameraTag | None = None
     dt_s: float = 0.0
+
+
+def _gate_summary(records: list[dict]) -> dict:
+    last = records[-1] if records else None
+    return {
+        "implemented": True,
+        "consulted": bool(records),
+        "authorized": None if last is None else last.get("authorized"),
+        "reason_code": None if last is None else last.get("reason_code"),
+        "provenance": None if last is None else last.get("provenance"),
+        "source": None if last is None else last.get("source"),
+        "operational_approval": False,
+        "decision_count": len(records),
+    }
 
 
 @dataclass(frozen=True)
@@ -324,6 +340,7 @@ class MissionOrchestrator:
             "mission_result": self._result_name(),
             "mission_state": self.state.value,
             "controller_owner": self.owner.value,
+            "airspace_evidence": _gate_summary(self.supervisor.airspace_decisions),
             "weather_evidence": {
                 "implemented": True,
                 "consulted": bool(weather_records),

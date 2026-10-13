@@ -8,7 +8,7 @@ Validation of the pieces:
 | --- | --- |
 | State machine, ownership, release gates, marker-loss hold | UNIT TESTED |
 | Seeding law, altitude authorization, weather authorization, precision-landing law | UNIT TESTED (existing tests) |
-| One headless PX4 / Gazebo flight of the whole sortie | See the SITL section below |
+| One headless PX4 / Gazebo flight of the whole sortie | PX4 SITL VALIDATED (one run; see below) |
 | Physical aircraft | PHYSICAL FLIGHT VALIDATED: no |
 
 ## Architecture
@@ -63,7 +63,7 @@ Owners are `none`, `seeding`, `precision_land`, `hold`, and `px4_land`.
 
 ## Release authorization
 
-The orchestrator calls `SeedingSupervisor.step` and passes `landed=False`, so the seeding law cannot finish the flight by landing itself. The supervisor authorizes a release only when the altitude band and the weather authorizer both allow it, and only while the mission is in the dispense phase inside the release volume.
+The orchestrator calls `SeedingSupervisor.step` and passes `landed=False`, so the seeding law cannot finish the flight by landing itself. The supervisor authorizes a release only when the altitude band, the weather authorizer, and the airspace authorizer all allow it, and only while the mission is in the dispense phase inside the release volume. An altitude denial is kept ahead of weather, and both are kept ahead of airspace.
 
 `require_weather` defaults to true. `false` is an invalid configuration: the sortie fails at start and does not open the dispenser. Weather decisions keep the provider's provenance. The SITL runner uses `StaticWeatherProvider` and `simulation_observation`, whose provenance is `simulated`. That observation is not a live METAR and `operational_approval` stays false.
 
@@ -140,4 +140,23 @@ This script needs a built PX4 SITL binary, MAVSDK, OpenCV, and `gz_cam_sub` (`ma
 
 ## SITL result
 
-The result of the headless run is recorded in `evidence/integrated_seeding/sitl_report.json` when that file is present, and in the log directory of `scripts/run_integrated_seeding_sitl.sh`. Unit tests do not stand in for that flight.
+`scripts/run_integrated_seeding_sitl.sh` exited 0 on one headless flight. PX4 version `v1.16.0-5-gd26cb57aca-dirty`. ROS was not used. This is one run, not a statistical sample.
+
+| Check | Result |
+| --- | --- |
+| Mission result | `completed` |
+| Release point | reached; hold then dispense |
+| Release authorization | simulated weather and the local 12–18 m band both authorized |
+| Samples | 78, 4.00 s open, 0.080 kg |
+| Dispenser | closed before the return |
+| Return | staging conditions met at the origin at 14.5 s |
+| Marker | id 4 at touchdown (earlier frames also reported other ids while the vehicle was still moving) |
+| Touchdown | local NED north 14.256 m, east -3.883 m, down 0.173 m, from PX4's position estimate |
+| Ground truth | marker 4 at north 14.17 m, east -3.93 m, read after landing |
+| Horizontal error | 0.098 m |
+| Duration | 56.1 s |
+| Descent fix age | 0 to 4.10 s, timeout left at 5 s |
+| Faults | none |
+
+The report is [evidence/integrated_seeding/sitl_report.json](../evidence/integrated_seeding/sitl_report.json). It is not a pinned manifest case. Command 176 produced PX4's usual "ack for not-existing command" line and did not stop the flight. Staging was at the origin; the lander then flew to the marker it accepted. The marker coordinate was not a setpoint.
+

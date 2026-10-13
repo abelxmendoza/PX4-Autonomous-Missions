@@ -39,6 +39,7 @@ from mavsdk.telemetry import FlightMode, LandedState  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "px4_offboard"))
+from px4_offboard.airspace import simulation_authorizer  # noqa: E402
 from px4_offboard.altitude_reference import (  # noqa: E402
     AltitudeBand,
     AltitudeFrame,
@@ -113,6 +114,7 @@ def _orchestrator() -> MissionOrchestrator:
         AltitudeMonitor(max_age_s=1.0),
         AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
         WeatherAuthorizer(StaticWeatherProvider(observation), simulation_policy()),
+        simulation_authorizer(),
     )
     # Staging is 18 m so the downward camera's footprint can include marker 4
     # near the origin. The marker coordinate is not a setpoint.
@@ -241,7 +243,7 @@ def _blank_report(started: str) -> dict:
         "ros_note": "MAVSDK offboard is the only setpoint publisher. The ROS precision_land node is not started.",
         "start_time": started,
         "end_time": None,
-        "mission_result": "simulation_terminated",
+        "mission_result": "in_progress",
         "truth_used_for_guidance": False,
         "validation": "PX4 SITL attempted",
         "physical_flight_validated": False,
@@ -301,6 +303,9 @@ async def fly(report_path: Path, timeout_s: float) -> dict:
             await drone.offboard.start()
         except OffboardError as exc:
             raise RuntimeError(f"offboard start failed: {exc}") from exc
+        mode_deadline = time.monotonic() + 2.0
+        while not pose.offboard and time.monotonic() < mode_deadline:
+            await asyncio.sleep(0.05)
 
         mission_t0 = time.monotonic()
         orch.start(0.0)
@@ -373,6 +378,10 @@ async def fly(report_path: Path, timeout_s: float) -> dict:
         evidence = orch.evidence()
         if report["mission_result"] != "simulation_terminated":
             report["mission_result"] = evidence["mission_result"]
+        if report["mission_result"] == "completed":
+            report["validation"] = "PX4 SITL VALIDATED"
+        elif report["mission_result"] == "aborted_recovered":
+            report["validation"] = "PX4 SITL aborted and recovered"
         report.update(_score(final, marker_id, evidence, reached_release, frames, detections))
         report["end_time"] = datetime.now(timezone.utc).isoformat()
         report["mission_duration_s"] = round(time.monotonic() - mission_t0, 2)

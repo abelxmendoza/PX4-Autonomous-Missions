@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from .airspace import simulation_authorizer
 from .altitude_reference import AltitudeBand, AltitudeFrame, AltitudeMonitor, Px4AltitudeSnapshot
 from .seeding_mission import CommandMode, SeedingMission, SeedingPhase, profile_at_15000_ft, sim_profile
 from .seeding_supervisor import SeedingSupervisor
@@ -84,6 +85,7 @@ def _supervisor(profile, provider, policy) -> SeedingSupervisor:
         AltitudeMonitor(max_age_s=0.5),
         AltitudeBand(AltitudeFrame.LOCAL, profile.volume.altitude_floor_m, profile.volume.altitude_ceiling_m),
         WeatherAuthorizer(provider, policy),
+        simulation_authorizer(),
     )
 
 

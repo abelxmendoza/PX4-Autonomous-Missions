@@ -17,6 +17,7 @@ The manifest pins nine cases by SHA-256 and provenance. Seven contain historical
 | `stereo_vo/` | Two exact compressed live flights (K, L) of the same configuration: stereo VO + IMU fusion running beside PX4, outer-loop velocity PID, A* course. Both are **expected failures**, pinned to the exact failing checks (K: availability 73% < 80%; L: drift 13.2%/peak 37% and availability 66%). Drift is measured against PX4's own estimate, not ground truth. They are kept as honest evidence of the run-to-run spread, not as a pass. |
 | `failure_case/` | Exact compressed before/after deterministic recovery fixture output. Only coordinator endpoint tolerance changes; tests and verifier acceptance are not relaxed. |
 | `precision_land/` | One headless PX4/Gazebo touchdown report (`sitl_report.json`). Not a manifest case: `verify_evidence.py` does not score it. Horizontal error 0.098 m from marker 4 on that single run. |
+| `integrated_seeding/` | One headless integrated seeding-and-precision-land report (`sitl_report.json`). Not a manifest case. That run completed: 0.098 m horizontal error from marker 4. |
 
 `manifest.json` is the source of truth for origins, hashes, expected verdicts and report paths. Uncompressed logs are inspectable with `gzip -dc evidence/swarm/golden_recovery.jsonl.gz`. Compression preserves raw bytes; recordings are neither resampled nor trimmed here. Browser data is separately resampled for presentation and must not replace raw verification input.
 

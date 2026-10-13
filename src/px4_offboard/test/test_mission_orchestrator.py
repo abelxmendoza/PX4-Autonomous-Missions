@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+from px4_offboard.airspace import simulation_authorizer
 from px4_offboard.altitude_reference import (
     AltitudeBand,
     AltitudeFrame,
@@ -39,6 +40,7 @@ def _supervisor(profile=None, observation=None):
         AltitudeMonitor(max_age_s=1.0),
         AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
         weather,
+        simulation_authorizer(),
     )
 
 
