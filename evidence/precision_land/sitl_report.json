@@ -1,0 +1,37 @@
+{
+  "world": "search_field",
+  "vehicle": "x500_search_cam",
+  "guidance": "PrecisionLand offboard setpoints; camera + PX4 estimate only",
+  "truth_used_for_guidance": false,
+  "result": "landed",
+  "marker_id": 4,
+  "altitude_m": 6.0,
+  "guidance_end_ned": [
+    14.088,
+    -3.877,
+    0.321
+  ],
+  "touchdown_ned": [
+    14.088,
+    -3.877,
+    0.321
+  ],
+  "last_tag_ned": [
+    14.179,
+    -3.947,
+    0.053
+  ],
+  "horizontal_error_vs_vision_m": 0.115,
+  "horizontal_error_vs_truth_m": 0.098,
+  "truth_target": {
+    "id": 4,
+    "north": 14.17,
+    "east": -3.93
+  },
+  "descent_duration_s": 12.92,
+  "marker_loss_events": 0,
+  "min_tag_age_during_descent_s": 0.0,
+  "max_tag_age_during_descent_s": 4.796,
+  "frames": 251,
+  "detections": 127
+}

@@ -57,6 +57,24 @@ def test_unknown_dictionary_raises():
         detect_largest_marker(frame, dictionary_name="NOT_A_REAL_DICT")
 
 
+def test_frontal_marker_pose_is_on_the_optical_axis_at_the_pinhole_range():
+    from px4_offboard.vision_marker import PinholeCamera
+    from px4_offboard.vision_marker_detect import camera_matrix, estimate_marker_poses
+
+    side_px, marker_m = 100, 0.5
+    frame = _paste_marker((480, 640), marker_id=7, side_px=side_px, top_left=(270, 190))
+    poses = estimate_marker_poses(frame, camera_matrix(640, 480, 1.74), marker_m)
+    assert len(poses) == 1
+    pose = poses[0]
+    assert pose.marker_id == 7
+    camera = PinholeCamera(640, 480, 1.74)
+    expected_z = marker_m * camera.focal_length_px / side_px
+    assert pose.position_xyz[0] == pytest.approx(0.0, abs=0.05)
+    assert pose.position_xyz[1] == pytest.approx(0.0, abs=0.05)
+    assert pose.position_xyz[2] == pytest.approx(expected_z, rel=0.08)
+    assert estimate_marker_poses(np.full((480, 640), 200, dtype=np.uint8), camera_matrix(640, 480, 1.74), marker_m) == []
+
+
 def test_detect_markers_returns_every_marker_in_the_frame():
     from px4_offboard.vision_marker_detect import detect_markers
 

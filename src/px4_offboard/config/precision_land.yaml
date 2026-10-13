@@ -1,0 +1,22 @@
+precision_land:
+  ros__parameters:
+    # Tracktor-beam precision_land/cfg/params.yaml
+    descent_vel: 0.6
+    vel_p_gain: 1.7
+    vel_i_gain: 0.0
+    max_velocity: 3.0
+    target_timeout: 5.0
+    delta_position: 0.2
+    delta_velocity: 0.2
+    # x500_search_cam / search_field markers (DICT_4X4_50, 1 m squares).
+    horizontal_fov_rad: 1.74
+    marker_size_m: 1.0
+    aruco_dictionary: DICT_4X4_50
+    aruco_id: -1
+    # 5 cm below the body origin, in body NED. Tracktor-beam's airframe uses [0.0, 0.0, -0.1].
+    camera_offset_body_ned: [0.0, 0.0, 0.05]
+    image_topic: /px4_offboard/camera/image_raw
+    camera_info_topic: /px4_offboard/camera/camera_info
+    control_hz: 20.0
+    command_offboard: true
+    target_system_id: 1

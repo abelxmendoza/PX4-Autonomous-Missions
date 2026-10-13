@@ -296,6 +296,53 @@ node at any image topic carrying a real ArUco marker — sim or hardware — and
 it will detect it; that part of the pipeline is genuinely done, just not
 wired into this specific world yet.
 
+### Precision landing
+
+`precision_land` is the tracktor-beam landing law (spiral search, fly over the
+marker at the current altitude, then a horizontal PI velocity loop while
+descending) running as ordinary PX4 OFFBOARD setpoints. It is not a custom
+QGroundControl flight mode: that mode in the ARK workspace comes from
+`px4_ros2_interface_lib`, which this stack does not vendor. Stop
+`offboard_mission` first — both nodes publish `fmu/in/trajectory_setpoint`.
+
+The vehicle has to already be flying. With the search world up and
+`camera_bridge` publishing `/px4_offboard/camera/image_raw`:
+
+```bash
+ros2 launch px4_offboard precision_land.launch.py
+ros2 topic pub --once /px4_offboard/precision_land/enable std_msgs/msg/Bool "{data: true}"
+ros2 run rqt_image_view rqt_image_view   # topic /image_proc
+```
+
+`/target_pose` is the marker in the camera optical frame. `/target_pose_world`
+is the same point in local NED. Status is `/px4_offboard/precision_land/status`
+(`idle`, `search`, `approach`, `descend`, `finished`, `failed`). Losing the
+marker during approach or descent holds position; publish `enable` again to
+restart the search. Defaults match the search-field markers (DICT_4X4_50,
+1 m) and the downward camera 5 cm below the body origin. Gains match
+tracktor-beam's `params.yaml` (`descent_vel` 0.6 m/s, `vel_p_gain` 1.7).
+
+The controller and the solvePnP pose are unit-tested without Gazebo. Those tests check the optical-to-NED transform at several yaw angles, that a fix jumping more than 2 m is ignored, and that a lost marker publishes a position hold with NaN velocity so the previous descent command cannot keep running. A reappeared marker does not resume the descent until precision land is enabled again.
+
+One headless SITL flight has been flown:
+
+```bash
+scripts/run_precision_land_sitl.sh
+```
+
+The vehicle took off to 6 m, flew north until the downward camera saw marker 4, then approached and descended. It touched down at north 14.088 m, east -3.877 m. The marker center in `search_field_targets.json` is north 14.17 m, east -3.93 m, so the horizontal error is **0.098 m**. Descent lasted 12.92 s. There were 0 marker-loss events. The oldest fix used during descent was 4.80 s (the timeout is 5 s), so the marker was nearly lost in the last moments and that loss path was not exercised in this flight. The report is [evidence/precision_land/sitl_report.json](../evidence/precision_land/sitl_report.json). It is one run, not a pinned manifest case, and it is not a physical-aircraft result. Ground truth was used only to score the landing after the vehicle was down.
+
+### Integrated seeding sortie
+
+The seeding law, the release supervisor, and precision landing can run as one sortie. `MissionOrchestrator` is the only setpoint owner. The ROS `precision_land` node must stay stopped, or it will publish a second trajectory stream.
+
+```bash
+scripts/run_integrated_seeding_sitl.sh
+```
+
+Architecture, gates, and the SITL result are in [integrated seeding](integrated_seeding.md). The low-altitude profile is the one this script flies. The 15,000 ft profile is not.
+
+
 ### Geo-cage & geofence
 
 | Feature | Behavior |
