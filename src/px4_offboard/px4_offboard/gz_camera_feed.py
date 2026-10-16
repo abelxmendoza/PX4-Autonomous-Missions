@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
+import weakref
 from pathlib import Path
 
 os.environ.setdefault("GZ_IP", "127.0.0.1")
@@ -30,7 +32,19 @@ def _cam_sub_binary() -> str:
     raise RuntimeError("gz_cam_sub is not built: run `make cpp-build`")
 
 
+class _ImageSink:
+    """The callable gz-transport holds for the subscription. CameraFeed keeps only a weakref."""
+
+    def __init__(self, feed: CameraFeed) -> None:
+        self._feed = feed
+
+    def __call__(self, msg) -> None:
+        self._feed._on_image(msg)
+
+
 class CameraFeed:
+    """Call close() before the process exits; see close() for why."""
+
     def __init__(self, topic: str = SEARCH_DOWN_CAMERA_TOPIC) -> None:
         from gz.msgs10.image_pb2 import Image as GzImage
         from gz.transport13 import Node as GzNode
@@ -42,7 +56,11 @@ class CameraFeed:
         self._waker = subprocess.Popen([_cam_sub_binary(), topic],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._node = GzNode()
-        if not self._node.subscribe(GzImage, topic, self._on_image):
+        sink = _ImageSink(self)
+        self._sink = weakref.ref(sink)
+        subscribed = self._node.subscribe(GzImage, topic, sink)
+        del sink
+        if not subscribed:
             self.close()
             raise RuntimeError(f"could not subscribe to {topic}")
 
@@ -59,5 +77,30 @@ class CameraFeed:
         with self._lock:
             return (None if self._frame is None else self._frame.copy()), self._count
 
-    def close(self) -> None:
-        self._waker.terminate()
+    def close(self, timeout_s: float = 2.0) -> bool:
+        """Unsubscribe, wait for gz to drop the callback, and stop gz_cam_sub.
+
+        gz-transport runs the callback on its own C++ thread. While its handler
+        still holds the callback, that thread can take the GIL during interpreter
+        shutdown, and the process dies with SIGSEGV or SIGABRT after main() has
+        finished. Unsubscribing is not enough: a delivery already in flight keeps
+        a copy of the handler and frees it on the gz thread afterwards. So wait
+        until the sink object itself is gone. Returns False if it was not freed
+        within timeout_s.
+        """
+        released = True
+        if self._node is not None:
+            self._node.unsubscribe(self.topic)
+            deadline = time.monotonic() + timeout_s
+            while self._sink() is not None and time.monotonic() < deadline:
+                time.sleep(0.005)
+            released = self._sink() is None
+            self._node = None
+        if self._waker.poll() is None:
+            self._waker.terminate()
+            try:
+                self._waker.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                self._waker.kill()
+                self._waker.wait()
+        return released
