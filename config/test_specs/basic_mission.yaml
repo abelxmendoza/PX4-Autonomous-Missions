@@ -1,0 +1,47 @@
+# Basic mission against the MOCK adapter (vehicle.sim.SimVehicle on simulated time).
+# A pass here checks the spec, runner and assertions against a point-mass test
+# double. It is not a PX4 SITL, HIL or flight result. See docs/test_specs.md.
+#
+#   python -m px4_offboard.testspec --spec config/test_specs/basic_mission.yaml
+schema: 1
+name: basic_mission
+description: Arm, take off to 5 m, fly an out-and-back dogleg, hold, return, land and disarm.
+
+vehicle:
+  adapter: mock
+  rate_hz: 20
+  velocity_tau_s: 0.3
+
+timeouts:
+  run_wall_s: 30      # whole run, wall clock
+  telemetry_s: 2.0    # first telemetry sample, adapter clock
+
+mission:
+  - {action: arm}
+  - {action: takeoff, altitude_m: 5.0, speed_mps: 1.0, timeout_s: 20}
+  - {id: leg_north, action: goto, north_m: 10.0, east_m: 0.0, altitude_m: 5.0, speed_mps: 2.0, timeout_s: 30}
+  - {id: leg_east, action: goto, north_m: 10.0, east_m: 8.0, altitude_m: 5.0, speed_mps: 2.0, timeout_s: 30}
+  - {action: hold, duration_s: 2.0}
+  - {id: return_home, action: goto, north_m: 0.0, east_m: 0.0, altitude_m: 5.0, speed_mps: 2.0, timeout_s: 40}
+  - {action: land, speed_mps: 0.7, timeout_s: 30}
+  - {action: disarm}
+
+faults: []   # the mock adapter supports no fault types yet; any entry is rejected
+
+assertions:
+  - id: stays_in_keep_in
+    type: geofence
+    # local NED, metres. The mock has no ground contact model, so the floor sits
+    # 0.5 m below the origin instead of at it.
+    polygon_ned: [[-5.0, -5.0], [15.0, -5.0], [15.0, 13.0], [-5.0, 13.0]]
+    min_altitude_m: -0.5
+    max_altitude_m: 10.0
+    requirements: [REQ-GEOFENCE-007]
+    note: >
+      Partial, mock-only coverage: keep-in checked at every sample through takeoff, transit, hold,
+      return and landing with mission_geofence.evaluate_vehicle. No dispensing phase and no
+      precision-landing marker, which REQ-GEOFENCE-007 also covers.
+  - {id: altitude_ceiling, type: max_altitude, limit_m: 6.0}
+  - {id: speed_envelope, type: max_speed, horizontal_mps: 2.5, vertical_mps: 1.2}
+  - {id: landed_at_home, type: final_position, north_m: 0.0, east_m: 0.0, altitude_m: 0.0, tolerance_m: 0.3}
+  - {id: disarmed_at_end, type: final_disarmed}
