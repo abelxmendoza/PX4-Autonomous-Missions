@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -35,10 +36,20 @@ def main() -> int:
     parser.add_argument("--stamp", required=True)
     args = parser.parse_args()
 
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", args.stamp):
+        parser.error("stamp must be a single directory name using letters, digits, underscores or hyphens")
+
     traces = {}
     for run in args.runs:
         doc = json.loads((run / "trace.json").read_text())
-        traces[doc["scenario_id"]] = (run / "trace.json").read_text()
+        scenario = doc["scenario_id"]
+        if scenario not in SCENARIOS or scenario in traces:
+            parser.error(f"unknown or duplicate scenario: {scenario}")
+        expected = "completed" if scenario == "nominal" else "failed" if scenario == "marker_loss" else "aborted_recovered"
+        if (doc.get("mission_result") != expected or doc.get("expected_result") != expected
+                or doc.get("result_as_designed") is not True):
+            parser.error(f"{scenario}: unexpected result; keep the failed run for diagnosis, do not publish it as the validated campaign")
+        traces[scenario] = (run / "trace.json").read_text()
     missing = [s for s in SCENARIOS if s not in traces]
     if missing:
         print(f"missing scenarios: {missing}", file=sys.stderr)

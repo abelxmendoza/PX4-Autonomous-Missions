@@ -147,6 +147,11 @@ def evaluate(spec: AssertionSpec, samples: Sequence[Sample]) -> AssertionResult:
     if not samples:
         result.detail = "no telemetry samples to evaluate"
         return result
+    for s in samples:
+        if not all(math.isfinite(v) for v in (s.t_s, s.north_m, s.east_m, s.down_m,
+                                              s.vn_mps, s.ve_mps, s.vd_mps)):
+            result.detail = f"invalid non-finite telemetry at sample {s.index}"
+            return result
     out = EVALUATORS[spec.type](spec, samples)
     result.status = PASS if out["passed"] else FAIL
     result.observed = out["observed"]

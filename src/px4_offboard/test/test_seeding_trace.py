@@ -53,3 +53,17 @@ def test_the_nominal_sortie_has_every_gate_open():
     gates = _gate_verdicts(_report("00_nominal")["orchestrator_evidence"])
     assert all(v["authorized"] for v in gates.values()), gates
     assert 12.0 <= gates["altitude"]["altitude_m"] <= 18.0
+
+
+def test_terminal_pose_is_recorded_even_between_periodic_samples():
+    rec = SeedingTraceRecorder(rate_hz=10)
+    rec.sample(100, (1, 2, -0.1), (1, 0, 0, 0), "precision_landing", "landing", False)
+    assert not rec.sample(100.02, (1, 2, 0), (1, 0, 0, 0), "landed", "none", False)
+    assert rec.sample(100.02, (1, 2, 0), (1, 0, 0, 0), "landed", "none", False, force=True)
+    doc = build({"orchestrator_evidence": {"mission_state_history": [
+        {"time_s": 0.01, "source": "precision_landing", "destination": "landed"}]}},
+        rec, 100, release_ned=(0, 0, 0), expected_result="completed")
+    assert doc["frames"][-1]["t"] >= 0.01
+    assert doc["frames"][-1]["state"] == "landed"
+    with pytest.raises(ValueError):
+        rec.sample(99, (0, 0, 0), (1, 0, 0, 0), "landed", "none", False, force=True)

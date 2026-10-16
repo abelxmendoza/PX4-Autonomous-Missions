@@ -333,10 +333,14 @@ class _ArmWatch:
 
     def __init__(self) -> None:
         self.health = None
+        self.health_at = -math.inf
+        self.rate_at = -math.inf
         self.rest_rate: float | None = None
         self.rate_high_since: float | None = None
 
     def reset(self) -> None:
+        self.health = None
+        self.health_at = self.rate_at = -math.inf
         self.rest_rate = None
         self.rate_high_since = None
 
@@ -347,6 +351,7 @@ async def _watch_arm_state(drone: System, watch: _ArmWatch, stop: asyncio.Event)
             if stop.is_set():
                 break
             watch.health = item
+            watch.health_at = time.monotonic()
 
     async def rate():
         smoothed = None
@@ -354,7 +359,13 @@ async def _watch_arm_state(drone: System, watch: _ArmWatch, stop: asyncio.Event)
             if stop.is_set():
                 break
             norm = math.sqrt(w.roll_rad_s ** 2 + w.pitch_rad_s ** 2 + w.yaw_rad_s ** 2)
-            smoothed = norm if smoothed is None else 0.9 * smoothed + 0.1 * norm
+            if not math.isfinite(norm):
+                watch.rest_rate = None
+                watch.rate_at = -math.inf
+                smoothed = None
+                continue
+            smoothed = norm if smoothed is None or watch.rest_rate is None else 0.9 * smoothed + 0.1 * norm
+            watch.rate_at = time.monotonic()
             watch.rest_rate = smoothed
             if smoothed <= REST_RATE_LIMIT_RAD_S:
                 watch.rate_high_since = None
@@ -375,7 +386,9 @@ async def _wait_until_armable(watch: _ArmWatch, deadline: float) -> tuple[bool, 
         await asyncio.sleep(0.25)
         now = time.monotonic()
         health = watch.health
-        positioned = health is not None and health.is_global_position_ok and health.is_home_position_ok
+        fresh = (now - watch.health_at <= 2.0 and now - watch.rate_at <= 2.0
+                 and watch.rest_rate is not None and math.isfinite(watch.rest_rate))
+        positioned = fresh and health is not None and health.is_global_position_ok and health.is_home_position_ok
         if positioned and watch.rate_high_since is not None and now - watch.rate_high_since >= REST_RATE_HOLD_S:
             return True, f"estimator reports {watch.rest_rate:.3f} rad/s body rate with the airframe on the ground"
         if positioned and health.is_armable and watch.rate_high_since is None:
@@ -404,7 +417,13 @@ async def _restart_ekf2() -> None:
     for action in ("stop", "start"):
         proc = await asyncio.create_subprocess_exec(
             str(client), action, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        output, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+        try:
+            output, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            if proc.returncode is None:
+                proc.kill()
+            await proc.communicate()
+            raise
         if proc.returncode != 0:
             raise RuntimeError(f"px4-ekf2 {action} failed ({proc.returncode}): {output.decode(errors='replace').strip()}")
         await asyncio.sleep(1.0)
@@ -742,27 +761,35 @@ async def fly(report_path: Path, timeout_s: float, scenario: str, trace_path: Pa
         except Exception as inner:
             report["evidence_error"] = str(inner)
     finally:
-        report["end_time"] = report["end_time"] or datetime.now(timezone.utc).isoformat()
-        _write(report_path, report)
-        record_stop.set()
-        if recorder_task is not None:
-            await asyncio.wait_for(recorder_task, timeout=2.0)
-        if trace_path is not None and mission_t0 is not None:
-            camera = {"width_px": SEARCH_CAMERA.width_px, "height_px": SEARCH_CAMERA.height_px,
-                      "hfov_rad": SEARCH_CAMERA.horizontal_fov_rad}
-            trace = seeding_trace.build(report, recorder, mission_t0, release_ned=_profile(scenario).release_ned,
-                                        expected_result=EXPECTED_RESULT[scenario], camera=camera)
-            trace_path.parent.mkdir(parents=True, exist_ok=True)
-            trace_path.write_text(json.dumps(trace, separators=(",", ":")) + "\n")
-            print(f"trace: {trace_path} ({len(trace['frames'])} poses)", flush=True)
-        print(json.dumps({k: report[k] for k in report if k != "orchestrator_evidence"}, indent=2), flush=True)
-        stop.set()
-        if follower is not None:
+        try:
+            report["end_time"] = report["end_time"] or datetime.now(timezone.utc).isoformat()
+            _write(report_path, report)
+            record_stop.set()
+            if recorder_task is not None:
+                await asyncio.wait_for(recorder_task, timeout=2.0)
+            if pose.position_ned is not None and pose.q_wxyz is not None and mission_t0 is not None:
+                recorder.sample(time.monotonic(), pose.position_ned, pose.q_wxyz,
+                                orch.state.value, live["owner"], False, force=True)
+            if trace_path is not None and mission_t0 is not None:
+                camera = {"width_px": SEARCH_CAMERA.width_px, "height_px": SEARCH_CAMERA.height_px,
+                          "hfov_rad": SEARCH_CAMERA.horizontal_fov_rad}
+                trace = seeding_trace.build(report, recorder, mission_t0, release_ned=_profile(scenario).release_ned,
+                                            expected_result=EXPECTED_RESULT[scenario], camera=camera)
+                trace_path.parent.mkdir(parents=True, exist_ok=True)
+                trace_path.write_text(json.dumps(trace, separators=(",", ":")) + "\n")
+                print(f"trace: {trace_path} ({len(trace['frames'])} poses)", flush=True)
+            print(json.dumps({k: report[k] for k in report if k != "orchestrator_evidence"}, indent=2), flush=True)
+        finally:
+            record_stop.set()
+            stop.set()
             try:
-                await asyncio.wait_for(follower, timeout=5.0)
-            except asyncio.TimeoutError:
-                follower.cancel()
-        feed.close()
+                if follower is not None:
+                    try:
+                        await asyncio.wait_for(follower, timeout=5.0)
+                    except asyncio.TimeoutError:
+                        follower.cancel()
+            finally:
+                feed.close()
     return report
 
 

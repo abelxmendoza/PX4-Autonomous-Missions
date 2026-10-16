@@ -5,7 +5,7 @@ orchestrator's state, setpoint owner and dispenser state at that moment. Everyth
 (state transitions, release-gate verdicts, release samples, geofence) is taken from the
 orchestrator's evidence, on the same mission clock, so the replay and the report agree.
 
-Ground truth (the marker positions in worlds/search_field_targets.json) is not part of the
+Ground truth (the scoring-only marker positions) is not part of the
 trace: the viewer loads it separately, for display and scoring only, as the search replay does.
 """
 
@@ -34,11 +34,11 @@ class SeedingTraceRecorder:
         self.detections: list[dict] = []
 
     def sample(self, clock_s: float, position_ned: Sequence[float], q: Sequence[float],
-               state: str, owner: str, dispense: bool) -> bool:
+               state: str, owner: str, dispense: bool, *, force: bool = False) -> bool:
         if clock_s < self._last:
             raise ValueError(f"time went backwards: {clock_s} < {self._last}")
         self._last = clock_s
-        if self._next is not None and clock_s < self._next - 1e-9:
+        if not force and self._next is not None and clock_s < self._next - 1e-9:
             return False
         self._next = clock_s + self._period
         n, e, d = (round(float(v), 3) for v in position_ned)

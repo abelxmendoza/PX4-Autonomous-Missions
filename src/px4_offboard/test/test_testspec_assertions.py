@@ -93,3 +93,11 @@ def test_result_serialises_with_a_telemetry_reference():
     d = r.as_dict("telemetry.csv")
     assert d["telemetry_ref"] == {"file": "telemetry.csv", "sample_range": [0, 0], "deciding_sample": 0}
     assert d["requirements"] == ["REQ-GEOFENCE-007"]
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_sample_cannot_be_hidden_by_a_valid_extremum(bad):
+    samples = [_sample(0, alt=1), _sample(1, alt=bad), _sample(2, alt=2)]
+    r = evaluate(_spec("max_altitude", limit_m=6), samples)
+    assert r.status == NOT_EVALUATED
+    assert "sample 1" in r.detail

@@ -250,3 +250,27 @@ def test_cli_exit_codes(tmp_path, capsys):
     assert cli.main(["--spec", str(invalid), "--validate-only"]) == 2
     assert "unsupported fault" in capsys.readouterr().err
     assert cli.main(["--spec", str(EXAMPLE), "--validate-only"]) == 0
+
+
+def test_sub_tick_hold_still_waits_for_the_requested_duration(tmp_path):
+    def mutate(doc):
+        doc["vehicle"]["rate_hz"] = 10
+        doc["mission"][4]["duration_s"] = 0.03
+    report, _ = _run(tmp_path, _write(tmp_path, mutate))
+    assert report["verdict"] == "PASSED"
+    step = report["steps"][4]
+    assert step["t_end_s"] - step["t_start_s"] >= 0.03
+
+
+def test_invalid_telemetry_is_an_error_with_a_writable_report(tmp_path):
+    from dataclasses import replace
+
+    class InvalidTelemetry(MockAdapter):
+        def tick(self):
+            super().tick()
+            self.vehicle._state = replace(self.vehicle.state, position_ned=(float("nan"), 0, 0))
+
+    report, run = _run(tmp_path, adapter_factory=lambda s: InvalidTelemetry(**s.params))
+    assert report["verdict"] == "ERROR"
+    assert "non-finite" in report["verdict_reason"]
+    assert json.loads((run.run_dir / "report.json").read_text())["verdict"] == "ERROR"

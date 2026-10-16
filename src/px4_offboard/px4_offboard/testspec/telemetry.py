@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import math
 from dataclasses import astuple, dataclass, fields
 
 from px4_offboard.vehicle.interface import VehicleState
@@ -44,6 +45,10 @@ class TelemetryLog:
     def record(self, state: VehicleState, step: int, command: tuple[float, float, float] | None) -> Sample:
         n, e, d = state.position_ned
         vn, ve, vd = state.velocity_ned
+        if not all(math.isfinite(v) for v in (state.t_s, n, e, d, vn, ve, vd)):
+            raise ValueError("vehicle telemetry contains non-finite time, position or velocity")
+        if self.samples and state.t_s <= self.samples[-1].t_s:
+            raise ValueError("vehicle telemetry time did not advance")
         sample = Sample(len(self.samples), state.t_s, step, n, e, d, vn, ve, vd, state.armed, *(command or (None,) * 3))
         self.samples.append(sample)
         return sample

@@ -125,7 +125,8 @@ def _goto(ctx, step, last):
 def _hold(ctx, step, last):
     target = (last.north_m, last.east_m, last.down_m)
     s = last
-    for _ in range(int(round(step.params["duration_s"] * ctx.rate_hz))):
+    deadline = ctx.now() + step.params["duration_s"]
+    while ctx.now() < deadline - 1e-9:
         s = ctx.tick(_toward(s, target, 1.0, 1.0))
     return COMPLETED, s
 
