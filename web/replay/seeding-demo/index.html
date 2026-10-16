@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#050a0b"/>
+<title>Cloud Seeding Demo — Abel Mendoza</title>
+<meta name="description" content="3D replay of recorded PX4/Gazebo cloud-seeding sorties: release gates, fault scenarios, and an ArUco precision landing."/>
+<link rel="icon" href="../favicon.png" type="image/png"/>
+<meta property="og:title" content="Cloud Seeding Demo — seven recorded PX4 sorties in 3D"/>
+<style>
+  :root{--ink:#050a0b;--panel:rgba(6,16,17,.88);--line:rgba(134,255,222,.16);--text:#eef7f3;--muted:#9db1ad;
+    --mint:#69f7cd;--amber:#ffb547;--pink:#ff5da2;--bad:#ff7a6b;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+    --display:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--ink);color:var(--text);font-family:var(--display);overflow:hidden;}
+  #scene{position:fixed;inset:0;}
+  header{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:12px 16px;background:linear-gradient(var(--ink),rgba(5,10,11,.0));z-index:3;}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);}
+  .brand-mark{width:30px;height:30px;display:grid;place-items:center;background:var(--mint);color:var(--ink);font:900 11px var(--mono);}
+  .brand h1{margin:0;font:720 14px var(--display);white-space:nowrap;} .brand .dim{color:var(--muted);font-weight:450;}
+  nav{display:flex;gap:16px;flex-wrap:wrap;}
+  nav a{color:var(--text);text-decoration:none;font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;}
+  nav a:hover,nav a.current{color:var(--mint);} nav a.ext{color:var(--muted);}
+  .panel{position:fixed;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);z-index:2;}
+  .k{font:700 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+  #picker{top:64px;left:14px;width:250px;padding:12px;max-height:calc(100% - 160px);overflow:auto;}
+  #picker button{display:block;width:100%;text-align:left;background:transparent;color:var(--text);border:1px solid var(--line);
+    margin:6px 0 0;padding:8px 10px;cursor:pointer;font:12px var(--display);}
+  #picker button:hover{border-color:var(--mint);}
+  #picker button.on{border-color:var(--mint);background:rgba(105,247,205,.10);}
+  #picker button b{display:block;font:700 12px var(--mono);}
+  #picker button span{color:var(--muted);font-size:11.5px;}
+  .tag{display:inline-block;font:700 9px var(--mono);letter-spacing:.06em;padding:1px 5px;margin-left:6px;vertical-align:1px;}
+  .tag.ok{background:rgba(105,247,205,.18);color:var(--mint);} .tag.no{background:rgba(255,122,107,.2);color:var(--bad);}
+  #hud{top:64px;right:14px;width:310px;max-height:calc(100% - 150px);overflow:auto;padding:14px 16px;}
+  .big{font:800 24px var(--mono);margin:2px 0 8px;}
+  .row{display:flex;justify-content:space-between;font:12px var(--mono);padding:3px 0;border-bottom:1px solid var(--line);}
+  .row b{color:var(--text);font-weight:700;}
+  #phases{display:flex;gap:3px;margin:6px 0 12px;}
+  #phases div{flex:1;height:6px;background:rgba(255,255,255,.08);}
+  #gates{margin:6px 0 12px;}
+  .gate{display:flex;justify-content:space-between;gap:8px;font:12px var(--mono);padding:4px 0;border-bottom:1px solid var(--line);}
+  .gate .v{font-weight:800;} .gate .pass{color:var(--mint);} .gate .fail{color:var(--bad);} .gate .pending{color:var(--muted);}
+  .gate small{display:block;color:var(--bad);font-size:10.5px;}
+  #outcome{font:12.5px/1.5 var(--display);margin:8px 0 10px;padding:8px 10px;border-left:3px solid var(--mint);background:rgba(105,247,205,.06);}
+  #outcome.bad{border-color:var(--bad);background:rgba(255,122,107,.08);}
+  #log{font:11.5px/1.6 var(--mono);color:var(--muted);margin-top:6px;}
+  #log div b{color:var(--amber);}
+  .note{font:11.5px/1.55 var(--display);color:var(--muted);margin-top:12px;border-left:2px solid var(--amber);padding-left:10px;}
+  #controls{left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:10px 14px;
+    width:min(760px,calc(100% - 28px));flex-wrap:wrap;}
+  #controls button,#controls select{background:transparent;color:var(--text);border:1px solid var(--line);font:700 11px var(--mono);
+    padding:7px 11px;cursor:pointer;letter-spacing:.04em;}
+  #controls button:hover{border-color:var(--mint);color:var(--mint);}
+  #controls button.on{background:var(--mint);color:var(--ink);border-color:var(--mint);}
+  #scrub{flex:1;min-width:160px;accent-color:var(--mint);}
+  #clock{font:700 12px var(--mono);color:var(--muted);min-width:96px;text-align:right;}
+  #nowebgl{display:none;position:fixed;inset:0;place-items:center;text-align:center;padding:24px;z-index:5;}
+  @media(max-width:760px){#hud{top:auto;bottom:122px;right:8px;left:8px;width:auto;max-height:30vh;}
+    #picker{width:auto;right:8px;left:8px;max-height:24vh;}}
+</style>
+<link rel="stylesheet" href="../site-nav.css"/>
+</head>
+<body>
+<div id="scene" aria-label="3D replay of a recorded cloud-seeding sortie"></div>
+
+<header class="site-header">
+  <a class="brand" href="/"><div class="brand-mark" aria-hidden="true">PX</div><h1>Cloud Seeding <span class="dim">3D replay</span></h1></a>
+  <nav class="site-nav" aria-label="Site">
+    <a href="/">Home</a>
+    <a href="/demo/">Swarm Demo</a>
+    <a href="/search-demo/">Search Demo</a>
+    <a href="/seeding-demo/" aria-current="page">Seeding Demo</a>
+    <a href="/seeding/">Seeding</a>
+    <a href="/slam/">SLAM</a>
+    <a href="/bench/">Bench</a>
+    <a class="ext" href="https://github.com/abelxmendoza/PX4-Autonomous-Missions" target="_blank" rel="noopener">Source</a>
+  </nav>
+</header>
+
+<aside id="picker" class="panel" aria-label="Scenario">
+  <div class="k">Pick a scenario</div>
+  <div id="scenarios"></div>
+  <div class="note" style="margin-top:10px">Each one is a separate recorded flight. <b>As designed</b> means the sortie ended the way that
+    scenario is supposed to: a denied release returns home and lands; a withheld marker fails safely.</div>
+</aside>
+
+<aside id="hud" class="panel">
+  <div class="k">Phase</div>
+  <div class="big" id="phase">–</div>
+  <div id="phases" aria-hidden="true"></div>
+  <div class="row"><span>Flight time</span><b id="hudTime">0.0 s</b></div>
+  <div class="row"><span>Altitude</span><b id="hudAlt">0.0 m</b></div>
+  <div class="row"><span>Position N, E</span><b id="hudPos">0, 0</b></div>
+  <div class="row"><span>Setpoints from</span><b id="hudOwner">–</b></div>
+  <div class="row"><span>Seed released</span><b id="hudSeed">0.000 kg</b></div>
+  <div class="row"><span>Marker detections</span><b id="hudMarker">0</b></div>
+  <div class="k" style="margin-top:12px">Release gates (all must allow)</div>
+  <div id="gates"></div>
+  <div id="outcome" hidden></div>
+  <div class="k">Event log</div>
+  <div id="log"></div>
+  <div class="note">Replay of <b>recorded PX4 SITL + Gazebo flights</b> (headless). Position is PX4's own estimate. Weather, airspace, traffic
+    and clearance inputs are <b>simulated</b>, not operational data. The marker's true position is used only to score the touchdown.
+    <a href="/seeding/" style="color:var(--mint)">How a release is allowed →</a></div>
+</aside>
+
+<div id="controls" class="panel">
+  <button id="play" aria-label="Play or pause">❚❚ Pause</button>
+  <button id="restart">↺ Restart</button>
+  <select id="speed" aria-label="Playback speed"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option></select>
+  <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub through the flight"/>
+  <span id="clock">0.0 / 0.0 s</span>
+  <button id="cam" class="on" aria-label="Toggle follow camera">Follow drone</button>
+</div>
+
+<div id="nowebgl"><div><p>This 3D replay needs WebGL, which this browser could not start.</p>
+  <p><a href="/seeding/" style="color:var(--mint)">See the seeding results page instead →</a></p></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="../seeding-replay.js"></script>
+<script>
+(async function () {
+  const $ = id => document.getElementById(id);
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({antialias: true}); }
+  catch (e) { $('nowebgl').style.display = 'grid'; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  $('scene').appendChild(renderer.domElement);
+
+  const get = u => fetch(u).then(r => { if (!r.ok) throw new Error(u); return r.text(); });
+  const [index, truth] = await Promise.all([get('../data/seeding/index.json').then(JSON.parse), get('../data/search_targets.json').then(JSON.parse)]);
+  const toV = (n, e, d) => { const p = seedingNedToScene(n, e, d); return new THREE.Vector3(p.x, p.y, p.z); };
+
+  // ---- world: worlds/search_field.sdf (the sortie flies the search field) ----
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9ec4e0);
+  scene.fog = new THREE.Fog(0x9ec4e0, 120, 260);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x4c6b3f, 0.95));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(-40, 80, 30); scene.add(sun);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshLambertMaterial({color: 0x5f8a4c}));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const f = truth.field;
+  const ring = pts => pts.concat([pts[0]]);
+  const line = (pts, color, d = -0.03, dashed = false) => {
+    const geo = new THREE.BufferGeometry().setFromPoints(pts.map(([n, e]) => toV(n, e, d)));
+    const mat = dashed ? new THREE.LineDashedMaterial({color, dashSize: 1.2, gapSize: 0.8}) : new THREE.LineBasicMaterial({color});
+    const l = new THREE.Line(geo, mat); if (dashed) l.computeLineDistances(); scene.add(l); return l;
+  };
+  line(ring([[f.north_min, f.east_min], [f.north_min, f.east_max], [f.north_max, f.east_max], [f.north_max, f.east_min]]), 0xffffff);
+  const grid = new THREE.GridHelper(20, 20, 0x2f4a33, 0x2f4a33); grid.position.set(0, 0.02, 0); scene.add(grid);
+  const loader = new THREE.TextureLoader();
+  const plane = truth.marker_length_m * (240 + 80) / 240;
+  for (const t of truth.targets) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(plane, plane), new THREE.MeshBasicMaterial({map: loader.load(`../search-demo/markers/aruco_${t.id}.png`)}));
+    m.rotation.x = -Math.PI / 2; m.position.copy(toV(t.north, t.east, -0.04)); scene.add(m);
+  }
+
+  function label(text, color, w = 3.4) {
+    const c = document.createElement('canvas'); c.width = 320; c.height = 64;
+    const g = c.getContext('2d'); g.fillStyle = 'rgba(5,10,11,.82)'; g.fillRect(0, 0, 320, 64);
+    g.fillStyle = color; g.font = 'bold 30px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 160, 33);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(c), depthTest: false}));
+    s.scale.set(w, w * 0.2, 1); return s;
+  }
+
+  // ---- the drone (same model as the search replay) ----
+  const AMBER = 0xffb547, MINT = 0x69f7cd, PINK = 0xff5da2;
+  const drone = new THREE.Group(); scene.add(drone);
+  const dark = new THREE.MeshLambertMaterial({color: 0x1d2526});
+  drone.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.34), dark));
+  for (const a of [Math.PI / 4, -Math.PI / 4]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.04, 0.05), dark); arm.rotation.y = a; drone.add(arm); }
+  const props = [];
+  for (const [x, z] of [[0.34, 0.34], [-0.34, 0.34], [0.34, -0.34], [-0.34, -0.34]]) {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.02, 20), new THREE.MeshBasicMaterial({color: 0x9aa7a6, transparent: true, opacity: 0.6}));
+    r.position.set(x, 0.08, z); drone.add(r); props.push(r);
+  }
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 12), new THREE.MeshBasicMaterial({color: PINK}));
+  nose.rotation.z = -Math.PI / 2; nose.position.set(0.32, 0, 0); drone.add(nose);
+  const cageGeo = new THREE.BoxGeometry(2.2, 1.2, 2.2);
+  drone.add(new THREE.Mesh(cageGeo, new THREE.MeshBasicMaterial({color: AMBER, transparent: true, opacity: 0.12, depthWrite: false})));
+  drone.add(new THREE.LineSegments(new THREE.EdgesGeometry(cageGeo), new THREE.LineBasicMaterial({color: AMBER})));
+  const beacon = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 16), new THREE.MeshBasicMaterial({color: AMBER}));
+  beacon.rotation.z = Math.PI; scene.add(beacon);
+  const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+    new THREE.LineDashedMaterial({color: AMBER, dashSize: 0.5, gapSize: 0.35}));
+  scene.add(pole);
+  const droneTag = label('DRONE', '#ffb547'); scene.add(droneTag);
+  // Landing camera footprint.
+  const fpGeo = new THREE.BufferGeometry(); fpGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+  fpGeo.setIndex([0, 1, 2, 0, 2, 3]);
+  const fpMesh = new THREE.Mesh(fpGeo, new THREE.MeshBasicMaterial({color: PINK, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide}));
+  const fpLine = new THREE.LineLoop(fpGeo, new THREE.LineBasicMaterial({color: PINK}));
+  scene.add(fpMesh); scene.add(fpLine);
+  // Seed particles: released while dispensing, falling and drifting.
+  const SEEDS = 400;
+  const seedPos = new Float32Array(SEEDS * 3).fill(-999);
+  const seedVel = new Float32Array(SEEDS * 3);
+  const seedGeo = new THREE.BufferGeometry(); seedGeo.setAttribute('position', new THREE.BufferAttribute(seedPos, 3));
+  scene.add(new THREE.Points(seedGeo, new THREE.PointsMaterial({color: 0xe8fff7, size: 0.18})));
+  let seedNext = 0;
+
+  // ---- per-scenario layers (rebuilt when the scenario changes) ----
+  let trace = null, layers = new THREE.Group(); scene.add(layers);
+  let trailGeo = null, t = 0, t0 = 0, tEnd = 1, dur = 1, firstFrame = true;
+  let playing = true, follow = true, last = performance.now();
+
+  function buildLayers() {
+    scene.remove(layers); layers = new THREE.Group(); scene.add(layers);
+    const add = o => { layers.add(o); return o; };
+    const poly = (pts, color, d, dashed) => {
+      const geo = new THREE.BufferGeometry().setFromPoints(ring(pts).map(([n, e]) => toV(n, e, d)));
+      const l = new THREE.Line(geo, dashed ? new THREE.LineDashedMaterial({color, dashSize: 1.2, gapSize: 0.8}) : new THREE.LineBasicMaterial({color}));
+      if (dashed) l.computeLineDistances(); return add(l);
+    };
+    if (trace.geofence_polygon_ned) poly(trace.geofence_polygon_ned, 0xff7a6b, -0.05, false);
+    if (trace.recovery_polygon_ned) poly(trace.recovery_polygon_ned, MINT, -0.06, true);
+    // Release point and its 12-18 m altitude band.
+    const [rn, re, rd] = trace.release_ned;
+    const band = add(new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 6, 32, 1, true),
+      new THREE.MeshBasicMaterial({color: AMBER, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false})));
+    band.position.copy(toV(rn, re, -15));
+    add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CylinderGeometry(2.5, 2.5, 6, 32, 1, true)), new THREE.LineBasicMaterial({color: AMBER})))
+      .position.copy(band.position);
+    const rp = add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), new THREE.MeshBasicMaterial({color: AMBER})));
+    rp.position.copy(toV(rn, re, rd));
+    const rl = add(label('RELEASE POINT', '#ffb547', 4)); rl.position.copy(toV(rn, re, rd - 6.2));
+    add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([toV(rn, re, 0), toV(rn, re, rd)]),
+      new THREE.LineDashedMaterial({color: AMBER, dashSize: 0.6, gapSize: 0.4}))).computeLineDistances();
+    // Landing pad target (the marker the drone locked onto) and the touchdown.
+    const score = touchdownScore(trace, truth);
+    if (score) {
+      const pad = add(new THREE.Mesh(new THREE.RingGeometry(1.2, 1.45, 40), new THREE.MeshBasicMaterial({color: MINT, side: THREE.DoubleSide})));
+      pad.rotation.x = -Math.PI / 2; pad.position.copy(toV(score.markerN, score.markerE, -0.07));
+      const pl = add(label(`PAD · MARKER ${score.markerId}`, '#69f7cd', 4)); pl.position.copy(toV(score.markerN, score.markerE, -2.6));
+    }
+    // Path, coloured by phase.
+    const n = trace.frames.length, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), c = new THREE.Color();
+    trace.frames.forEach((fr, i) => {
+      const p = toV(fr.n, fr.e, fr.d); pos.set([p.x, p.y, p.z], i * 3);
+      c.set(phaseColor(fr.state)); col.set([c.r, c.g, c.b], i * 3);
+    });
+    trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); trailGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    add(new THREE.Line(trailGeo, new THREE.LineBasicMaterial({vertexColors: true})));
+  }
+
+  function phaseBar(state) {
+    const k = phaseIndex(state);
+    $('phases').innerHTML = SEEDING_PHASES.map((p, i) =>
+      `<div title="${p.label}" style="background:${i <= k ? p.color : 'rgba(255,255,255,.08)'};opacity:${i === k ? 1 : (i < k ? .55 : 1)}"></div>`).join('');
+  }
+
+  function update() {
+    const p = seedingPoseAt(trace.frames, t);
+    const pos = toV(p.n, p.e, p.d);
+    drone.position.copy(pos); drone.rotation.y = -p.yaw_deg * Math.PI / 180 + Math.PI / 2;
+    props.forEach((r, i) => { r.rotation.y += (-p.d > 0.3 ? 0.9 : 0.05) * (i % 2 ? 1 : -1); });
+    beacon.position.set(pos.x, pos.y + 2.4, pos.z); droneTag.position.set(pos.x, pos.y + 3.6, pos.z);
+    pole.geometry.setFromPoints([new THREE.Vector3(pos.x, pos.y + 1.9, pos.z), new THREE.Vector3(pos.x, 0.05, pos.z)]); pole.computeLineDistances();
+    const shown = trace.frames.filter(fr => fr.t <= t).length; trailGeo.setDrawRange(0, Math.max(shown, 1));
+
+    const {state, reason} = stateAt(trace, t);
+    const landing = state === 'precision_landing';
+    const fp = landing ? seedingFootprint(p, trace.camera) : [];
+    const arr = fpGeo.attributes.position.array;
+    fp.forEach((cn, i) => { const v = toV(cn.n, cn.e, -0.08); arr.set([v.x, v.y, v.z], i * 3); });
+    fpGeo.attributes.position.needsUpdate = true; fpMesh.visible = fpLine.visible = fp.length === 4;
+
+    const phase = SEEDING_PHASES[phaseIndex(state)];
+    $('phase').textContent = ['landed', 'aborted', 'failed'].includes(state) ? state.toUpperCase() : phase.label;
+    $('phase').style.color = state === 'failed' ? '#ff7a6b' : phase.color;
+    phaseBar(state);
+    $('hudTime').textContent = `${(t - t0).toFixed(1)} s`;
+    $('hudAlt').textContent = `${Math.max(0, -p.d).toFixed(1)} m`;
+    $('hudPos').textContent = `${p.n.toFixed(1)}, ${p.e.toFixed(1)}`;
+    $('hudOwner').textContent = (p.owner || '–').replace('_', ' ');
+    $('hudSeed').textContent = `${releasedAt(trace, t).toFixed(3)} kg`;
+    $('hudMarker').textContent = `${detectionsUntil(trace, t).length}`;
+    $('gates').innerHTML = gatesAt(trace, t).map(g =>
+      `<div class="gate"><span>${g.label}${g.reason ? `<small>${g.reason}</small>` : ''}</span>` +
+      `<span class="v ${g.status}">${g.status === 'pass' ? '✓ allow' : g.status === 'fail' ? '✗ deny' : '… pending'}</span></div>`).join('');
+    const done = t >= tEnd - 1e-6;
+    $('outcome').hidden = !done;
+    if (done) {
+      const s = touchdownScore(trace, truth);
+      $('outcome').className = trace.result_as_designed ? '' : 'bad';
+      $('outcome').innerHTML = `<b>${trace.result_as_designed ? 'Ended as designed' : 'Did not end as designed'}</b> (${trace.mission_result}). ` +
+        `${outcomeText(trace)}${s ? ` Touchdown <b>${s.errorM.toFixed(2)} m</b> from marker ${s.markerId}.` : ''}`;
+    }
+    $('log').innerHTML = trace.states.filter(s => s.t <= t && s.to !== 'preflight')
+      .map(s => `<div>${(s.t - t0).toFixed(1)} s  <b>${s.to.replace(/_/g, ' ')}</b>${s.reason && s.reason !== 'start' ? ` · ${s.reason}` : ''}</div>`)
+      .reverse().slice(0, 8).join('');
+    $('scrub').value = Math.round(1000 * (t - t0) / dur);
+    $('clock').textContent = `${(t - t0).toFixed(1)} / ${dur.toFixed(1)} s`;
+
+    if (follow) {
+      const behind = toV(p.n - 16, p.e - 12, p.d - 12);
+      if (firstFrame) { camera.position.copy(behind); controls.target.copy(pos); firstFrame = false; }
+      camera.position.lerp(behind, 0.06); controls.target.lerp(pos, 0.12);
+    }
+  }
+
+  function seeds(dt) {
+    const p = seedingPoseAt(trace.frames, t);
+    const releasing = playing && p.dispense;
+    if (releasing) {
+      for (let k = 0; k < 6; k++) {
+        const i = seedNext; seedNext = (seedNext + 1) % SEEDS;
+        const v = toV(p.n, p.e, p.d + 0.3);
+        seedPos.set([v.x + (Math.random() - .5) * .4, v.y, v.z + (Math.random() - .5) * .4], i * 3);
+        seedVel.set([(Math.random() - .5) * 1.6, -1.5 - Math.random(), (Math.random() - .5) * 1.6], i * 3);
+      }
+    }
+    for (let i = 0; i < SEEDS; i++) {
+      if (seedPos[i * 3 + 1] < -100) continue;
+      for (let a = 0; a < 3; a++) seedPos[i * 3 + a] += seedVel[i * 3 + a] * dt;
+      if (seedPos[i * 3 + 1] < 0.05) seedPos[i * 3 + 1] = -999;
+    }
+    seedGeo.attributes.position.needsUpdate = true;
+  }
+
+  async function load(id) {
+    const entry = index.scenarios.find(s => s.id === id) || index.scenarios[0];
+    trace = parseSeedingTrace(await get(`../data/seeding/${entry.file}`));
+    document.querySelectorAll('#scenarios button').forEach(b => b.classList.toggle('on', b.dataset.id === entry.id));
+    seedPos.fill(-999);
+    buildLayers();
+    t0 = trace.frames[0].t; tEnd = trace.frames[trace.frames.length - 1].t; dur = tEnd - t0;
+    // Shareable moments: ?scenario=<id>&t=<seconds of flight>&paused&free (camera).
+    const params = new URLSearchParams(location.search);
+    const startAt = params.get('scenario') === entry.id ? Number(params.get('t')) : NaN;
+    t = t0 + (Number.isFinite(startAt) && startAt > 0 ? Math.min(startAt, dur) : 0);
+    playing = !params.has('paused'); firstFrame = true;
+    $('play').textContent = playing ? '❚❚ Pause' : '▶ Play';
+    params.set('scenario', entry.id); params.delete('t');
+    history.replaceState(null, '', `?${params}`);
+  }
+
+  $('scenarios').innerHTML = index.scenarios.map(s =>
+    `<button data-id="${s.id}"><b>${s.label}<span class="tag ${s.result_as_designed ? 'ok' : 'no'}">${s.result_as_designed ? 'AS DESIGNED' : 'NOT AS DESIGNED'}</span></b>` +
+    `<span>${s.blurb}</span></button>`).join('');
+  document.querySelectorAll('#scenarios button').forEach(b => b.onclick = () => load(b.dataset.id));
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize); resize();
+  $('play').onclick = () => { playing = !playing; if (playing && t >= tEnd) t = t0; $('play').textContent = playing ? '❚❚ Pause' : '▶ Play'; };
+  $('restart').onclick = () => { t = t0; playing = true; seedPos.fill(-999); $('play').textContent = '❚❚ Pause'; };
+  $('scrub').oninput = e => { t = t0 + dur * e.target.value / 1000; update(); };
+  $('cam').onclick = () => { follow = !follow; $('cam').classList.toggle('on', follow); $('cam').textContent = follow ? 'Follow drone' : 'Free camera';
+    if (!follow) { camera.position.copy(toV(-25, -40, -55)); controls.target.copy(toV(20, 5, 0)); } };
+  controls.addEventListener('start', () => { if (follow) $('cam').click(); });
+
+  if (new URLSearchParams(location.search).has('free')) $('cam').click();
+  await load(new URLSearchParams(location.search).get('scenario') || 'nominal');
+  (function loop(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (playing) {
+      t = Math.min(tEnd, t + dt * Number($('speed').value));
+      if (t >= tEnd) { playing = false; $('play').textContent = '▶ Replay'; }
+    }
+    if (trace) { update(); seeds(dt * Number($('speed').value)); }
+    controls.update(); renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  })(performance.now());
+})().catch(err => {
+  document.getElementById('nowebgl').style.display = 'grid';
+  document.getElementById('nowebgl').firstElementChild.firstElementChild.textContent = 'Could not load the recorded sorties: ' + err.message;
+});
+</script>
+</body>
+</html>

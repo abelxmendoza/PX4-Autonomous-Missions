@@ -58,6 +58,8 @@ from px4_offboard.mission_geofence import GeofenceConfig, _contains  # noqa: E40
 from px4_offboard.mission_logic import Fence  # noqa: E402
 from px4_offboard.precision_land import (CameraTag, LandState, PrecisionLand, PrecisionLandParams,  # noqa: E402
                                          VehicleSnapshot, tag_to_ned)
+from px4_offboard.seeding_trace import SeedingTraceRecorder  # noqa: E402
+from px4_offboard import seeding_trace  # noqa: E402
 from px4_offboard.simulated_comms import simulation_clearance, simulation_comms_authorizer  # noqa: E402
 from px4_offboard.traffic import simulation_snapshot, simulation_traffic_authorizer, track_at_ned  # noqa: E402
 from px4_offboard.altitude_reference import (  # noqa: E402
@@ -116,14 +118,31 @@ def _px4_version() -> str:
         return "unknown"
 
 
-def _profile():
-    """sim_profile geometry with a looser arrival and a SITL-length timeout.
+def _recovery_site(scenario: str = "nominal") -> tuple[float, float, float]:
+    """The planned landing site: the centre of the scenario's recovery area (a mission-plan
+    coordinate from the geofence, not a marker position)."""
+    polygon = _sitl_geofence(tight=scenario == "geofence_boundary").recovery_polygon_ned
+    norths = [p[0] for p in polygon]
+    easts = [p[1] for p in polygon]
+    return ((min(norths) + max(norths)) / 2.0, (min(easts) + max(easts)) / 2.0, 0.0)
+
+
+def _profile(scenario: str = "nominal"):
+    """sim_profile geometry with a looser arrival, a SITL-length timeout, and the return
+    going to the planned landing site instead of the takeoff point.
 
     sim_profile() itself stays at arrival 0.5 m and timeout 60 s. Those
     numbers are what the unit tests fly. A real PX4 approach does not settle
     inside 0.5 m on the first pass, and the sortie is longer than 60 s.
+
+    Precision landing starts from wherever the return stages (18 m above home_ned). Staged
+    over the takeoff point, the pad markers were 15-21 m off to the side, about 40 degrees
+    off the camera axis and ~20 px wide: whichever was detected first got locked, and a
+    first fix of marker 4 from there put it ~9 m short of where it is. The drone parked at
+    the wrong spot, lost the marker and timed out (3 of 7 SITL runs, 2026-10-16). A real
+    precision landing flies to the planned landing site first and refines with vision.
     """
-    return replace(sim_profile(), arrival_m=4.0, timeout_s=300.0)
+    return replace(sim_profile(), arrival_m=4.0, timeout_s=300.0, home_ned=_recovery_site(scenario))
 
 
 SCENARIOS = (
@@ -220,7 +239,7 @@ def _orchestrator(scenario: str) -> MissionOrchestrator:
         faults = MissionFaultPlan((FaultSpec("air-mid-dispense", AIRSPACE_FAULT, at_state="dispensing", duration_s=0.0),))
         airspace = AirspaceAuthorizer(AirspaceFaultSwitch(airspace.provider, faults), airspace.policy)
     supervisor = SeedingSupervisor(
-        SeedingMission(_profile()),
+        SeedingMission(_profile(scenario)),
         AltitudeMonitor(max_age_s=1.0),
         band,
         WeatherAuthorizer(weather_provider, simulation_policy()),
@@ -228,8 +247,9 @@ def _orchestrator(scenario: str) -> MissionOrchestrator:
         traffic,
         comms,
     )
-    # Staging is 18 m so the downward camera's footprint can include marker 4
-    # near the origin. The marker coordinate is not a setpoint.
+    # Staging is 18 m above the planned landing site (the recovery area's centre, see
+    # _profile), so the pad marker is near the middle of the downward camera's view.
+    # The marker coordinate is not a setpoint.
     staging = StagingConditions(
         max_horizontal_m=5.0,
         min_altitude_m=16.0,
@@ -397,7 +417,15 @@ def _write(path: Path, report: dict) -> None:
     path.write_text(json.dumps(report, indent=2) + "\n")
 
 
-async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
+async def _record(recorder: SeedingTraceRecorder, pose: "Pose", live: dict, stop: asyncio.Event) -> None:
+    """Sample PX4's estimate at the recorder's rate, tagged with the orchestrator's live state."""
+    while not stop.is_set():
+        if pose.position_ned is not None and pose.q_wxyz is not None:
+            recorder.sample(time.monotonic(), pose.position_ned, pose.q_wxyz, live["state"], live["owner"], live["dispense"])
+        await asyncio.sleep(0.02)
+
+
+async def fly(report_path: Path, timeout_s: float, scenario: str, trace_path: Path | None = None) -> dict:
     started = datetime.now(timezone.utc).isoformat()
     report = _blank_report(started, scenario)
     feed = CameraFeed()
@@ -410,6 +438,11 @@ async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
     detections = 0
     last_frame = 0
     reached_release = False
+    recorder = SeedingTraceRecorder(rate_hz=10.0)
+    live = {"state": "takeoff", "owner": "px4", "dispense": False}
+    record_stop = asyncio.Event()
+    recorder_task = None
+    mission_t0 = None
     try:
         await drone.connect(system_address="udpin://0.0.0.0:14540")
         print("waiting for PX4 ...", flush=True)
@@ -430,6 +463,7 @@ async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
 
         wall0 = time.monotonic()
         follower = asyncio.create_task(_follow(drone, pose, stop))
+        recorder_task = asyncio.create_task(_record(recorder, pose, live, record_stop))
         await drone.action.set_takeoff_altitude(8.0)
         await drone.action.arm()
         await drone.action.takeoff()
@@ -475,12 +509,14 @@ async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
                     if seen is not None:
                         tag, marker_id = seen
                         detections += 1
+                        recorder.detection(time.monotonic(), marker_id)
                 if scenario == "marker_loss" and orch.lander.state is LandState.DESCEND:
                     tag = None
             vehicle = _vehicle(pose, now, dt, landed, tag)
             if vehicle is None:
                 continue
             output = orch.step(vehicle)
+            live.update(state=output.state.value, owner=output.owner.value, dispense=bool(output.dispense))
             if output.state is not last_state:
                 print(f"  {last_state.value} -> {output.state.value} at t={now:.1f}s owner={output.owner.value}", flush=True)
                 last_state = output.state
@@ -496,6 +532,7 @@ async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
                 )
             if output.request_nav_land:
                 print("orchestrator requested PX4 land mode", flush=True)
+                live.update(owner="px4_land")
                 try:
                     await drone.offboard.stop()
                 except OffboardError:
@@ -559,6 +596,17 @@ async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
     finally:
         report["end_time"] = report["end_time"] or datetime.now(timezone.utc).isoformat()
         _write(report_path, report)
+        record_stop.set()
+        if recorder_task is not None:
+            await asyncio.wait_for(recorder_task, timeout=2.0)
+        if trace_path is not None and mission_t0 is not None:
+            camera = {"width_px": SEARCH_CAMERA.width_px, "height_px": SEARCH_CAMERA.height_px,
+                      "hfov_rad": SEARCH_CAMERA.horizontal_fov_rad}
+            trace = seeding_trace.build(report, recorder, mission_t0, release_ned=_profile(scenario).release_ned,
+                                        expected_result=EXPECTED_RESULT[scenario], camera=camera)
+            trace_path.parent.mkdir(parents=True, exist_ok=True)
+            trace_path.write_text(json.dumps(trace, separators=(",", ":")) + "\n")
+            print(f"trace: {trace_path} ({len(trace['frames'])} poses)", flush=True)
         print(json.dumps({k: report[k] for k in report if k != "orchestrator_evidence"}, indent=2), flush=True)
         stop.set()
         if follower is not None:
@@ -636,10 +684,11 @@ def main() -> int:
     parser.add_argument("--report", type=Path, default=Path("/tmp/integrated_seeding_sitl/report.json"))
     parser.add_argument("--timeout", type=float, default=360.0)
     parser.add_argument("--scenario", choices=SCENARIOS, default="nominal")
+    parser.add_argument("--trace", type=Path, default=None, help="also write the browser replay trace here")
     args = parser.parse_args()
     expected = EXPECTED_RESULT[args.scenario]
     try:
-        report = asyncio.run(fly(args.report, args.timeout, args.scenario))
+        report = asyncio.run(fly(args.report, args.timeout, args.scenario, args.trace))
     except Exception:
         return 1
     return 0 if report.get("mission_result") == expected else 2

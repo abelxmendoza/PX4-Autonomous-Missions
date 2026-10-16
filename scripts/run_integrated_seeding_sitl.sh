@@ -6,6 +6,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# One PX4 SITL at a time on this machine: two instances fight over the same UDP ports, and
+# two Gazebo servers running search_field publish on the same camera topic, so a drone can
+# "see" frames from the other simulation. Runs from any checkout or session queue here.
+# PX4 and Gazebo inherit the lock, so it is held until the whole simulation has exited.
+SITL_LOCK="${SITL_LOCK:-/tmp/px4_sitl.lock}"
+exec 9>"$SITL_LOCK"
+if ! flock -n 9; then
+  echo "== waiting for another PX4 SITL run to finish (lock: $SITL_LOCK)"
+  flock 9
+fi
 PX4="${PX4_DIR:-$HOME/PX4-Autopilot}"
 LOG_DIR="${LOG_DIR:-/tmp/integrated_seeding_sitl}"
 mkdir -p "$LOG_DIR"
@@ -112,7 +123,7 @@ SCENARIO="${SCENARIO:-nominal}"
 TIMEOUT="${TIMEOUT:-360}"
 echo "== integrated seeding flight ($SCENARIO, timeout ${TIMEOUT}s)"
 set +e
-python3 "$ROOT/tools/integrated_seeding_sitl.py" --scenario "$SCENARIO" --timeout "$TIMEOUT" --report "$LOG_DIR/report.json" | tee "$LOG_DIR/flight.log"
+python3 "$ROOT/tools/integrated_seeding_sitl.py" --scenario "$SCENARIO" --timeout "$TIMEOUT" --report "$LOG_DIR/report.json" --trace "$LOG_DIR/trace.json" | tee "$LOG_DIR/flight.log"
 status=${PIPESTATUS[0]}
 set -e
 echo "== flight exit $status, report $LOG_DIR/report.json"

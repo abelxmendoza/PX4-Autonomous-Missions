@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html', 'slam/index.html', 'seeding/index.html', 'bench/index.html'];
+const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html', 'slam/index.html', 'seeding/index.html', 'bench/index.html', 'seeding-demo/index.html'];
 
 function localRefs(html) {
   const refs = [];
