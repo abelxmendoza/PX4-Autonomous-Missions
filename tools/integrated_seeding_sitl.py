@@ -34,6 +34,7 @@ from pathlib import Path  # noqa: E402
 
 import cv2  # noqa: E402
 from mavsdk import System  # noqa: E402
+from mavsdk.action import ActionError, ActionResult  # noqa: E402
 from mavsdk.offboard import OffboardError, PositionNedYaw, VelocityNedYaw  # noqa: E402
 from mavsdk.telemetry import FlightMode, LandedState  # noqa: E402
 
@@ -87,6 +88,20 @@ LOOP_S = 0.05
 # release is 15 m above the local origin. Pairing that profile with PX4
 # SITL's Zurich AMSL would make this surface observation inapplicable.
 SIM_SURFACE_ELEVATION_M = 20.0
+
+# Arm gate. EKF2 sometimes starts while the spawned x500 is still settling onto
+# the ground (a few zero-g IMU samples, then contact). One early update can put
+# a 0.1-0.17 rad/s gyro bias into the filter. The airframe is at rest and the
+# raw gyro reads ~0, so PX4's bias-corrected body rate then reads about -bias.
+# PX4 either denies arming ("High Gyro Bias") or arms with a 10-50 deg attitude
+# error. The bias does not decay within a minute, so waiting alone does not help.
+# Restarting ekf2 on the settled airframe re-initialises it cleanly (SITL only).
+ARM_READY_TIMEOUT_S = 45.0
+REST_RATE_LIMIT_RAD_S = 0.03
+REST_RATE_HOLD_S = 5.0
+EKF2_RESTARTS = 2
+EKF2_SETTLE_S = 5.0
+ARM_ATTEMPTS = 3
 
 
 class Pose:
@@ -293,6 +308,139 @@ async def _follow(drone: System, pose: Pose, stop: asyncio.Event) -> None:
     await asyncio.gather(position(), attitude(), air(), armed(), ground(), mode())
 
 
+class _ArmWatch:
+    """Latest PX4 health and the at-rest body rate, for the arm gate."""
+
+    def __init__(self) -> None:
+        self.health = None
+        self.rest_rate: float | None = None
+        self.rate_high_since: float | None = None
+
+    def reset(self) -> None:
+        self.rest_rate = None
+        self.rate_high_since = None
+
+
+async def _watch_arm_state(drone: System, watch: _ArmWatch, stop: asyncio.Event) -> None:
+    async def health():
+        async for item in drone.telemetry.health():
+            if stop.is_set():
+                break
+            watch.health = item
+
+    async def rate():
+        smoothed = None
+        async for w in drone.telemetry.attitude_angular_velocity_body():
+            if stop.is_set():
+                break
+            norm = math.sqrt(w.roll_rad_s ** 2 + w.pitch_rad_s ** 2 + w.yaw_rad_s ** 2)
+            smoothed = norm if smoothed is None else 0.9 * smoothed + 0.1 * norm
+            watch.rest_rate = smoothed
+            if smoothed <= REST_RATE_LIMIT_RAD_S:
+                watch.rate_high_since = None
+            elif watch.rate_high_since is None:
+                watch.rate_high_since = time.monotonic()
+
+    await asyncio.gather(health(), rate())
+
+
+async def _wait_until_armable(watch: _ArmWatch, deadline: float) -> tuple[bool, str | None]:
+    """Wait for PX4 to report armable with a believable estimator.
+
+    Returns (False, None) when ready. Returns (True, reason) when the estimator
+    reports the grounded airframe rotating, and (False, reason) on timeout.
+    """
+    ready_since = None
+    while time.monotonic() < deadline:
+        await asyncio.sleep(0.25)
+        now = time.monotonic()
+        health = watch.health
+        positioned = health is not None and health.is_global_position_ok and health.is_home_position_ok
+        if positioned and watch.rate_high_since is not None and now - watch.rate_high_since >= REST_RATE_HOLD_S:
+            return True, f"estimator reports {watch.rest_rate:.3f} rad/s body rate with the airframe on the ground"
+        if positioned and health.is_armable and watch.rate_high_since is None:
+            ready_since = ready_since or now
+            if now - ready_since >= 1.0:
+                return False, None
+        else:
+            ready_since = None
+    health = watch.health
+    if health is None:
+        return False, "no health telemetry"
+    flags = {
+        "global_position_ok": health.is_global_position_ok,
+        "home_position_ok": health.is_home_position_ok,
+        "armable": health.is_armable,
+    }
+    rate = "n/a" if watch.rest_rate is None else f"{watch.rest_rate:.3f} rad/s"
+    return False, f"not armable after {ARM_READY_TIMEOUT_S:.0f} s ({flags}, body rate {rate})"
+
+
+async def _restart_ekf2() -> None:
+    # PX4's SITL client talks to the running `px4 -d` server. The MAVLink shell
+    # is not used: MAVSDK sends SERIAL_CONTROL without RESPOND, and PX4 closes
+    # the shell before the command runs.
+    client = Path(os.environ.get("PX4_DIR", Path.home() / "PX4-Autopilot")) / "build/px4_sitl_default/bin/px4-ekf2"
+    for action in ("stop", "start"):
+        proc = await asyncio.create_subprocess_exec(
+            str(client), action, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        output, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+        if proc.returncode != 0:
+            raise RuntimeError(f"px4-ekf2 {action} failed ({proc.returncode}): {output.decode(errors='replace').strip()}")
+        await asyncio.sleep(1.0)
+
+
+async def _arm_when_ready(drone: System) -> None:
+    """Arm once PX4 can. Recover from a bad EKF2 start; retry a denied arm.
+
+    Every wait, restart, and retry is printed to the flight log. A failure
+    that survives the bounded retries is raised to the caller.
+    """
+    watch, stop = _ArmWatch(), asyncio.Event()
+    watcher = asyncio.create_task(_watch_arm_state(drone, watch, stop))
+    restarts = denials = 0
+    started = time.monotonic()
+    try:
+        deadline = started + ARM_READY_TIMEOUT_S
+        while True:
+            restartable, problem = await _wait_until_armable(watch, deadline)
+            if problem is None:
+                try:
+                    await drone.action.arm()
+                except ActionError as exc:
+                    if exc._result.result != ActionResult.Result.COMMAND_DENIED:
+                        raise
+                    denials += 1
+                    if denials >= ARM_ATTEMPTS:
+                        raise RuntimeError(f"arm denied {denials} times; last: {exc}") from exc
+                    print(f"arm gate: arm attempt {denials} denied ({exc}); waiting for PX4 again", flush=True)
+                    await asyncio.sleep(1.0)
+                    deadline = time.monotonic() + ARM_READY_TIMEOUT_S
+                    continue
+                print(
+                    f"arm gate: armed {time.monotonic() - started:.1f} s after position lock "
+                    f"(ekf2 restarts {restarts}, denied arms {denials})",
+                    flush=True,
+                )
+                return
+            if restartable and restarts < EKF2_RESTARTS:
+                restarts += 1
+                print(f"arm gate: {problem}; restarting ekf2 ({restarts}/{EKF2_RESTARTS})", flush=True)
+                await _restart_ekf2()
+                # Let commander see the new filter before trusting armable again.
+                await asyncio.sleep(EKF2_SETTLE_S)
+                watch.reset()
+                deadline = time.monotonic() + ARM_READY_TIMEOUT_S
+                continue
+            raise RuntimeError(f"PX4 not ready to arm: {problem} (ekf2 restarts {restarts}, denied arms {denials})")
+    finally:
+        stop.set()
+        try:
+            await asyncio.wait_for(watcher, timeout=5.0)
+        except asyncio.TimeoutError:
+            watcher.cancel()
+
+
 def _see_marker(frame, now_s: float, pose: Pose, fence: GeofenceConfig | None,
                 locked_id: int | None = None) -> tuple[CameraTag, int] | None:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -428,10 +576,10 @@ async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
             except Exception as exc:
                 print(f"(telemetry rate request refused: {exc})", flush=True)
 
-        wall0 = time.monotonic()
         follower = asyncio.create_task(_follow(drone, pose, stop))
         await drone.action.set_takeoff_altitude(8.0)
-        await drone.action.arm()
+        await _arm_when_ready(drone)
+        wall0 = time.monotonic()
         await drone.action.takeoff()
         print("takeoff to 8 m, then the orchestrator owns OFFBOARD", flush=True)
         while pose.position_ned is None or -pose.position_ned[2] < 7.4 or pose.q_wxyz is None:
