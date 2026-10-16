@@ -1,0 +1,1380 @@
+{
+  "schema": 1,
+  "meta": {
+    "commit": "fbf76d4",
+    "python": "3.10.12",
+    "test_outcomes_from": [
+      "artifacts/junit/unit.xml",
+      "artifacts/junit/integration.xml"
+    ],
+    "pytest_run_by_this_command": false
+  },
+  "summary": {
+    "pass": 29,
+    "fail": 3,
+    "partial": 1,
+    "not_run": 2,
+    "known_open": 3,
+    "gate_ok": true,
+    "gate_problems": []
+  },
+  "requirements": [
+    {
+      "id": "REQ-EST-001",
+      "title": "Fusion position drift is bounded relative to distance flown",
+      "level": "MUST",
+      "description": "While fusion is healthy, the stereo+IMU horizontal position shall end the flight within 10% of the distance travelled of PX4's estimate, and never exceed 20% once 20 m have been flown.",
+      "rationale": "Dead-reckoning error that grows faster than distance flown makes the estimate unusable for guidance; it is the headline quality figure for visual-inertial odometry.",
+      "threshold": "final drift <= 10% of path; peak drift <= 20% (>= 20 m flown)",
+      "measurement": "Horizontal distance between the fused position and PX4's own estimate divided by PX4's cumulative path length, from the flight log (vv_harness.check_vo_drift). Reference is PX4's estimate, not ground truth.",
+      "legacy_ids": [
+        "REQ-VO-DRIFT-01",
+        "REQ-VO-001"
+      ],
+      "result": "FAIL",
+      "known_open": "Identical-configuration live flights K and L ended at 9.3% and 13.2% (peak 37%); the run-to-run spread is unexplained. See docs/engineering_results.md and bugs/BUG-018.md.",
+      "verification": [
+        {
+          "kind": "flight",
+          "ref": "stereo_vo_flight_k+stereo_vo_flight_l",
+          "status": "FAIL",
+          "detail": "stereo_vo_flight_k:REQ-VO-DRIFT-01 PASS: final drift 9.3% over 78 m (error 7.31 m); peak 13.2%; stereo_vo_flight_l:REQ-VO-DRIFT-01 FAIL: final drift 13.2% over 78 m (error 10.23 m); peak 37.4%",
+          "evidence": [
+            "evidence/stereo_vo/flight_K.csv.gz",
+            "evidence/stereo_vo/flight_L.csv.gz"
+          ],
+          "children": [
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_k:REQ-VO-DRIFT-01",
+              "status": "PASS",
+              "detail": "final drift 9.3% over 78 m (error 7.31 m); peak 13.2%",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_l:REQ-VO-DRIFT-01",
+              "status": "FAIL",
+              "detail": "final drift 13.2% over 78 m (error 10.23 m); peak 37.4%",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_vo_drift_passes_when_error_is_small_relative_to_distance",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_vo_drift_fails_when_error_is_a_large_fraction_of_distance",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_vo_drift_peak_limit_catches_a_transient_even_if_it_recovers",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-EST-002",
+      "title": "Visual odometry is available while moving",
+      "level": "MUST",
+      "description": "Fusion shall be healthy in at least 80% of MOVE samples when the fusion node is running.",
+      "rationale": "A localization source that is mostly stale cannot be relied on to close a control loop.",
+      "threshold": "healthy in >= 80% of MOVE samples (healthy = accepted VO update within 0.5 s and fresh IMU)",
+      "measurement": "Fraction of logged MOVE samples with vo_healthy=1 (vv_harness.check_vo_availability).",
+      "legacy_ids": [
+        "REQ-VO-AVAIL-01",
+        "REQ-VO-002"
+      ],
+      "result": "FAIL",
+      "known_open": "Live flights K and L reached 73% and 66%: about 5 VO updates/s under simulation load and VO losing track in fast yaw turns. See docs/engineering_results.md.",
+      "verification": [
+        {
+          "kind": "flight",
+          "ref": "stereo_vo_flight_k+stereo_vo_flight_l",
+          "status": "FAIL",
+          "detail": "stereo_vo_flight_k:REQ-VO-AVAIL-01 FAIL: fusion healthy in 217/298 MOVE samples (73%); stereo_vo_flight_l:REQ-VO-AVAIL-01 FAIL: fusion healthy in 193/292 MOVE samples (66%)",
+          "evidence": [
+            "evidence/stereo_vo/flight_K.csv.gz",
+            "evidence/stereo_vo/flight_L.csv.gz"
+          ],
+          "children": [
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_k:REQ-VO-AVAIL-01",
+              "status": "FAIL",
+              "detail": "fusion healthy in 217/298 MOVE samples (73%)",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_l:REQ-VO-AVAIL-01",
+              "status": "FAIL",
+              "detail": "fusion healthy in 193/292 MOVE samples (66%)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_vo_availability_fails_when_the_cameras_go_dark",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_vo_availability_passes_when_healthy_most_of_the_flight",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-EST-003",
+      "title": "A VO outage is detected and the dead-reckoned error stays bounded",
+      "level": "MUST",
+      "description": "When stereo VO stops delivering measurements, fusion health shall drop within 1 s, and the horizontal error shall grow by no more than 2 m over the baseline.",
+      "rationale": "Consumers must be told the estimate is no longer vision-corrected, and IMU-only drift must stay small.",
+      "threshold": "detect <= 1.0 s; error growth <= 2.0 m over the fault-free baseline (5 s outage)",
+      "measurement": "Fault scenario vo_dropout_and_packet_loss fault 1: injected/observed/verdict record (faults/evidence.py).",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "vo_dropout_and_packet_loss",
+          "status": "PASS",
+          "detail": "vo_dropout_and_packet_loss#1:vo_dropout PASS: must_detect=True (limit True), detect_within_s=0.4 (limit 1.0), max_err_growth_m=0.118 (limit 2.0)",
+          "evidence": [
+            "faults/vo_dropout_and_packet_loss.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "vo_dropout_and_packet_loss#1:vo_dropout",
+              "status": "PASS",
+              "detail": "must_detect=True (limit True), detect_within_s=0.4 (limit 1.0), max_err_growth_m=0.118 (limit 2.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-EST-004",
+      "title": "A frozen VO stream is rejected rather than trusted",
+      "level": "MUST",
+      "description": "A VO sensor that keeps repeating its last velocity shall be detected within 1 s with bounded error growth.",
+      "rationale": "A stuck sensor is consistent with a state it is itself dragging along; trusting it silently caused an 11 m error (BUG-019).",
+      "threshold": "detect <= 1.0 s; error growth <= 2.0 m; recovery <= 2.0 s",
+      "measurement": "Fault scenario sensor_faults fault 8, plus unit tests of the stuck-measurement rule.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "sensor_faults",
+          "status": "PASS",
+          "detail": "sensor_faults#8:frozen_sensor PASS: must_detect=True (limit True), detect_within_s=0.6 (limit 1.0), recover_within_s=0.0 (limit 2.0), max_err_growth_m=0.081 (limit 2.0)",
+          "evidence": [
+            "faults/sensor_faults.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "sensor_faults#8:frozen_sensor",
+              "status": "PASS",
+              "detail": "must_detect=True (limit True), detect_within_s=0.6 (limit 1.0), recover_within_s=0.0 (limit 2.0), max_err_growth_m=0.081 (limit 2.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "pytest",
+          "ref": "2 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_ekf_fusion.py::test_bit_identical_repeat_of_a_moving_velocity_is_rejected_as_a_stuck_sensor",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_ekf_fusion.py::test_repeated_zero_velocity_is_not_a_stuck_sensor",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-EST-005",
+      "title": "Corrupted VO measurements are gated",
+      "level": "MUST",
+      "description": "Randomly spiked VO velocities (30% of samples, 20 m/s) shall not degrade the estimate by more than 2 m.",
+      "rationale": "Stereo VO produces occasional absurd outputs on degenerate scenes; one accepted outlier ruins the state.",
+      "threshold": "error growth <= 2.0 m; recovery <= 2.0 s",
+      "measurement": "Fault scenario sensor_faults fault 6, plus gate unit tests.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "sensor_faults",
+          "status": "PASS",
+          "detail": "sensor_faults#6:corrupted_measurement PASS: recover_within_s=0.0 (limit 2.0), max_err_growth_m=0.054 (limit 2.0)",
+          "evidence": [
+            "faults/sensor_faults.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "sensor_faults#6:corrupted_measurement",
+              "status": "PASS",
+              "detail": "recover_within_s=0.0 (limit 2.0), max_err_growth_m=0.054 (limit 2.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "pytest",
+          "ref": "2 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_ekf_fusion.py::test_absurd_vo_velocity_is_rejected_and_state_untouched",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_ekf_fusion.py::test_statistically_inconsistent_velocity_is_gated_but_consistent_one_is_not",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-EST-006",
+      "title": "A frozen IMU is detected",
+      "level": "SHOULD",
+      "description": "An IMU that keeps repeating its first sample shall be detected within 1 s with bounded error growth.",
+      "rationale": "Without VO the IMU is the only source, and a frozen accelerometer produced a 32 m error in the rig.",
+      "threshold": "detect <= 1.0 s; error growth <= 1.0 m",
+      "measurement": "Fault scenario imu_faults_during_vo_outage fault 4.",
+      "legacy_ids": [],
+      "result": "FAIL",
+      "known_open": "No frozen-IMU detector exists; false-positive rate cannot be measured without an IMU recording. bugs/BUG-020.md.",
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "imu_faults_during_vo_outage",
+          "status": "FAIL",
+          "detail": "imu_faults_during_vo_outage#4:frozen_sensor FAIL: must_detect=True (limit True), detect_within_s=0.0 (limit 1.0), recover_within_s=15.0 (limit 25.0), max_err_growth_m=32.086 (limit 1.0)",
+          "evidence": [
+            "faults/imu_faults_during_vo_outage.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "imu_faults_during_vo_outage#4:frozen_sensor",
+              "status": "FAIL",
+              "detail": "must_detect=True (limit True), detect_within_s=0.0 (limit 1.0), recover_within_s=15.0 (limit 25.0), max_err_growth_m=32.086 (limit 1.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-CTRL-001",
+      "title": "The velocity PID loop stays inside its envelope",
+      "level": "MUST",
+      "description": "In velocity_pid mode the commanded velocity shall be finite and within 3.0 m/s horizontal and 1.5 m/s vertical.",
+      "rationale": "The outer loop replaces position-setpoint steps that produced violent tilts; its bounds are the point of using it.",
+      "threshold": "|v_xy| <= 3.0 m/s, |v_z| <= 1.5 m/s, finite, every velocity_pid sample",
+      "measurement": "vv_harness.check_velocity_pid_envelope over the flight log, plus controller unit tests.",
+      "legacy_ids": [
+        "REQ-CTRL-01",
+        "REQ-CTL-001"
+      ],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "flight",
+          "ref": "stereo_vo_flight_k+stereo_vo_flight_l",
+          "status": "PASS",
+          "detail": "stereo_vo_flight_k:REQ-CTRL-01 PASS: 299 velocity_pid sample(s) checked; stereo_vo_flight_l:REQ-CTRL-01 PASS: 293 velocity_pid sample(s) checked",
+          "evidence": [
+            "evidence/stereo_vo/flight_K.csv.gz",
+            "evidence/stereo_vo/flight_L.csv.gz"
+          ],
+          "children": [
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_k:REQ-CTRL-01",
+              "status": "PASS",
+              "detail": "299 velocity_pid sample(s) checked",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_l:REQ-CTRL-01",
+              "status": "PASS",
+              "detail": "293 velocity_pid sample(s) checked",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "pytest",
+          "ref": "3 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_pid_control.py",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_velocity_pid_envelope_passes_for_bounded_commands",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_velocity_pid_envelope_flags_out_of_bounds_samples",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-CTRL-002",
+      "title": "No loss of attitude control while airborne",
+      "level": "MUST",
+      "description": "Roll and pitch shall stay within 60 degrees in TAKEOFF, HOVER and MOVE.",
+      "rationale": "Beyond that the vehicle is tumbling; the historical altitude \"spike\" (BUG-016) was this.",
+      "threshold": "max(|roll|, |pitch|) <= 60 deg",
+      "measurement": "vv_harness.check_attitude_envelope over the flight log.",
+      "legacy_ids": [
+        "REQ-ATT-01",
+        "REQ-ATT-001"
+      ],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "flight",
+          "ref": "stereo_vo_flight_k+stereo_vo_flight_l",
+          "status": "PASS",
+          "detail": "stereo_vo_flight_k:REQ-ATT-01 PASS: maximum tilt 27 deg over 298 airborne sample(s); stereo_vo_flight_l:REQ-ATT-01 PASS: maximum tilt 28 deg over 292 airborne sample(s)",
+          "evidence": [
+            "evidence/stereo_vo/flight_K.csv.gz",
+            "evidence/stereo_vo/flight_L.csv.gz"
+          ],
+          "children": [
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_k:REQ-ATT-01",
+              "status": "PASS",
+              "detail": "maximum tilt 27 deg over 298 airborne sample(s)",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_l:REQ-ATT-01",
+              "status": "PASS",
+              "detail": "maximum tilt 28 deg over 292 airborne sample(s)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_attitude_envelope_flags_a_tumble_before_the_failsafe",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_attitude_envelope_passes_for_aggressive_but_controlled_flight",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-SAFE-001",
+      "title": "The airframe keeps clear of mapped obstacles",
+      "level": "MUST",
+      "description": "Mapped clearance shall be positive throughout, and at least 0.35 m from the airframe centre to any obstacle surface.",
+      "rationale": "Contact with an obstacle is the precursor to the loss-of-control failures seen in BUG-016.",
+      "threshold": "min mapped clearance > 0 and >= 0.35 m",
+      "measurement": "vv_harness.check_obstacle_clearance / check_airframe_contact over the flight log.",
+      "legacy_ids": [
+        "REQ-CLEARANCE-01",
+        "REQ-CLEARANCE-02",
+        "REQ-OBS-002",
+        "REQ-OBS-003"
+      ],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "flight",
+          "ref": "stereo_vo_flight_k+stereo_vo_flight_l",
+          "status": "PASS",
+          "detail": "stereo_vo_flight_k:REQ-CLEARANCE-01 PASS: minimum mapped clearance 2.426m; stereo_vo_flight_k:REQ-CLEARANCE-02 PASS: minimum mapped clearance 2.426m (contact below 0.35m); stereo_vo_flight_l:REQ-CLEARANCE-01 PASS: minimum mapped clearance 2.413m; stereo_vo_flight_l:REQ-CLEARANCE-02 PASS: minimum mapped clearance 2.413m (contact below 0.35m)",
+          "evidence": [
+            "evidence/stereo_vo/flight_K.csv.gz",
+            "evidence/stereo_vo/flight_L.csv.gz"
+          ],
+          "children": [
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_k:REQ-CLEARANCE-01",
+              "status": "PASS",
+              "detail": "minimum mapped clearance 2.426m",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_k:REQ-CLEARANCE-02",
+              "status": "PASS",
+              "detail": "minimum mapped clearance 2.426m (contact below 0.35m)",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_l:REQ-CLEARANCE-01",
+              "status": "PASS",
+              "detail": "minimum mapped clearance 2.413m",
+              "evidence": [],
+              "children": []
+            },
+            {
+              "kind": "flight",
+              "ref": "stereo_vo_flight_l:REQ-CLEARANCE-02",
+              "status": "PASS",
+              "detail": "minimum mapped clearance 2.413m (contact below 0.35m)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_zero_mapped_clearance_fails_collision_requirement",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_airframe_contact_catches_a_graze_that_clearance_01_passes",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_flight_vv.py::test_airframe_contact_passes_with_real_standoff",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-COMMS-001",
+      "title": "The MAVLink v2 codec is byte-identical to the reference implementation",
+      "level": "MUST",
+      "description": "Frames this repository encodes shall equal pymavlink's byte for byte, and pymavlink's frames shall parse here.",
+      "rationale": "A private codec is only trustworthy if it agrees with the reference on the wire.",
+      "threshold": "0 byte differences for HEARTBEAT, ATTITUDE, LOCAL_POSITION_NED, COMMAND_LONG, SET_POSITION_TARGET_LOCAL_NED; crc_extra table equal",
+      "measurement": "Unit tests comparing encoded bytes with pymavlink.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "4 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_crc_extra_table_matches_pymavlink",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_encoded_frames_are_byte_identical_to_pymavlink",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_frames_encoded_by_pymavlink_parse_with_ours",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_messages.py",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-COMMS-002",
+      "title": "Malformed input never produces a false frame and never stops the stream",
+      "level": "MUST",
+      "description": "Bad CRC, garbage, truncated, unknown-id and signed frames shall be counted and skipped, and the next good frame shall still parse.",
+      "rationale": "A UART delivers noise; the parser must resynchronise rather than stall or fabricate data.",
+      "threshold": "no exceptions; every malformed case counted; following good frame parsed; 200 random-noise chunks yield no frame",
+      "measurement": "Parser and link unit tests (deterministic mock serial device).",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "9 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_bad_crc_is_reported_and_the_next_good_frame_still_parses",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_garbage_before_a_frame_is_skipped_and_counted",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_truncated_frame_waits_for_more_bytes_and_does_not_emit",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_unknown_message_id_cannot_be_crc_checked_and_is_reported",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_signed_frames_are_reported_unsupported_not_misparsed",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_frame.py::test_random_noise_never_raises_and_never_fabricates_a_frame",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_corrupted_frame_between_good_ones_is_dropped_and_counted",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_a_frame_that_never_completes_is_discarded_after_the_frame_timeout",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_garbage_does_not_keep_the_link_alive",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-COMMS-003",
+      "title": "Link loss is detected and the link is re-established with bounded backoff",
+      "level": "MUST",
+      "description": "A disappearing transport shall be detected within 1 s, reconnect attempts shall back off and stop at a bound, and telemetry shall resume after the device returns.",
+      "rationale": "A pulled cable or reset flight controller is routine on real vehicles.",
+      "threshold": "detect <= 1.0 s; recover <= 4.0 s after the device returns; at most max_attempts opens per reconnect",
+      "measurement": "Fault scenario link_faults fault 3 (comm_disconnect) and link unit tests.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "link_faults",
+          "status": "PASS",
+          "detail": "link_faults#3:comm_disconnect PASS: must_detect=True (limit True), detect_within_s=0.05 (limit 1.0), recover_within_s=0.25 (limit 4.0)",
+          "evidence": [
+            "faults/link_faults.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "link_faults#3:comm_disconnect",
+              "status": "PASS",
+              "detail": "must_detect=True (limit True), detect_within_s=0.05 (limit 1.0), recover_within_s=0.25 (limit 4.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        },
+        {
+          "kind": "pytest",
+          "ref": "4 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_connect_retries_with_exponential_backoff_then_gives_up",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_unplug_is_detected_on_poll_and_reconnect_is_timed",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_reconnect_gives_up_when_the_device_stays_gone",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_reconnect_discards_a_half_received_frame",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-COMMS-004",
+      "title": "Partial frame loss does not take the link down",
+      "level": "MUST",
+      "description": "With 30% of MAVLink frames lost the link shall stay alive and receive at least 40% of the nominal frame count.",
+      "rationale": "Lossy radio links degrade; a supervisor that declares link-loss on mere degradation causes needless failsafes.",
+      "threshold": "link alive throughout; rx ratio >= 0.40 of baseline",
+      "measurement": "Fault scenario link_faults fault 1 (mavlink_packet_loss p=0.3).",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "link_faults",
+          "status": "PASS",
+          "detail": "link_faults#1:mavlink_packet_loss PASS: recover_within_s=0.0 (limit 1.5), must_stay_alive=True (limit True), min_rx_rate_ratio=0.737 (limit 0.4)",
+          "evidence": [
+            "faults/link_faults.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "link_faults#1:mavlink_packet_loss",
+              "status": "PASS",
+              "detail": "recover_within_s=0.0 (limit 1.5), must_stay_alive=True (limit True), min_rx_rate_ratio=0.737 (limit 0.4)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-COMMS-005",
+      "title": "Timeouts, short writes and burst reads are handled",
+      "level": "MUST",
+      "description": "Reads shall time out cleanly, short writes shall be completed or reported, and a single poll shall drain everything already received.",
+      "rationale": "A real defect found in this repository: a one-chunk-per-poll reader fell behind a 40 frame/s stream without bound.",
+      "threshold": "no read hang; zero-progress write raises LinkDown; 30 queued frames drained by one poll",
+      "measurement": "Unit tests on the deterministic clock and mock device.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "5 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_poll_timeout_returns_nothing_and_is_counted",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_short_writes_are_completed",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_a_write_that_makes_no_progress_is_a_link_failure",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_link.py::test_one_poll_drains_everything_already_received_not_just_one_chunk",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_comms_transport.py",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-COMMS-006",
+      "title": "I2C and SPI driver logic handles NACK, hang and register conventions",
+      "level": "SHOULD",
+      "description": "Register access, NACK retry and bus-hang handling shall be correct against mock buses.",
+      "rationale": "Interface-level logic should be testable before silicon is on the bench.",
+      "threshold": "all mock-bus tests pass",
+      "measurement": "Unit tests on MockI2CBus / MockSPIBus. These say nothing about real buses.",
+      "legacy_ids": [],
+      "result": "PARTIAL",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        },
+        {
+          "kind": "external",
+          "ref": "hardware: artifacts/hardware/i2c_spi_bench.json",
+          "status": "NOT_RUN",
+          "detail": "not run -- A physical I2C/SPI bus with a real peripheral has never been exercised by this repository.",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_comms_buses.py",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-RECOVERY-001",
+      "title": "Fusion recovers promptly after a VO outage",
+      "level": "MUST",
+      "description": "After VO resumes, fusion shall be healthy with velocity error under 0.35 m/s, sustained for 1 s, within 2 s.",
+      "rationale": "A localization source that stays degraded after its input returns defeats the purpose of detecting the outage.",
+      "threshold": "recovery <= 2.0 s",
+      "measurement": "Fault scenario vo_dropout_and_packet_loss fault 1, recovery time.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "vo_dropout_and_packet_loss",
+          "status": "PASS",
+          "detail": "vo_dropout_and_packet_loss#1:vo_dropout PASS: recover_within_s=0.0 (limit 2.0)",
+          "evidence": [
+            "faults/vo_dropout_and_packet_loss.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "vo_dropout_and_packet_loss#1:vo_dropout",
+              "status": "PASS",
+              "detail": "recover_within_s=0.0 (limit 2.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-RECOVERY-002",
+      "title": "Telemetry resumes promptly after a link disconnect",
+      "level": "MUST",
+      "description": "After the device returns, the link shall be connected, alive and fresh within 4 s.",
+      "rationale": "Operators and failsafes depend on telemetry returning without a restart.",
+      "threshold": "recovery <= 4.0 s",
+      "measurement": "Fault scenario link_faults fault 3, recovery time.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "link_faults",
+          "status": "PASS",
+          "detail": "link_faults#3:comm_disconnect PASS: recover_within_s=0.25 (limit 4.0)",
+          "evidence": [
+            "faults/link_faults.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "link_faults#3:comm_disconnect",
+              "status": "PASS",
+              "detail": "recover_within_s=0.25 (limit 4.0)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-RECOVERY-003",
+      "title": "The estimator re-converges after a mid-flight reset",
+      "level": "MUST",
+      "description": "After the estimator is re-initialised, velocity shall re-converge within 3 s with position error growth under 1.5 m.",
+      "rationale": "Estimators restart in flight (watchdog, mode change); position continuity must survive.",
+      "threshold": "recovery <= 3.0 s; error growth <= 1.5 m",
+      "measurement": "Fault scenario sensor_faults fault 10.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "fault",
+          "ref": "sensor_faults",
+          "status": "PASS",
+          "detail": "sensor_faults#10:estimator_reset PASS: recover_within_s=0.0 (limit 3.0), max_err_growth_m=0.02 (limit 1.5)",
+          "evidence": [
+            "faults/sensor_faults.json"
+          ],
+          "children": [
+            {
+              "kind": "fault",
+              "ref": "sensor_faults#10:estimator_reset",
+              "status": "PASS",
+              "detail": "recover_within_s=0.0 (limit 3.0), max_err_growth_m=0.02 (limit 1.5)",
+              "evidence": [],
+              "children": []
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-HIL-001",
+      "title": "One behavioural contract holds for simulated, SITL and hardware vehicle classes",
+      "level": "MUST",
+      "description": "SimVehicle, PX4SITLVehicle and PX4HardwareVehicle shall pass the same connect/telemetry/arm/velocity/disconnect tests without the test knowing which it has.",
+      "rationale": "Test logic must not branch on the target, or SITL results say nothing about hardware runs.",
+      "threshold": "every conformance test passes for all three classes",
+      "measurement": "test_vehicle_conformance.py (parametrised); SITL and hardware classes run against a mock autopilot, not a real one.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "2 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_vehicle_conformance.py",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_vehicle_connection.py",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-HIL-002",
+      "title": "A hardware vehicle cannot actuate unless explicitly enabled",
+      "level": "MUST",
+      "description": "PX4HardwareVehicle shall be telemetry-only by default; arm and setpoint commands shall raise and send nothing.",
+      "rationale": "Pointing a test at a real flight controller must not be able to arm it by accident.",
+      "threshold": "0 command bytes on the wire without allow_actuation=True",
+      "measurement": "Unit test inspecting the mock autopilot's received commands.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_vehicle_conformance.py::test_hardware_vehicle_is_telemetry_only_unless_actuation_is_explicit",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-HIL-003",
+      "title": "PX4SITLVehicle interoperates with a running PX4 SITL over MAVLink/UDP",
+      "level": "SHOULD",
+      "description": "Against a live PX4 SITL instance the vehicle shall receive telemetry, arm and disarm.",
+      "rationale": "The mock autopilot proves the host side only; interop with the real firmware needs the real firmware.",
+      "threshold": "telemetry received; arm and disarm acknowledged",
+      "measurement": "tools/sitl_smoke.py against a running SITL writes the results file. CI runners have no PX4 SITL, so CI evaluates the committed recording (evidence/hil/sitl_smoke.json: PX4 v1.16.0-5-gd26cb57aca, headless gz_x500, one run); re-run the tool locally to refresh it.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "external",
+          "ref": "px4_sitl: evidence/hil/sitl_smoke.json",
+          "status": "PASS",
+          "detail": "telemetry=yes rx_rate=13.5 Hz; arm: accepted; disarm: accepted",
+          "evidence": [
+            "evidence/hil/sitl_smoke.json"
+          ],
+          "children": []
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-HIL-004",
+      "title": "PX4HardwareVehicle interoperates with a real PX4 flight controller over UART/USB",
+      "level": "SHOULD",
+      "description": "Against a physical flight controller the vehicle shall receive telemetry (props off, telemetry-only).",
+      "rationale": "This is the actual hardware-in-the-loop claim, and it is the one nothing here can support yet.",
+      "threshold": "telemetry received over serial from a real flight controller",
+      "measurement": "Not measured. Requires a bench setup.",
+      "legacy_ids": [],
+      "result": "NOT_RUN",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "external",
+          "ref": "hardware: artifacts/hardware/uart_telemetry.json",
+          "status": "NOT_RUN",
+          "detail": "not run -- No physical flight controller has been connected to this repository.",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-GEOFENCE-001",
+      "title": "Local NED containment uses a closed polygon",
+      "level": "MUST",
+      "description": "A finite local NED point shall be classified inside, outside, or on the boundary of the configured polygon. The boundary is closed. A self-intersecting polygon is an invalid configuration.",
+      "rationale": "The keep-in is the permitted flight area for the whole sortie, not only the release volume.",
+      "threshold": "on-boundary is inside; self-intersection is rejected",
+      "measurement": "pytest geometry cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "2 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_point_inside_outside_and_on_the_boundary",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_rectangle_matches_the_existing_fence_box",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-GEOFENCE-002",
+      "title": "Invalid geofence configuration is rejected",
+      "level": "MUST",
+      "description": "The configuration shall be rejected when the polygon self-intersects, a coordinate is nonfinite, the frame is geographic, the altitude frame is missing, or the maximum altitude is below the minimum.",
+      "rationale": "A bad keep-in must not be treated as an authorization to fly.",
+      "threshold": "problems() is non-empty and evaluate returns invalid_configuration",
+      "measurement": "pytest configuration cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_invalid_polygons_and_coordinates_are_rejected",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-GEOFENCE-003",
+      "title": "Altitude frame and position uncertainty are explicit",
+      "level": "MUST",
+      "description": "Altitude shall be compared only in the configured frame. A position whose uncertainty reaches the boundary shall not be reported as unambiguously inside. A missing position is insufficient data.",
+      "rationale": "Mixing AMSL with local height, or ignoring uncertainty, produces a false inside.",
+      "threshold": "below and above limits denied; uncertain proximity is not inside",
+      "measurement": "pytest altitude and uncertainty cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_altitude_limits_use_one_frame_and_uncertainty_is_not_a_false_inside",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-GEOFENCE-004",
+      "title": "Short-horizon prediction is advisory",
+      "level": "MUST",
+      "description": "Constant-velocity prediction shall report a predicted crossing, a clear prediction, an uncertain prediction, or invalid velocity. The prediction alone shall not command a recovery maneuver.",
+      "rationale": "The horizon has no acceleration and no wind. It is an advisory, not a certified safety case.",
+      "threshold": "toward the boundary predicts a violation; away and stationary do not",
+      "measurement": "pytest prediction cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_prediction_toward_away_and_uncertain",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-GEOFENCE-005",
+      "title": "Outgoing setpoints are admitted or rejected",
+      "level": "MUST",
+      "description": "Before publication, a position setpoint shall be inside the keep-in after the configured margin. Position mode may carry NaN velocity. A nonfinite position in position mode is rejected.",
+      "rationale": "Checking only the current aircraft position would still publish a command that leaves the area.",
+      "threshold": "outside setpoint rejected; finite position with NaN velocity admitted",
+      "measurement": "pytest setpoint cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "2 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_setpoint_admission_rejects_unsafe_commands_and_keeps_nan_velocity",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_unsafe_setpoint_is_rejected_without_giving_up_the_only_publisher",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-GEOFENCE-006",
+      "title": "A blocked return uses the documented fallback",
+      "level": "MUST",
+      "description": "A straight return whose segment leaves the keep-in shall be rejected. Descent below the cruise floor is allowed only inside the recovery polygon, down to the recovery minimum altitude.",
+      "rationale": "Return-to-home is not safe when the segment crosses a notch in the permitted area.",
+      "threshold": "notched segment reason is return_route_blocked; recovery floor is spatially scoped",
+      "measurement": "pytest route and recovery-altitude cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_notched_return_route_is_blocked_and_recovery_altitude_is_local",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-GEOFENCE-007",
+      "title": "The keep-in covers every phase and the recovery marker",
+      "level": "MUST",
+      "description": "Geofence decisions shall be recorded during takeoff, transit, hold, dispensing, return, and precision landing. A marker whose NED position is outside the recovery polygon shall be rejected.",
+      "rationale": "A valid detection can still name a landing point outside the permitted recovery area.",
+      "threshold": "each of those states appears in geofence_decisions; marker_outside_recovery is recorded",
+      "measurement": "pytest kinematic sortie in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_geofence_is_recorded_through_the_sortie_and_a_marker_outside_recovery_is_rejected",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-FAULT-001",
+      "title": "A denial during release closes the dispenser and leaves it closed",
+      "level": "MUST",
+      "description": "A weather, airspace, or altitude fault that starts after samples exist shall close the dispenser on the next evaluation. Samples already taken remain. A later healthy evaluation does not reopen it.",
+      "rationale": "The release gate is sticky once the mission has aborted the dispense.",
+      "threshold": "sample count frozen; altitude denial reason is estimated altitude invalid",
+      "measurement": "pytest release-fault cases in test_mission_safety.py. Weather and airspace faults pass through the existing authorizers.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_release_faults_close_the_dispenser_and_do_not_restart_it",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-FAULT-002",
+      "title": "Position, offboard, dispenser, and duplicate faults are explicit",
+      "level": "MUST",
+      "description": "Invalid position shall not be reported as inside the keep-in and shall request PX4 land rather than a position hold. Offboard loss is recorded while the heartbeat continues. A dispenser fault is the simulated acknowledgement flag. Duplicate fault ids are rejected at plan construction.",
+      "rationale": "A missing position cannot support a hold, and a simulated ack is not a physical dispenser sensor.",
+      "threshold": "nav land on position loss; duplicate ids raise ValueError",
+      "measurement": "pytest fault cases in test_mission_safety.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "1 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_mission_safety.py::test_position_loss_marker_loss_offboard_and_dispenser_faults",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-VERIFY-001",
+      "title": "Flown SITL campaign reports match their scenario expectations",
+      "level": "SHOULD",
+      "description": "Each PX4 SITL report written by the mission verification campaign shall meet the expectation for its scenario. Runs that were not started are not verified. A unit test does not satisfy this requirement.",
+      "rationale": "The campaign is the evidence that the integrated system, not only the kinematic plant, responded.",
+      "threshold": "campaign_results.json exists and passed is true only when every written report met its expectation",
+      "measurement": "scripts/run_mission_verification_campaign.sh writes evidence/mission_verification/*/sitl_report.json and campaign_summary.json. campaign_results.json is written only when every flown report met its expectation. A miss leaves that file absent, so this check is NOT_RUN and is not verified. CI has no PX4 SITL.",
+      "legacy_ids": [],
+      "result": "NOT_RUN",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "external",
+          "ref": "px4_sitl: evidence/mission_verification/campaign_results.json",
+          "status": "NOT_RUN",
+          "detail": "not run -- Needs a running PX4 SITL; not available on CI runners.",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "REQ-ABORT-001",
+      "title": "PX4 startup uses the current process, not a stale log",
+      "level": "MUST",
+      "description": "A PX4 log that already contains the startup success line shall not count as a fresh simulator start. The success line counts only when the log was written at or after launch and the recorded process is alive. MAVSDK connection and a fresh telemetry sample are separate states.",
+      "rationale": "A leftover log from an earlier run made the launcher treat a new process as already started.",
+      "threshold": "stale log is NOT_STARTED; live process with a fresh success line is READY; dead process is FAILED",
+      "measurement": "pytest src/px4_offboard/test/test_abort_recovery.py startup cases.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "3 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_stale_success_line_is_not_a_fresh_startup",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_live_process_with_a_fresh_success_line_is_ready",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_process_exit_before_success_is_failed",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-ABORT-002",
+      "title": "Recovery descent may cross the recovery floor by the land-detector lag",
+      "level": "MUST",
+      "description": "A downward velocity whose current and predicted horizontal positions stay inside the recovery polygon shall remain admissible while altitude is within 1 m below the recovery floor. A deeper descent, a climb out, or a prediction that leaves the recovery polygon shall still be rejected. This does not lower the cruise floor.",
+      "rationale": "PX4 can sit slightly below the local origin before it reports landed. Treating that as a geofence exit aborted a recovery that had already reached the marker.",
+      "threshold": "altitude -0.4 m with a 0.6 m/s descent inside recovery is admitted; altitude -3 m is rejected",
+      "measurement": "pytest touchdown-lag cases in test_abort_recovery.py.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "3 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_touchdown_lag_inside_recovery_is_admitted",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_descent_beyond_touchdown_lag_is_rejected",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_descent_that_leaves_the_recovery_polygon_is_rejected",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "id": "REQ-ABORT-003",
+      "title": "Release denial and aircraft recovery are separate results",
+      "level": "MUST",
+      "description": "Evidence shall record release authorization, mission execution, and aircraft recovery independently. A denied release that then lands is a denied release and a landed recovery. A marker failure during descent is marker_lost_during_descent, not a generic landing failure. A marker jump beyond the acceptance threshold shall not refresh the fix timestamp. The 5 s marker timeout is unchanged.",
+      "rationale": "A correct release interlock was being reported as if it described the landing.",
+      "threshold": "denied release plus aborted mission state reports recovery landed; a jump does not refresh the fix",
+      "measurement": "pytest outcome and marker-jump cases in test_abort_recovery.py and the orchestrator marker-loss case.",
+      "legacy_ids": [],
+      "result": "PASS",
+      "known_open": null,
+      "verification": [
+        {
+          "kind": "pytest",
+          "ref": "3 test(s)",
+          "status": "PASS",
+          "detail": "no test did anything other than pass",
+          "evidence": [],
+          "children": []
+        }
+      ],
+      "tests": [
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_release_denial_and_recovery_are_separate_results",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_abort_recovery.py::test_marker_jump_does_not_refresh_the_fix",
+          "outcome": "passed"
+        },
+        {
+          "id": "src/px4_offboard/test/test_mission_orchestrator.py::test_precision_landing_waits_for_staging_and_marker_loss_holds",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ]
+}

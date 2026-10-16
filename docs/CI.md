@@ -68,15 +68,15 @@ The validation report maps Requirement -> Test -> Evidence -> Result and lists w
   Both were fixed in `db5d986`; the blocking jobs of both workflows pass.
 - No physical hardware is involved. REQ-COMMS-006 (physical I2C/SPI) and REQ-HIL-004 (real flight
   controller) are `NOT_RUN`.
-- The workflow file itself was validated as YAML and its `make` targets were run end to end locally in a
-  clean ROS-free virtualenv; it has not been exercised on GitHub's infrastructure from here.
+- Both workflows passed on GitHub for the pre-integration main commit `3e4c6ee` (checked 2026-10-16).
+  See [the integration validation record](validation_20261016.md) for the newer local checks.
 
 ## Reproduce it locally
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-ci.txt          # ROS is not needed for the blocking jobs
-make ci                                      # everything the blocking jobs run, in order
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 make ci       # ROS-free suite, evidence and C++ checks
 ```
 
 Or individually: `make test-fast`, `make test-integration`, `make evidence`, `make faults`,
@@ -84,13 +84,15 @@ Or individually: `make test-fast`, `make test-integration`, `make evidence`, `ma
 `make clean` removes them and the C++ build directory.
 
 Do not mix a sourced ROS shell with a virtualenv: ROS's pytest plugins then import into an interpreter without
-`lark` and `make test-fast` fails during collection (seen locally). Use a fresh shell for the ROS-free run.
+`lark` and `make test-fast` fails during collection (seen locally). Installed ROS pytest plugins can also
+affect an unsourced shell: on the October 16 workstation the default invocation collected only one skipped
+module and exited 5. Use `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` as above; this suite needs none of those plugins.
 
 With ROS (also runs the node tests that are otherwise skipped):
 
 ```bash
 source /opt/ros/humble/setup.bash && source install/setup.bash
-python3 -m pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q
 ```
 
 The C++ steps by hand:

@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-16",
+  "code_commit": "fbf76d4",
+  "provenance": "Actual local JUnit reports. ROS tests use local DDS; no aircraft flown by pytest. The live SITL campaign is separate.",
+  "results": [
+    {
+      "suite": "unit",
+      "tests": 860,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 856
+    },
+    {
+      "suite": "integration",
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 41
+    },
+    {
+      "suite": "ros-local",
+      "tests": 937,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 937
+    },
+    {
+      "suite": "cpp",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 1
+    }
+  ]
+}

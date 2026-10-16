@@ -40,17 +40,18 @@ Beyond the autonomy stack, the repository is a firmware-validation harness. Each
 
 | Piece | What it is | Docs |
 | --- | --- | --- |
-| **CI** | GitHub Actions: ROS-free unit tests, replay/fault/requirement validation with JUnit and report artifacts, C++ CMake/CTest, non-blocking ROS 2 job. `make ci` reproduces it locally | [CI.md](docs/CI.md) |
-| **Requirement registry** | 22 requirements (EST/CTRL/SAFE/COMMS/RECOVERY/HIL) evaluated into JSON + Markdown with Requirement -> Test -> Evidence -> Result. No evidence, no PASS; 3 are declared known-open and fail | [REQUIREMENTS.md](docs/REQUIREMENTS.md) |
+| **CI** | GitHub Actions: ROS-free unit tests, replay/fault/requirement validation with JUnit and report artifacts, C++ CMake/CTest, blocking ROS 2 job. `make ci` reproduces it locally | [CI.md](docs/CI.md) |
+| **Requirement registry** | 35 requirements (EST/CTRL/SAFE/COMMS/RECOVERY/HIL) evaluated into JSON + Markdown with Requirement -> Test -> Evidence -> Result. No evidence, no PASS; 3 are declared known-open and fail | [REQUIREMENTS.md](docs/REQUIREMENTS.md) |
 | **Fault injection** | YAML scenarios (VO dropout, delay, jitter, corruption, frozen sensors, estimator reset, MAVLink loss, disconnect) with per-fault expected/observed/recovery evidence. Found and fixed a frozen-VO acceptance bug | [FAULT_INJECTION.md](docs/FAULT_INJECTION.md) |
 | **Vehicle abstraction** | `VehicleInterface` over simulation, PX4 SITL (verified live) and PX4 hardware (mock only, telemetry-only by default) | [HIL_ARCHITECTURE.md](docs/HIL_ARCHITECTURE.md) |
 | **Comms** | MAVLink v2 codec byte-checked against pymavlink and a C++ port, serial/UDP transports, link supervision, I2C/SPI mocks | [HIL_ARCHITECTURE.md](docs/HIL_ARCHITECTURE.md) |
 | **Bench rig** | Virtual motor/thrust test stand served over real Modbus TCP; scripted fault-injection campaign scored against 4 requirements | [bench_rig.md](docs/bench_rig.md) |
 | **Regression comparison** | `python tools/compare_runs.py baseline.csv candidate.csv` with explicit run-to-run variance handling | [TEST_PLAN.md](docs/TEST_PLAN.md) |
+| **Declarative test specs** | Strict YAML mission specs, mock execution, telemetry and requirement-linked reports; no live adapter yet | [test_specs.md](docs/test_specs.md) |
 | **Test plan** | Levels, pass/fail criteria, what was executed and what needs hardware | [TEST_PLAN.md](docs/TEST_PLAN.md) |
 
 ```bash
-pip install -r requirements-ci.txt && make ci     # everything the blocking CI jobs run
+pip install -r requirements-ci.txt && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 make ci     # everything the blocking CI jobs run
 python tools/validation_report.py                  # requirement report -> artifacts/validation/
 ```
 

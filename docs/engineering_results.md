@@ -1,12 +1,14 @@
 # Engineering results — September 12, 2026
 
+**Historical snapshot:** the table below records the September 12 pass. See [October 16 integration validation](validation_20261016.md) for the newer test suite and seeding campaign.
+
 These are local command results and recorded measurements, not an assertion about an unseen hosted CI run. No hardware or HIL results are included. [Machine-derived test totals](../evidence/test_results.json) are retained alongside the flight evidence.
 
 | Measurement | Result | Source / scope |
 | --- | --- | --- |
 | Original Python baseline | 131 passed, 2 failed, 3 skipped | Unsourced environment before the endpoint fix |
-| Current lightweight Python suite | 402 passed, 5 skipped (ROS-free virtualenv, `make test-fast test-integration`) | `PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -q`; skipped modules need ROS |
-| Current ROS-enabled Python suite | 450 passed | Same suite after sourcing ROS Humble and installed PX4 messages; adapter tests do not fly aircraft |
+| September 12 lightweight Python suite | 402 passed, 5 skipped (ROS-free virtualenv, `make test-fast test-integration`) | `PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -q`; skipped modules need ROS |
+| September 12 ROS-enabled Python suite | 450 passed | Same suite after sourcing ROS Humble and installed PX4 messages; adapter tests do not fly aircraft |
 | Browser/replay tests | 27 passed | `cd web/replay && npm test` |
 | Curated recording expectations | 9/9 matched | `python3 scripts/verify_evidence.py`; three expected failures (one kinematic recovery trace, two live stereo flights), six passing verifier outcomes |
 | Existing legacy browser CSV regressions | 4 applicable-check passes | `vv_replay` on each `web/replay/data/*.csv`; sensor/GPS/clearance skips remain visible |

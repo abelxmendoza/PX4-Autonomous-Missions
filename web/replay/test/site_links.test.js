@@ -63,6 +63,7 @@ describe('site links', () => {
       'search/index.html': 'href="/search/" aria-current="page"',
       'slam/index.html': 'href="/slam/" aria-current="page"',
       'seeding/index.html': 'href="/seeding/" aria-current="page"',
+      'seeding-demo/index.html': 'href="/seeding-demo/" aria-current="page"',
       'bench/index.html': 'href="/bench/" aria-current="page"',
     };
     for (const page of PAGES) {

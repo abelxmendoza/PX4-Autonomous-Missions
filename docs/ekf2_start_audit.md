@@ -1,5 +1,9 @@
 # EKF2 bad-start audit of the recorded SITL evidence
 
+Provenance: preserved from the Claude working tree during the October 16 integration review.
+The historical ulog analysis below was not independently re-run in that review; its raw ulogs
+remain workstation-local. New integration flights are recorded separately in [validation_20261016.md](validation_20261016.md).
+
 Audited 2026-10-16, after commit `6c0b909` added the arm gate to `tools/integrated_seeding_sitl.py`.
 The question: did any committed evidence run arm with the corrupted EKF2 start that the gate
 now catches? Evidence files were read, not changed.

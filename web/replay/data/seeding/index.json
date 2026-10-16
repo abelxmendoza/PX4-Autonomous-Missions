@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "campaign": "dev-preview",
-  "source": "evidence/seeding_replay/dev-preview/",
+  "campaign": "20261016T135125Z",
+  "source": "evidence/seeding_replay/20261016T135125Z/",
   "px4_version": "v1.16.0-5-gd26cb57aca-dirty",
   "scenarios": [
     {
@@ -14,9 +14,9 @@
       "result_as_designed": true,
       "release_result": "authorized",
       "release_reason": "",
-      "touchdown_error_m": 0.133,
-      "marker_id": 4,
-      "duration_s": 62.16
+      "touchdown_error_m": 0.153,
+      "marker_id": 9,
+      "duration_s": 61.29
     },
     {
       "id": "weather_denial",
@@ -28,9 +28,9 @@
       "result_as_designed": true,
       "release_result": "denied",
       "release_reason": "wind_above_limit",
-      "touchdown_error_m": 0.009,
-      "marker_id": 4,
-      "duration_s": 58.2
+      "touchdown_error_m": 0.044,
+      "marker_id": 9,
+      "duration_s": 56.28
     },
     {
       "id": "airspace_denial",
@@ -38,13 +38,13 @@
       "blurb": "Release point inside prohibited airspace: no release, return and land.",
       "file": "airspace_denial.json",
       "expected_result": "aborted_recovered",
-      "mission_result": "failed",
-      "result_as_designed": false,
+      "mission_result": "aborted_recovered",
+      "result_as_designed": true,
       "release_result": "denied",
       "release_reason": "inside_prohibited_airspace",
-      "touchdown_error_m": 1.953,
-      "marker_id": 4,
-      "duration_s": 40.31
+      "touchdown_error_m": 0.086,
+      "marker_id": 9,
+      "duration_s": 55.71
     },
     {
       "id": "traffic_conflict",
@@ -56,9 +56,9 @@
       "result_as_designed": true,
       "release_result": "denied",
       "release_reason": "traffic_conflict_detected",
-      "touchdown_error_m": 0.092,
-      "marker_id": 4,
-      "duration_s": 58.29
+      "touchdown_error_m": 0.125,
+      "marker_id": 9,
+      "duration_s": 54.4
     },
     {
       "id": "clearance_expired",
@@ -66,13 +66,13 @@
       "blurb": "The simulated clearance has lapsed: no release, return and land.",
       "file": "clearance_expired.json",
       "expected_result": "aborted_recovered",
-      "mission_result": "failed",
-      "result_as_designed": false,
+      "mission_result": "aborted_recovered",
+      "result_as_designed": true,
       "release_result": "denied",
       "release_reason": "simulated_clearance_expired",
-      "touchdown_error_m": 1.464,
-      "marker_id": 4,
-      "duration_s": 42.25
+      "touchdown_error_m": 0.083,
+      "marker_id": 9,
+      "duration_s": 56.23
     },
     {
       "id": "altitude_denial",
@@ -84,9 +84,9 @@
       "result_as_designed": true,
       "release_result": "denied",
       "release_reason": "local altitude 14.9 m is below the 1000.0 m floor",
-      "touchdown_error_m": 0.065,
-      "marker_id": 4,
-      "duration_s": 56.22
+      "touchdown_error_m": 0.131,
+      "marker_id": 9,
+      "duration_s": 53.47
     },
     {
       "id": "marker_loss",
@@ -98,9 +98,9 @@
       "result_as_designed": true,
       "release_result": "authorized",
       "release_reason": "",
-      "touchdown_error_m": 0.117,
-      "marker_id": 4,
-      "duration_s": 52.2
+      "touchdown_error_m": 0.104,
+      "marker_id": 9,
+      "duration_s": 48.72
     }
   ]
 }
