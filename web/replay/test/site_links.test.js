@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SITE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html', 'slam/index.html', 'seeding/index.html'];
+const PAGES = ['index.html', 'demo/index.html', 'writeup/index.html', 'search/index.html', 'search-demo/index.html', 'slam/index.html', 'seeding/index.html', 'bench/index.html'];
 
 function localRefs(html) {
   const refs = [];
@@ -55,7 +55,7 @@ describe('site links', () => {
   });
 
   it('every page uses the same site tabs and marks exactly one current page', () => {
-    const tabs = ['href="/demo/"', 'href="/search-demo/"', 'href="/search/"', 'href="/slam/"', 'href="/seeding/"'];
+    const tabs = ['href="/demo/"', 'href="/search-demo/"', 'href="/search/"', 'href="/slam/"', 'href="/seeding/"', 'href="/bench/"'];
     const here = {
       'index.html': 'href="/" aria-current="page"',
       'demo/index.html': 'href="/demo/" aria-current="page"',
@@ -63,6 +63,7 @@ describe('site links', () => {
       'search/index.html': 'href="/search/" aria-current="page"',
       'slam/index.html': 'href="/slam/" aria-current="page"',
       'seeding/index.html': 'href="/seeding/" aria-current="page"',
+      'bench/index.html': 'href="/bench/" aria-current="page"',
     };
     for (const page of PAGES) {
       const html = readFileSync(join(SITE, page), 'utf8');

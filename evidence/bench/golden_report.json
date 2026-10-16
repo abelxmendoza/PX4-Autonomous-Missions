@@ -1,0 +1,46 @@
+{
+  "campaign": "bench_thrust_sweep",
+  "duration_s": 20.0,
+  "dt_s": 0.05,
+  "seed": 7,
+  "sample_count": 400,
+  "faults": [
+    {
+      "name": "load_cell_dropout",
+      "start_s": 7.0,
+      "duration_s": 2.0
+    },
+    {
+      "name": "frozen_temp_sensor",
+      "start_s": 11.0,
+      "duration_s": 2.0
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-BENCH-001",
+      "description": "Thrust is never negative",
+      "passed": true,
+      "detail": "no negative-thrust samples"
+    },
+    {
+      "id": "REQ-BENCH-002",
+      "description": "A load-cell dropout fault is observable in the reading (reads zero, not silently absorbed)",
+      "passed": true,
+      "detail": "dropout read zero in every injected window"
+    },
+    {
+      "id": "REQ-BENCH-003",
+      "description": "Battery voltage stays above 9.0 V outside an injected brownout",
+      "passed": true,
+      "detail": "voltage stayed above the floor"
+    },
+    {
+      "id": "REQ-BENCH-004",
+      "description": "The sample timeline has no gaps beyond 1.5x the tick interval",
+      "passed": true,
+      "detail": "no gaps"
+    }
+  ],
+  "passed": true
+}

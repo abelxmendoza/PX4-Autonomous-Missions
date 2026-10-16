@@ -9,7 +9,7 @@ of the stack that run fully on macOS, mirroring the `unit-and-verification`,
 ```bash
 python3 -m venv .venv-mac
 source .venv-mac/bin/activate
-pip install pytest opencv-contrib-python-headless numpy pandas matplotlib mavsdk pymavlink
+pip install pytest opencv-contrib-python-headless numpy pandas matplotlib mavsdk pymavlink pymodbus==3.6.9
 pip install -e src/px4_offboard --no-deps
 
 cd web/replay && npm install

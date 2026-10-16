@@ -45,6 +45,7 @@ Beyond the autonomy stack, the repository is a firmware-validation harness. Each
 | **Fault injection** | YAML scenarios (VO dropout, delay, jitter, corruption, frozen sensors, estimator reset, MAVLink loss, disconnect) with per-fault expected/observed/recovery evidence. Found and fixed a frozen-VO acceptance bug | [FAULT_INJECTION.md](docs/FAULT_INJECTION.md) |
 | **Vehicle abstraction** | `VehicleInterface` over simulation, PX4 SITL (verified live) and PX4 hardware (mock only, telemetry-only by default) | [HIL_ARCHITECTURE.md](docs/HIL_ARCHITECTURE.md) |
 | **Comms** | MAVLink v2 codec byte-checked against pymavlink and a C++ port, serial/UDP transports, link supervision, I2C/SPI mocks | [HIL_ARCHITECTURE.md](docs/HIL_ARCHITECTURE.md) |
+| **Bench rig** | Virtual motor/thrust test stand served over real Modbus TCP; scripted fault-injection campaign scored against 4 requirements | [bench_rig.md](docs/bench_rig.md) |
 | **Regression comparison** | `python tools/compare_runs.py baseline.csv candidate.csv` with explicit run-to-run variance handling | [TEST_PLAN.md](docs/TEST_PLAN.md) |
 | **Test plan** | Levels, pass/fail criteria, what was executed and what needs hardware | [TEST_PLAN.md](docs/TEST_PLAN.md) |
 
@@ -91,5 +92,6 @@ PX4, ROS 2, Gazebo, Micro XRCE-DDS, MAVSDK, MAVLink, OpenCV and Three.js are ups
 - [Current cooperative scenario and limits](docs/multi_vehicle.md)
 - [Engineering results](docs/engineering_results.md)
 - [Curated evidence and provenance](evidence/README.md)
+- [Virtual bench rig (Modbus TCP test stand)](docs/bench_rig.md)
 - [Repository hygiene audit](docs/repository_hygiene.md)
 - [macOS development without the simulator](DEV_MACOS.md)

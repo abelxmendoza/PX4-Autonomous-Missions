@@ -6,3 +6,4 @@ PyYAML>=6.0
 pytest>=7.0
 pymavlink>=2.4.0
 pyserial>=3.5
+pymodbus==3.6.9
