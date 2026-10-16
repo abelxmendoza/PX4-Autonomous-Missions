@@ -7,8 +7,10 @@ Validation of the pieces:
 | Piece | Status |
 | --- | --- |
 | State machine, ownership, release gates, marker-loss hold | UNIT TESTED |
-| Seeding law, altitude authorization, weather authorization, precision-landing law | UNIT TESTED (existing tests) |
-| One headless PX4 / Gazebo flight of the whole sortie | PX4 SITL VALIDATED (one run; see below) |
+| Seeding law, altitude, weather, airspace, traffic, simulated communications, precision-landing law | UNIT TESTED (existing tests) |
+| One headless PX4 / Gazebo flight of the whole sortie | PX4 SITL VALIDATED (single runs) |
+| Six fault scenarios + nominal in PX4 SITL (altitude, weather, airspace, traffic, clearance denial; marker loss) | PX4 SITL VALIDATED, one run each: all seven gave their designed outcome (`evidence/fault_scenarios/20261013T180619Z/`) |
+| Abort-to-recovery split, touchdown lag, startup identity | UNIT TESTED (`docs/abort_recovery.md`) |
 | Physical aircraft | PHYSICAL FLIGHT VALIDATED: no |
 
 ## Architecture
@@ -23,6 +25,9 @@ flowchart TD
     lander[PrecisionLand]
   end
   weather[WeatherAuthorizer]
+  airspace[AirspaceAuthorizer]
+  traffic[TrafficAuthorizer]
+  comms[Simulated communications]
   altitude[AltitudeMonitor and AltitudeBand]
   orch[MissionOrchestrator]
   pub[One OFFBOARD publisher]
@@ -30,6 +35,9 @@ flowchart TD
 
   altitude --> supervisor
   weather --> supervisor
+  airspace --> supervisor
+  traffic --> supervisor
+  comms --> supervisor
   mission --> supervisor
   supervisor --> orch
   lander --> orch
@@ -63,7 +71,7 @@ Owners are `none`, `seeding`, `precision_land`, `hold`, and `px4_land`.
 
 ## Release authorization
 
-The orchestrator calls `SeedingSupervisor.step` and passes `landed=False`, so the seeding law cannot finish the flight by landing itself. The supervisor authorizes a release only when the altitude band, the weather authorizer, and the airspace authorizer all allow it, and only while the mission is in the dispense phase inside the release volume. An altitude denial is kept ahead of weather, and both are kept ahead of airspace.
+The orchestrator calls `SeedingSupervisor.step` and passes `landed=False`, so the seeding law cannot finish the flight by landing itself. The supervisor authorizes a release only when altitude, weather, airspace, traffic, and simulated communications all allow it, and only while the mission is in the dispense phase inside the release volume. The primary denial follows that order. Traffic is an advisory denial, not an evasive maneuver. A simulated clearance is not an ATC authorization.
 
 `require_weather` defaults to true. `false` is an invalid configuration: the sortie fails at start and does not open the dispenser. Weather decisions keep the provider's provenance. The SITL runner uses `StaticWeatherProvider` and `simulation_observation`, whose provenance is `simulated`. That observation is not a live METAR and `operational_approval` stays false.
 
@@ -108,7 +116,7 @@ Each fault stores `code`, `time_s`, `mission_state`, `owner`, `recovery`, `resul
 
 ## Evidence
 
-`MissionOrchestrator.evidence()` is schema 1, kind `integrated_seeding_sortie`. `mission_result` is `completed`, `aborted_recovered`, `failed`, or `in_progress`. The SITL tool adds `simulation_terminated` when the process times out or raises. A safe abort is `aborted_recovered` or `failed`, not `completed`.
+`MissionOrchestrator.evidence()` is schema 2, kind `integrated_seeding_sortie`. `mission_result` is `completed`, `aborted_recovered`, `failed`, or `in_progress`. The SITL tool adds `simulation_terminated` when the process times out or raises. A safe abort is `aborted_recovered` or `failed`, not `completed`.
 
 The SITL report adds mission id, scenario id, PX4 version, the note that ROS was not used, touchdown position, marker ground truth, and horizontal error. Ground truth is scoring only.
 
@@ -131,7 +139,7 @@ This script needs a built PX4 SITL binary, MAVSDK, OpenCV, and `gz_cam_sub` (`ma
 ## Known limitations
 
 - One publisher is an invariant of this process. A ROS `precision_land` or `offboard_mission` node started beside it will still fight for `trajectory_setpoint`.
-- The geofence in `offboard_mission` is not applied to this sortie.
+- The integrated sortie evaluates a local NED keep-in inside `MissionOrchestrator` before each setpoint is published. Unsafe commands are rejected. See [mission_safety.md](mission_safety.md). The ROS `offboard_mission` geo-cage is a separate controller: it clamps setpoints, and that node is not started on this flight.
 - The dispenser is simulated. Closure is the `dispenser_ack` flag, not an actuator acknowledgement from PX4.
 - Weather in SITL is a static simulated observation. It is not a live forecast, and a passing decision is not an operational approval.
 - Staging altitude and the camera footprint are tuned for `search_field`. A different world can stage inside the gate and still not see a marker.

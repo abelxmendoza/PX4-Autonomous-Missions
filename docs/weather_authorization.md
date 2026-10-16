@@ -2,7 +2,7 @@
 
 Weather is a release constraint on the seeding supervisor. A passing check is a software decision about the observation in hand. It is not an approval to fly, and it does not certify that the air is safe.
 
-The seeding controller still flies climb, hold, dispense, and return. `SeedingSupervisor` opens the dispenser only when the altitude frame, the weather authorizer, and the airspace authorizer all allow the release. An altitude denial is kept ahead of weather, and both are kept ahead of airspace. See [airspace authorization](airspace_authorization.md).
+The seeding controller still flies climb, hold, dispense, and return. `SeedingSupervisor` opens the dispenser only when altitude, weather, airspace, traffic, and simulated communications all allow the release. The primary denial is the first of those gates. See [airspace authorization](airspace_authorization.md) and [traffic and simulated communications](traffic_communications.md).
 
 ## Providers
 

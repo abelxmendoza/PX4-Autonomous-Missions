@@ -8,6 +8,8 @@ import math
 import pytest
 
 from px4_offboard.airspace import simulation_authorizer
+from px4_offboard.simulated_comms import simulation_comms_authorizer
+from px4_offboard.traffic import simulation_traffic_authorizer
 from px4_offboard.altitude_reference import AltitudeBand, AltitudeFrame, AltitudeMonitor, Px4AltitudeSnapshot
 from px4_offboard.seeding_mission import SeedingMission, SeedingPhase, sim_profile
 from px4_offboard.seeding_supervisor import SeedingSupervisor
@@ -43,6 +45,8 @@ def _supervisor(frame, floor, ceiling, observation=None, **policy):
         AltitudeBand(frame, floor, ceiling),
         _authorizer(observation, **policy),
         simulation_authorizer(),
+        simulation_traffic_authorizer(),
+        simulation_comms_authorizer(),
     )
 
 
@@ -268,6 +272,8 @@ def test_weather_recovery_does_not_restart_dispensing():
         AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
         WeatherAuthorizer(provider, simulation_policy()),
         simulation_authorizer(),
+        simulation_traffic_authorizer(),
+        simulation_comms_authorizer(),
     )
     release = profile.release_ned
     supervisor.step(release, 0.0, _snapshot(0.0, release), dt_s=0.1)
@@ -317,6 +323,8 @@ def test_step_reads_the_cache_and_does_not_call_fetch():
         AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
         WeatherAuthorizer(probe, simulation_policy()),
         simulation_authorizer(),
+        simulation_traffic_authorizer(),
+        simulation_comms_authorizer(),
     )
     release = sim_profile().release_ned
     supervisor.step(release, 0.0, _snapshot(0.0, release), dt_s=0.1)

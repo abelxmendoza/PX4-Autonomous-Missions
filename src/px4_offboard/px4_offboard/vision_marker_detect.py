@@ -114,6 +114,55 @@ class MarkerPose:
     side_px: float
 
 
+def select_landing_marker(
+    poses: list[MarkerPose],
+    center_x_px: float,
+    center_y_px: float,
+    inside_recovery: dict[int, bool] | None = None,
+) -> MarkerPose:
+    """Prefer the marker nearest the principal point.
+
+    When ``inside_recovery`` is provided, a marker whose solved position is
+    inside the recovery area outranks a closer marker that is outside it.
+    Size is only a tie break. The caller decides which poses are inside.
+    """
+    if not poses:
+        raise ValueError("select_landing_marker needs at least one pose")
+
+    def score(pose: MarkerPose) -> tuple[int, float, float]:
+        xs = [point[0] for point in pose.corners_px]
+        ys = [point[1] for point in pose.corners_px]
+        center_x = sum(xs) / len(xs)
+        center_y = sum(ys) / len(ys)
+        outside = 0
+        if inside_recovery is not None and not inside_recovery.get(pose.marker_id, False):
+            outside = 1
+        return (outside, math.hypot(center_x - center_x_px, center_y - center_y_px), -pose.side_px)
+
+    return min(poses, key=score)
+
+
+def track_landing_marker(
+    poses: list[MarkerPose],
+    center_x_px: float,
+    center_y_px: float,
+    inside_recovery: dict[int, bool] | None = None,
+    locked_id: int | None = None,
+) -> MarkerPose | None:
+    """The marker to land on this frame, once one has been chosen.
+
+    Before lock-on this is ``select_landing_marker``. After it, only ``locked_id`` counts:
+    a frame without it gives no fix (the lander's own timeout applies), never a different
+    marker. From the staging height several pads can be in view, and re-selecting each
+    frame made the target jump between them.
+    """
+    if not poses:
+        return None
+    if locked_id is None:
+        return select_landing_marker(poses, center_x_px, center_y_px, inside_recovery)
+    return next((pose for pose in poses if pose.marker_id == locked_id), None)
+
+
 def camera_matrix(width_px: int, height_px: int, horizontal_fov_rad: float) -> np.ndarray:
     """Pinhole intrinsics for an ideal camera (zero skew, principal point at the center)."""
     camera = PinholeCamera(width_px, height_px, horizontal_fov_rad)

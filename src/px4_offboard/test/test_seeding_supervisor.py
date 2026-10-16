@@ -19,6 +19,8 @@ from px4_offboard.seeding_mission import (
     sim_profile,
 )
 from px4_offboard.airspace import simulation_authorizer
+from px4_offboard.simulated_comms import simulation_comms_authorizer
+from px4_offboard.traffic import simulation_traffic_authorizer
 from px4_offboard.seeding_supervisor import SeedingSupervisor
 from px4_offboard.weather import WeatherAuthorizer, simulation_observation, simulation_policy
 from px4_offboard.weather_provider import StaticWeatherProvider
@@ -32,6 +34,8 @@ def _supervisor(frame, floor, ceiling, tolerance=30.0):
         AltitudeBand(frame, floor, ceiling, tolerance),
         weather,
         simulation_authorizer(),
+        simulation_traffic_authorizer(),
+        simulation_comms_authorizer(),
     )
 
 

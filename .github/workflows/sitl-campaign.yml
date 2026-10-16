@@ -1,0 +1,36 @@
+name: sitl-campaign
+
+# Manual or scheduled PX4 SITL campaign. Pull requests do not run this.
+# The default subset is five headless flights. workflow_dispatch input
+# campaign=full requests the 17-run list. The runner records whichever
+# flights actually finish.
+on:
+  workflow_dispatch:
+    inputs:
+      campaign:
+        description: subset (5 runs) or full (17 runs)
+        required: false
+        default: subset
+        type: choice
+        options:
+          - subset
+          - full
+
+permissions:
+  contents: read
+
+jobs:
+  campaign:
+    name: PX4 SITL mission verification
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Campaign is local until a PX4 SITL runner exists
+        run: |
+          echo "This workflow is the scheduled entry point."
+          echo "GitHub-hosted runners do not have PX4 SITL or the search_field world."
+          echo "Run scripts/run_mission_verification_campaign.sh on a machine with PX4 built."
+          echo "Abort-to-recovery flights: scripts/run_recovery_campaign.sh"
+          echo "Requested campaign: ${{ github.event.inputs.campaign || 'subset' }}"
+          exit 0

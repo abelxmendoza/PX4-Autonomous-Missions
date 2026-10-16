@@ -324,3 +324,205 @@ requirements:
     verification:
       - {kind: external, requires: hardware, results_file: artifacts/hardware/uart_telemetry.json,
          reason: "No physical flight controller has been connected to this repository."}
+
+  - id: REQ-GEOFENCE-001
+    title: Local NED containment uses a closed polygon
+    level: MUST
+    description: >
+      A finite local NED point shall be classified inside, outside, or on the boundary of the
+      configured polygon. The boundary is closed. A self-intersecting polygon is an invalid configuration.
+    rationale: The keep-in is the permitted flight area for the whole sortie, not only the release volume.
+    threshold: "on-boundary is inside; self-intersection is rejected"
+    measurement: "pytest geometry cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_point_inside_outside_and_on_the_boundary
+      - src/px4_offboard/test/test_mission_safety.py::test_rectangle_matches_the_existing_fence_box
+
+  - id: REQ-GEOFENCE-002
+    title: Invalid geofence configuration is rejected
+    level: MUST
+    description: >
+      The configuration shall be rejected when the polygon self-intersects, a coordinate is nonfinite,
+      the frame is geographic, the altitude frame is missing, or the maximum altitude is below the minimum.
+    rationale: A bad keep-in must not be treated as an authorization to fly.
+    threshold: "problems() is non-empty and evaluate returns invalid_configuration"
+    measurement: "pytest configuration cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_invalid_polygons_and_coordinates_are_rejected
+
+  - id: REQ-GEOFENCE-003
+    title: Altitude frame and position uncertainty are explicit
+    level: MUST
+    description: >
+      Altitude shall be compared only in the configured frame. A position whose uncertainty reaches
+      the boundary shall not be reported as unambiguously inside. A missing position is insufficient data.
+    rationale: Mixing AMSL with local height, or ignoring uncertainty, produces a false inside.
+    threshold: "below and above limits denied; uncertain proximity is not inside"
+    measurement: "pytest altitude and uncertainty cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_altitude_limits_use_one_frame_and_uncertainty_is_not_a_false_inside
+
+  - id: REQ-GEOFENCE-004
+    title: Short-horizon prediction is advisory
+    level: MUST
+    description: >
+      Constant-velocity prediction shall report a predicted crossing, a clear prediction, an uncertain
+      prediction, or invalid velocity. The prediction alone shall not command a recovery maneuver.
+    rationale: The horizon has no acceleration and no wind. It is an advisory, not a certified safety case.
+    threshold: "toward the boundary predicts a violation; away and stationary do not"
+    measurement: "pytest prediction cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_prediction_toward_away_and_uncertain
+
+  - id: REQ-GEOFENCE-005
+    title: Outgoing setpoints are admitted or rejected
+    level: MUST
+    description: >
+      Before publication, a position setpoint shall be inside the keep-in after the configured margin.
+      Position mode may carry NaN velocity. A nonfinite position in position mode is rejected.
+    rationale: Checking only the current aircraft position would still publish a command that leaves the area.
+    threshold: "outside setpoint rejected; finite position with NaN velocity admitted"
+    measurement: "pytest setpoint cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_setpoint_admission_rejects_unsafe_commands_and_keeps_nan_velocity
+      - src/px4_offboard/test/test_mission_safety.py::test_unsafe_setpoint_is_rejected_without_giving_up_the_only_publisher
+
+  - id: REQ-GEOFENCE-006
+    title: A blocked return uses the documented fallback
+    level: MUST
+    description: >
+      A straight return whose segment leaves the keep-in shall be rejected. Descent below the cruise
+      floor is allowed only inside the recovery polygon, down to the recovery minimum altitude.
+    rationale: Return-to-home is not safe when the segment crosses a notch in the permitted area.
+    threshold: "notched segment reason is return_route_blocked; recovery floor is spatially scoped"
+    measurement: "pytest route and recovery-altitude cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_notched_return_route_is_blocked_and_recovery_altitude_is_local
+
+  - id: REQ-GEOFENCE-007
+    title: The keep-in covers every phase and the recovery marker
+    level: MUST
+    description: >
+      Geofence decisions shall be recorded during takeoff, transit, hold, dispensing, return, and
+      precision landing. A marker whose NED position is outside the recovery polygon shall be rejected.
+    rationale: A valid detection can still name a landing point outside the permitted recovery area.
+    threshold: "each of those states appears in geofence_decisions; marker_outside_recovery is recorded"
+    measurement: "pytest kinematic sortie in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_geofence_is_recorded_through_the_sortie_and_a_marker_outside_recovery_is_rejected
+
+  - id: REQ-FAULT-001
+    title: A denial during release closes the dispenser and leaves it closed
+    level: MUST
+    description: >
+      A weather, airspace, or altitude fault that starts after samples exist shall close the dispenser
+      on the next evaluation. Samples already taken remain. A later healthy evaluation does not reopen it.
+    rationale: The release gate is sticky once the mission has aborted the dispense.
+    threshold: "sample count frozen; altitude denial reason is estimated altitude invalid"
+    measurement: "pytest release-fault cases in test_mission_safety.py. Weather and airspace faults pass through the existing authorizers."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_release_faults_close_the_dispenser_and_do_not_restart_it
+
+  - id: REQ-FAULT-002
+    title: Position, offboard, dispenser, and duplicate faults are explicit
+    level: MUST
+    description: >
+      Invalid position shall not be reported as inside the keep-in and shall request PX4 land rather than
+      a position hold. Offboard loss is recorded while the heartbeat continues. A dispenser fault is the
+      simulated acknowledgement flag. Duplicate fault ids are rejected at plan construction.
+    rationale: A missing position cannot support a hold, and a simulated ack is not a physical dispenser sensor.
+    threshold: "nav land on position loss; duplicate ids raise ValueError"
+    measurement: "pytest fault cases in test_mission_safety.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_mission_safety.py::test_position_loss_marker_loss_offboard_and_dispenser_faults
+
+  - id: REQ-VERIFY-001
+    title: Flown SITL campaign reports match their scenario expectations
+    level: SHOULD
+    description: >
+      Each PX4 SITL report written by the mission verification campaign shall meet the expectation for
+      its scenario. Runs that were not started are not verified. A unit test does not satisfy this requirement.
+    rationale: The campaign is the evidence that the integrated system, not only the kinematic plant, responded.
+    threshold: "campaign_results.json exists and passed is true only when every written report met its expectation"
+    measurement: >
+      scripts/run_mission_verification_campaign.sh writes evidence/mission_verification/*/sitl_report.json
+      and campaign_summary.json. campaign_results.json is written only when every flown report met its
+      expectation. A miss leaves that file absent, so this check is NOT_RUN and is not verified.
+      CI has no PX4 SITL.
+    verification:
+      - {kind: external, requires: px4_sitl, results_file: evidence/mission_verification/campaign_results.json,
+         reason: "Needs a running PX4 SITL; not available on CI runners."}
+
+  - id: REQ-ABORT-001
+    title: PX4 startup uses the current process, not a stale log
+    level: MUST
+    description: >
+      A PX4 log that already contains the startup success line shall not count as a fresh simulator
+      start. The success line counts only when the log was written at or after launch and the recorded
+      process is alive. MAVSDK connection and a fresh telemetry sample are separate states.
+    rationale: A leftover log from an earlier run made the launcher treat a new process as already started.
+    threshold: "stale log is NOT_STARTED; live process with a fresh success line is READY; dead process is FAILED"
+    measurement: "pytest src/px4_offboard/test/test_abort_recovery.py startup cases."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_abort_recovery.py::test_stale_success_line_is_not_a_fresh_startup
+      - src/px4_offboard/test/test_abort_recovery.py::test_live_process_with_a_fresh_success_line_is_ready
+      - src/px4_offboard/test/test_abort_recovery.py::test_process_exit_before_success_is_failed
+
+  - id: REQ-ABORT-002
+    title: Recovery descent may cross the recovery floor by the land-detector lag
+    level: MUST
+    description: >
+      A downward velocity whose current and predicted horizontal positions stay inside the recovery
+      polygon shall remain admissible while altitude is within 1 m below the recovery floor. A deeper
+      descent, a climb out, or a prediction that leaves the recovery polygon shall still be rejected.
+      This does not lower the cruise floor.
+    rationale: >
+      PX4 can sit slightly below the local origin before it reports landed. Treating that as a
+      geofence exit aborted a recovery that had already reached the marker.
+    threshold: "altitude -0.4 m with a 0.6 m/s descent inside recovery is admitted; altitude -3 m is rejected"
+    measurement: "pytest touchdown-lag cases in test_abort_recovery.py."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_abort_recovery.py::test_touchdown_lag_inside_recovery_is_admitted
+      - src/px4_offboard/test/test_abort_recovery.py::test_descent_beyond_touchdown_lag_is_rejected
+      - src/px4_offboard/test/test_abort_recovery.py::test_descent_that_leaves_the_recovery_polygon_is_rejected
+
+  - id: REQ-ABORT-003
+    title: Release denial and aircraft recovery are separate results
+    level: MUST
+    description: >
+      Evidence shall record release authorization, mission execution, and aircraft recovery independently.
+      A denied release that then lands is a denied release and a landed recovery. A marker failure during
+      descent is marker_lost_during_descent, not a generic landing failure. A marker jump beyond the
+      acceptance threshold shall not refresh the fix timestamp. The 5 s marker timeout is unchanged.
+    rationale: A correct release interlock was being reported as if it described the landing.
+    threshold: "denied release plus aborted mission state reports recovery landed; a jump does not refresh the fix"
+    measurement: "pytest outcome and marker-jump cases in test_abort_recovery.py and the orchestrator marker-loss case."
+    verification:
+      - {kind: pytest}
+    tests:
+      - src/px4_offboard/test/test_abort_recovery.py::test_release_denial_and_recovery_are_separate_results
+      - src/px4_offboard/test/test_abort_recovery.py::test_marker_jump_does_not_refresh_the_fix
+      - src/px4_offboard/test/test_mission_orchestrator.py::test_precision_landing_waits_for_staging_and_marker_loss_holds
+

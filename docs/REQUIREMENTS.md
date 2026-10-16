@@ -107,6 +107,19 @@ Rules the evaluator enforces, not conventions:
 | REQ-HIL-002 | MUST | A hardware vehicle cannot actuate unless explicitly enabled | 0 command bytes on the wire without allow_actuation=True | pytest | - | evidenced |
 | REQ-HIL-003 | SHOULD | PX4SITLVehicle interoperates with a running PX4 SITL over MAVLink/UDP | telemetry received; arm and disarm acknowledged | external | - | needs hardware/SITL for part |
 | REQ-HIL-004 | SHOULD | PX4HardwareVehicle interoperates with a real PX4 flight controller over UART/USB | telemetry received over serial from a real flight controller | external | - | needs hardware/SITL for part |
+| REQ-GEOFENCE-001 | MUST | A local NED point is inside a closed polygon, outside it, or on the boundary | closed boundary counts as inside; self-intersection is rejected | pytest | - | unit tested |
+| REQ-GEOFENCE-002 | MUST | Invalid geofence configuration is rejected | nonfinite, geographic, and inverted altitude limits fail configuration | pytest | - | unit tested |
+| REQ-GEOFENCE-003 | MUST | Altitude and position uncertainty use the configured frame and sigma | no false inside when the uncertainty disk crosses the boundary | pytest | - | unit tested |
+| REQ-GEOFENCE-004 | MUST | Constant-velocity prediction reports a crossing without commanding a maneuver from the prediction alone | toward, away, stationary, uncertain, and invalid velocity | pytest | - | unit tested |
+| REQ-GEOFENCE-005 | MUST | An outgoing setpoint outside the keep-in is rejected | NaN velocity is legal in position mode; a NaN position in position mode is rejected | pytest | - | unit tested |
+| REQ-GEOFENCE-006 | MUST | A return segment that leaves a non-convex keep-in is rejected, and the recovery altitude exception is local to the recovery polygon | notch crossing blocked; low altitude allowed only inside recovery | pytest | - | unit tested |
+| REQ-GEOFENCE-007 | MUST | The keep-in is evaluated in every flight phase, and a marker outside the recovery polygon is rejected | takeoff through precision landing record a decision; marker outside recovery is not observed | pytest | - | unit tested |
+| REQ-FAULT-001 | MUST | A weather, airspace, or altitude fault during release closes the dispenser and does not reopen it | samples taken before the fault are kept; later samples stay at that count | pytest | - | unit tested |
+| REQ-FAULT-002 | MUST | Position loss, offboard loss, dispenser ack failure, and duplicate fault ids have explicit outcomes | invalid position is not reported inside; duplicate ids raise | pytest | - | unit tested |
+| REQ-VERIFY-001 | SHOULD | A PX4 SITL campaign records the designed response for each scenario that was actually flown | every written campaign report meets its scenario expectation | external | - | needs a SITL campaign |
+| REQ-ABORT-001 | MUST | PX4 startup uses the current process, not a stale log | stale log is not a fresh start | pytest | - | unit tested |
+| REQ-ABORT-002 | MUST | Recovery descent may sit slightly below the recovery floor while the land detector catches up | 1 m below the recovery floor, inside the recovery polygon, remains admissible | pytest | - | unit tested |
+| REQ-ABORT-003 | MUST | Release denial and aircraft recovery are separate results | a denied release that lands is recorded as both | pytest | - | unit tested |
 
 Evidence status describes what the registry can currently show, not what is true of an
 aircraft: "evidenced" means a test, curated recording or fault scenario produced the result;

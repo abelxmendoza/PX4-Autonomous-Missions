@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "abort_recovery_campaign",
+  "stamp": "20261013T052703Z",
+  "note": "One run of each scenario. Not a statistical sample. The 18-run list was not executed.",
+  "runs": [
+    {
+      "scenario_id": "nominal",
+      "mission_result": "completed",
+      "validation": "PX4 SITL VALIDATED",
+      "release_sample_count": 77,
+      "fault_codes": [],
+      "touchdown_horizontal_error_m": 0.099,
+      "marker_id": 4,
+      "mission_duration_s": 55.44,
+      "descent_tag_age_s": {
+        "min": 0.0,
+        "max": 2.777851840999574,
+        "samples": 608,
+        "units": "s",
+        "source": "precision_land_command.tag_age_s",
+        "note": "Age of the fix used on each descend tick. The 5 s timeout is unchanged."
+      },
+      "outcomes": {
+        "release_result": "authorized",
+        "release_reason_code": "",
+        "mission_execution_result": "completed",
+        "recovery_result": "landed",
+        "recovery_reason_code": ""
+      }
+    },
+    {
+      "scenario_id": "traffic_conflict",
+      "mission_result": "failed",
+      "validation": "PX4 SITL attempted",
+      "release_sample_count": 0,
+      "fault_codes": [
+        "marker_lost_during_descent"
+      ],
+      "touchdown_horizontal_error_m": 0.042,
+      "marker_id": 4,
+      "mission_duration_s": 52.39,
+      "descent_tag_age_s": {
+        "min": 0.0,
+        "max": 4.980643143999259,
+        "samples": 651,
+        "units": "s",
+        "source": "precision_land_command.tag_age_s",
+        "note": "Age of the fix used on each descend tick. The 5 s timeout is unchanged."
+      },
+      "outcomes": {
+        "release_result": "denied",
+        "release_reason_code": "traffic_conflict_detected",
+        "mission_execution_result": "aborted_release",
+        "recovery_result": "failed",
+        "recovery_reason_code": "marker_lost_during_descent"
+      }
+    },
+    {
+      "scenario_id": "clearance_expired",
+      "mission_result": "aborted_recovered",
+      "validation": "PX4 SITL aborted and recovered",
+      "release_sample_count": 0,
+      "fault_codes": [],
+      "touchdown_horizontal_error_m": 0.046,
+      "marker_id": 4,
+      "mission_duration_s": 51.21,
+      "descent_tag_age_s": {
+        "min": 0.0,
+        "max": 4.778027549000399,
+        "samples": 629,
+        "units": "s",
+        "source": "precision_land_command.tag_age_s",
+        "note": "Age of the fix used on each descend tick. The 5 s timeout is unchanged."
+      },
+      "outcomes": {
+        "release_result": "denied",
+        "release_reason_code": "simulated_clearance_expired",
+        "mission_execution_result": "aborted_release",
+        "recovery_result": "landed",
+        "recovery_reason_code": ""
+      }
+    }
+  ]
+}

@@ -124,11 +124,11 @@
     }
   ],
   "evidence_paths": [
-    "evidence/mission_verification/00_nominal/sitl_report.json",
-    "evidence/mission_verification/01_weather_during_dispense/sitl_report.json",
-    "evidence/mission_verification/02_airspace_during_dispense/sitl_report.json",
-    "evidence/mission_verification/03_geofence_boundary/sitl_report.json",
-    "evidence/mission_verification/04_marker_loss/sitl_report.json"
+    "evidence/mission_verification/00_nominal/sitl_report.json.gz",
+    "evidence/mission_verification/01_weather_during_dispense/sitl_report.json.gz",
+    "evidence/mission_verification/02_airspace_during_dispense/sitl_report.json.gz",
+    "evidence/mission_verification/03_geofence_boundary/sitl_report.json.gz",
+    "evidence/mission_verification/04_marker_loss/sitl_report.json.gz"
   ],
   "campaign_outcome": {
     "passed": false,

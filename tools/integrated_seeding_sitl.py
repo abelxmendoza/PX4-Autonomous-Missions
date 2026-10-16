@@ -39,7 +39,27 @@ from mavsdk.telemetry import FlightMode, LandedState  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "px4_offboard"))
-from px4_offboard.airspace import simulation_authorizer  # noqa: E402
+from px4_offboard.airspace import (  # noqa: E402
+    AirspaceAuthorizer,
+    AirspaceKind,
+    AirspaceVolume,
+    simulation_authorizer,
+    simulation_dataset,
+)
+from px4_offboard.mission_faults import (  # noqa: E402
+    AIRSPACE_FAULT,
+    WEATHER_FAULT,
+    AirspaceFaultSwitch,
+    FaultSpec,
+    MissionFaultPlan,
+    WeatherFaultSwitch,
+)
+from px4_offboard.mission_geofence import GeofenceConfig, _contains  # noqa: E402
+from px4_offboard.mission_logic import Fence  # noqa: E402
+from px4_offboard.precision_land import (CameraTag, LandState, PrecisionLand, PrecisionLandParams,  # noqa: E402
+                                         VehicleSnapshot, tag_to_ned)
+from px4_offboard.simulated_comms import simulation_clearance, simulation_comms_authorizer  # noqa: E402
+from px4_offboard.traffic import simulation_snapshot, simulation_traffic_authorizer, track_at_ned  # noqa: E402
 from px4_offboard.altitude_reference import (  # noqa: E402
     AltitudeBand,
     AltitudeFrame,
@@ -54,11 +74,10 @@ from px4_offboard.mission_orchestrator import (  # noqa: E402
     StagingConditions,
     VehicleInput,
 )
-from px4_offboard.precision_land import CameraTag, PrecisionLand  # noqa: E402
 from px4_offboard.search_geolocate import SEARCH_CAMERA  # noqa: E402
 from px4_offboard.seeding_mission import SeedingMission, sim_profile  # noqa: E402
 from px4_offboard.seeding_supervisor import SeedingSupervisor  # noqa: E402
-from px4_offboard.vision_marker_detect import camera_matrix, estimate_marker_poses  # noqa: E402
+from px4_offboard.vision_marker_detect import camera_matrix, estimate_marker_poses, track_landing_marker  # noqa: E402
 from px4_offboard.weather import WeatherAuthorizer, simulation_observation, simulation_policy  # noqa: E402
 from px4_offboard.weather_provider import StaticWeatherProvider  # noqa: E402
 
@@ -107,14 +126,107 @@ def _profile():
     return replace(sim_profile(), arrival_m=4.0, timeout_s=300.0)
 
 
-def _orchestrator() -> MissionOrchestrator:
-    observation = simulation_observation(elevation_m=SIM_SURFACE_ELEVATION_M)
+SCENARIOS = (
+    "nominal",
+    "altitude_denial",
+    "weather_denial",
+    "airspace_denial",
+    "traffic_conflict",
+    "clearance_expired",
+    "weather_during_dispense",
+    "airspace_during_dispense",
+    "geofence_boundary",
+    "marker_loss",
+)
+
+# Mission result the runner treats as the designed outcome. geofence_boundary
+# holds inside the fence until the wall clock ends; the evidence is the
+# rejected setpoint, not a completed landing.
+EXPECTED_RESULT = {
+    "nominal": "completed",
+    "altitude_denial": "aborted_recovered",
+    "weather_denial": "aborted_recovered",
+    "airspace_denial": "aborted_recovered",
+    "traffic_conflict": "aborted_recovered",
+    "clearance_expired": "aborted_recovered",
+    "weather_during_dispense": "aborted_recovered",
+    "airspace_during_dispense": "aborted_recovered",
+    "geofence_boundary": "simulation_terminated",
+    "marker_loss": "failed",
+}
+
+
+def _sitl_geofence(tight: bool) -> GeofenceConfig:
+    """Local NED keep-in for search_field.
+
+    The nominal box contains home, the release point, and marker 4. The
+    recovery polygon is where descent below the 2 m cruise floor is allowed.
+    Its floor is -1 m so a PX4 touchdown estimate slightly below the local
+    origin stays inside the recovery exception. The tight box stops at
+    north 8 m, so the release setpoint is inadmissible.
+    """
+    north_max = 8.0 if tight else 50.0
+    recovery_north = 6.0 if tight else 25.0
+    source = "sitl_search_field_tight" if tight else "sitl_search_field"
+    config = GeofenceConfig.from_fence(
+        Fence(-10.0, north_max, -20.0, 30.0, 30.0),
+        source=source,
+        min_altitude_m=2.0,
+        margin_m=1.0,
+        approach_distance_m=3.0,
+        recovery_polygon_ned=(
+            (-5.0, -15.0),
+            (recovery_north, -15.0),
+            (recovery_north, 15.0),
+            (-5.0, 15.0),
+        ),
+        recovery_min_altitude_m=-1.0,
+    )
+    problem = config.problems()
+    if problem:
+        raise ValueError(problem)
+    return config
+
+
+def _orchestrator(scenario: str) -> MissionOrchestrator:
+    observation_overrides = {"elevation_m": SIM_SURFACE_ELEVATION_M}
+    if scenario == "weather_denial":
+        observation_overrides["wind_speed_mps"] = 20.0
+        observation_overrides["wind_gust_mps"] = 25.0
+    observation = simulation_observation(**observation_overrides)
+    band = AltitudeBand(AltitudeFrame.LOCAL, 1000.0, 1100.0) if scenario == "altitude_denial" else AltitudeBand(
+        AltitudeFrame.LOCAL, 12.0, 18.0
+    )
+    if scenario == "airspace_denial":
+        volume = AirspaceVolume("P-SITL", AirspaceKind.PROHIBITED, 46.0, 48.0, -123.0, -121.0, 0.0, 20_000.0)
+        airspace = simulation_authorizer(simulation_dataset(volumes=(volume,)))
+    else:
+        airspace = simulation_authorizer()
+    if scenario == "traffic_conflict":
+        track = track_at_ned(30.0, 10.0, 15.0, ref_alt_m=SIM_SURFACE_ELEVATION_M)
+        traffic = simulation_traffic_authorizer(simulation_snapshot(tracks=(track,)))
+    else:
+        traffic = simulation_traffic_authorizer()
+    if scenario == "clearance_expired":
+        comms = simulation_comms_authorizer(clearance=simulation_clearance(expires_at_s=1.0))
+    else:
+        comms = simulation_comms_authorizer()
+    faults = None
+    weather_provider = StaticWeatherProvider(observation)
+    if scenario == "weather_during_dispense":
+        faults = MissionFaultPlan((FaultSpec("wx-mid-dispense", WEATHER_FAULT, at_state="dispensing", duration_s=0.0),))
+        weather_provider = WeatherFaultSwitch(weather_provider, faults)
+    if scenario == "airspace_during_dispense":
+        faults = MissionFaultPlan((FaultSpec("air-mid-dispense", AIRSPACE_FAULT, at_state="dispensing", duration_s=0.0),))
+        airspace = AirspaceAuthorizer(AirspaceFaultSwitch(airspace.provider, faults), airspace.policy)
     supervisor = SeedingSupervisor(
         SeedingMission(_profile()),
         AltitudeMonitor(max_age_s=1.0),
-        AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
-        WeatherAuthorizer(StaticWeatherProvider(observation), simulation_policy()),
-        simulation_authorizer(),
+        band,
+        WeatherAuthorizer(weather_provider, simulation_policy()),
+        airspace,
+        traffic,
+        comms,
     )
     # Staging is 18 m so the downward camera's footprint can include marker 4
     # near the origin. The marker coordinate is not a setpoint.
@@ -127,8 +239,16 @@ def _orchestrator() -> MissionOrchestrator:
     )
     return MissionOrchestrator(
         supervisor,
-        PrecisionLand(),
-        OrchestratorConfig(require_weather=True, landing_timeout_s=150.0, staging=staging),
+        # Marker 4 is ~15 m from the staging point. An uncapped approach crossed that at
+        # cruise speed and tilted the marker out of the downward camera (marker_stale).
+        PrecisionLand(PrecisionLandParams(approach_max_speed_mps=2.0)),
+        OrchestratorConfig(
+            require_weather=True,
+            landing_timeout_s=150.0,
+            staging=staging,
+            geofence=_sitl_geofence(tight=scenario == "geofence_boundary"),
+        ),
+        faults=faults,
     )
 
 
@@ -173,13 +293,33 @@ async def _follow(drone: System, pose: Pose, stop: asyncio.Event) -> None:
     await asyncio.gather(position(), attitude(), air(), armed(), ground(), mode())
 
 
-def _see_marker(frame, now_s: float) -> tuple[CameraTag, int] | None:
+def _see_marker(frame, now_s: float, pose: Pose, fence: GeofenceConfig | None,
+                locked_id: int | None = None) -> tuple[CameraTag, int] | None:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     intrinsics = camera_matrix(SEARCH_CAMERA.width_px, SEARCH_CAMERA.height_px, SEARCH_CAMERA.horizontal_fov_rad)
     poses = estimate_marker_poses(gray, intrinsics, MARKER_M)
     if not poses:
         return None
-    chosen = max(poses, key=lambda item: item.side_px)
+    center_x = SEARCH_CAMERA.width_px / 2.0
+    center_y = SEARCH_CAMERA.height_px / 2.0
+    inside: dict[int, bool] | None = None
+    polygon = None if fence is None else (fence.recovery_polygon_ned or fence.polygon_ned)
+    if polygon is not None and pose.position_ned is not None and pose.q_wxyz is not None:
+        snap = VehicleSnapshot(
+            position_ned=pose.position_ned,
+            velocity_ned=pose.velocity_ned,
+            attitude_wxyz=pose.q_wxyz,
+            landed=False,
+            time_s=now_s,
+        )
+        inside = {}
+        for item in poses:
+            tag = CameraTag(item.position_xyz, item.orientation_xyzw, now_s)
+            ned, _yaw = tag_to_ned(tag, snap)
+            inside[item.marker_id] = _contains(polygon, ned[0], ned[1])
+    chosen = track_landing_marker(poses, center_x, center_y, inside, locked_id)
+    if chosen is None:
+        return None
     return CameraTag(chosen.position_xyz, chosen.orientation_xyzw, now_s), chosen.marker_id
 
 
@@ -208,6 +348,7 @@ def _vehicle(pose: Pose, now_s: float, dt_s: float, landed: bool, tag: CameraTag
         ),
         tag=tag,
         dt_s=dt_s,
+        position_uncertainty_m=1.0,
     )
 
 
@@ -228,10 +369,10 @@ async def _publish(drone: System, output, pose: Pose) -> None:
         await drone.offboard.set_position_ned(PositionNedYaw(north, east, down, yaw))
 
 
-def _blank_report(started: str) -> dict:
+def _blank_report(started: str, scenario: str) -> dict:
     return {
         "mission_id": "integrated-seeding-sitl",
-        "scenario_id": "search_field_low_altitude",
+        "scenario_id": scenario,
         "simulation_environment": {
             "world": "search_field",
             "vehicle": "x500_search_cam",
@@ -244,6 +385,7 @@ def _blank_report(started: str) -> dict:
         "start_time": started,
         "end_time": None,
         "mission_result": "in_progress",
+        "simulation_seed": 0,
         "truth_used_for_guidance": False,
         "validation": "PX4 SITL attempted",
         "physical_flight_validated": False,
@@ -255,14 +397,14 @@ def _write(path: Path, report: dict) -> None:
     path.write_text(json.dumps(report, indent=2) + "\n")
 
 
-async def fly(report_path: Path, timeout_s: float) -> dict:
+async def fly(report_path: Path, timeout_s: float, scenario: str) -> dict:
     started = datetime.now(timezone.utc).isoformat()
-    report = _blank_report(started)
+    report = _blank_report(started, scenario)
     feed = CameraFeed()
     pose, stop = Pose(), asyncio.Event()
     drone = System()
     follower = None
-    orch = _orchestrator()
+    orch = _orchestrator(scenario)
     marker_id = None
     frames = 0
     detections = 0
@@ -327,10 +469,14 @@ async def fly(report_path: Path, timeout_s: float) -> dict:
                 if frame is not None and count != last_frame:
                     last_frame = count
                     frames += 1
-                    seen = _see_marker(frame, now)
+                    # Lock onto the first marker acquired: from the staging height more than
+                    # one pad is in view, and re-picking each frame made the target jump.
+                    seen = _see_marker(frame, now, pose, orch.config.geofence, locked_id=marker_id)
                     if seen is not None:
                         tag, marker_id = seen
                         detections += 1
+                if scenario == "marker_loss" and orch.lander.state is LandState.DESCEND:
+                    tag = None
             vehicle = _vehicle(pose, now, dt, landed, tag)
             if vehicle is None:
                 continue
@@ -354,7 +500,17 @@ async def fly(report_path: Path, timeout_s: float) -> dict:
                     await drone.offboard.stop()
                 except OffboardError:
                     pass
-                await drone.action.land()
+                try:
+                    await asyncio.wait_for(drone.action.land(), timeout=20.0)
+                except Exception as exc:
+                    report["land_command_error"] = str(exc)
+                land_deadline = time.monotonic() + 20.0
+                while pose.in_air and time.monotonic() < land_deadline:
+                    await asyncio.sleep(0.2)
+                if not pose.in_air and orch.state is MissionState.PRECISION_LANDING:
+                    settled = _vehicle(pose, time.monotonic() - mission_t0, LOOP_S, True, None)
+                    if settled is not None:
+                        orch.step(settled)
                 break
             await _publish(drone, output, pose)
             if output.state in (MissionState.LANDED, MissionState.ABORTED, MissionState.FAILED):
@@ -369,8 +525,11 @@ async def fly(report_path: Path, timeout_s: float) -> dict:
             pass
         if pose.in_air and orch.state is not MissionState.LANDED:
             print("still airborne; commanding PX4 land", flush=True)
-            await drone.action.land()
-            land_deadline = time.monotonic() + 60.0
+            try:
+                await asyncio.wait_for(drone.action.land(), timeout=20.0)
+            except Exception as exc:
+                report["land_command_error"] = str(exc)
+            land_deadline = time.monotonic() + 20.0
             while pose.in_air and time.monotonic() < land_deadline:
                 await asyncio.sleep(0.2)
 
@@ -391,7 +550,12 @@ async def fly(report_path: Path, timeout_s: float) -> dict:
         report["failure"] = str(exc)
         report["end_time"] = datetime.now(timezone.utc).isoformat()
         print(f"integrated seeding sitl failed: {exc}", flush=True)
-        raise
+        try:
+            evidence = orch.evidence()
+            report["orchestrator_evidence"] = evidence
+            report.update(_score(pose.position_ned, marker_id, evidence, reached_release, frames, detections))
+        except Exception as inner:
+            report["evidence_error"] = str(inner)
     finally:
         report["end_time"] = report["end_time"] or datetime.now(timezone.utc).isoformat()
         _write(report_path, report)
@@ -471,12 +635,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, default=Path("/tmp/integrated_seeding_sitl/report.json"))
     parser.add_argument("--timeout", type=float, default=360.0)
+    parser.add_argument("--scenario", choices=SCENARIOS, default="nominal")
     args = parser.parse_args()
+    expected = EXPECTED_RESULT[args.scenario]
     try:
-        report = asyncio.run(fly(args.report, args.timeout))
+        report = asyncio.run(fly(args.report, args.timeout, args.scenario))
     except Exception:
         return 1
-    return 0 if report.get("mission_result") == "completed" else 2
+    return 0 if report.get("mission_result") == expected else 2
 
 
 if __name__ == "__main__":

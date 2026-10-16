@@ -246,3 +246,38 @@ def test_closed_loop_descent_lands_on_the_marker():
     assert lander.state == LandState.FINISHED
     assert math.hypot(position[0], position[1]) < 0.25
     assert position[2] == pytest.approx(0.0, abs=0.05)
+
+
+def test_a_capped_approach_steps_toward_a_distant_marker_instead_of_jumping_to_it():
+    # SITL traffic_conflict, 2026-10-13: marker 4 acquired 14.7 m away from the 18 m staging
+    # point; a single far setpoint flew the drone there at 5-6 m/s, the tilt took the marker
+    # out of the downward camera's view, and the fix aged out (marker_stale). With
+    # approach_max_speed_mps the setpoint is a carrot one second ahead, so PX4 flies at
+    # about that speed and the camera keeps the marker.
+    params = PrecisionLandParams(approach_max_speed_mps=2.0)
+    lander = PrecisionLand(params)
+    start = _vehicle((0.0, 0.0, -18.0), time_s=1.0)
+    lander.activate(start.position_ned)
+    lander.observe_tag(_tag_under(start, 14.0, -4.0), start)
+    command = lander.step(start)
+    assert lander.state == LandState.APPROACH
+    assert command.mode == CommandMode.POSITION
+    step = math.dist(command.position_ned[:2], start.position_ned[:2])
+    assert step == pytest.approx(2.0, abs=1e-6)                     # one second at 2 m/s
+    assert command.position_ned[2] == pytest.approx(-18.0)           # approach altitude kept
+    heading = math.atan2(command.position_ned[1], command.position_ned[0])
+    assert heading == pytest.approx(math.atan2(-4.0, 14.0), abs=1e-6)  # straight at the marker
+    # Close to the marker the carrot is the marker itself, so the approach still finishes.
+    near = _vehicle((13.5, -3.9, -18.0), time_s=2.0)
+    lander.observe_tag(_tag_under(near, 14.0, -4.0), near)
+    final = lander.step(near)
+    assert final.position_ned[:2] == pytest.approx((14.0, -4.0), abs=1e-6)
+
+
+def test_the_uncapped_approach_is_unchanged_from_tracktor_beam():
+    lander = PrecisionLand()
+    start = _vehicle((0.0, 0.0, -18.0), time_s=1.0)
+    lander.activate(start.position_ned)
+    lander.observe_tag(_tag_under(start, 14.0, -4.0), start)
+    command = lander.step(start)
+    assert command.position_ned[:2] == pytest.approx((14.0, -4.0), abs=1e-6)

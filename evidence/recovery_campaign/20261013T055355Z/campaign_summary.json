@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "kind": "abort_recovery_campaign",
+  "stamp": "20261013T055355Z",
+  "note": "One run of each scenario after the PX4 land-mode handoff. Not a statistical sample. The 18-run list was not executed. offboard_lost in these reports is the intentional stop of OFFBOARD when PX4 land mode starts.",
+  "runs": [
+    {
+      "scenario_id": "nominal",
+      "mission_result": "completed",
+      "validation": "PX4 SITL VALIDATED",
+      "release_sample_count": 77,
+      "fault_codes": [
+        "offboard_stream_gap",
+        "offboard_lost"
+      ],
+      "touchdown_horizontal_error_m": 0.141,
+      "marker_id": 9,
+      "mission_duration_s": 62.36,
+      "outcomes": {
+        "release_result": "authorized",
+        "release_reason_code": "",
+        "mission_execution_result": "completed",
+        "recovery_result": "landed",
+        "recovery_reason_code": ""
+      },
+      "classification": "recovered"
+    },
+    {
+      "scenario_id": "traffic_conflict",
+      "mission_result": "aborted_recovered",
+      "validation": "PX4 SITL aborted and recovered",
+      "release_sample_count": 0,
+      "fault_codes": [
+        "offboard_stream_gap",
+        "offboard_lost"
+      ],
+      "touchdown_horizontal_error_m": 0.063,
+      "marker_id": 4,
+      "mission_duration_s": 53.26,
+      "outcomes": {
+        "release_result": "denied",
+        "release_reason_code": "traffic_conflict_detected",
+        "mission_execution_result": "aborted_release",
+        "recovery_result": "landed",
+        "recovery_reason_code": ""
+      },
+      "classification": "recovered"
+    },
+    {
+      "scenario_id": "clearance_expired",
+      "mission_result": "aborted_recovered",
+      "validation": "PX4 SITL aborted and recovered",
+      "release_sample_count": 0,
+      "fault_codes": [
+        "offboard_stream_gap",
+        "offboard_lost"
+      ],
+      "touchdown_horizontal_error_m": 0.062,
+      "marker_id": 4,
+      "mission_duration_s": 51.57,
+      "outcomes": {
+        "release_result": "denied",
+        "release_reason_code": "simulated_clearance_expired",
+        "mission_execution_result": "aborted_release",
+        "recovery_result": "landed",
+        "recovery_reason_code": ""
+      },
+      "classification": "recovered"
+    }
+  ]
+}

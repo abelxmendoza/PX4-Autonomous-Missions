@@ -10,11 +10,12 @@ gap (``offboard_gap_s`` = 0.5) matches a 2 Hz minimum: the process that calls
 orchestrator does not sleep to create one.
 
 Release authorization is the existing ``SeedingSupervisor``: mission phase,
-release volume, altitude frame, estimator health, sensor freshness, the
-weather authorizer, and the airspace authorizer. ``require_weather`` defaults
+release volume, altitude frame, estimator health, sensor freshness, weather,
+airspace, traffic, and simulated communications. ``require_weather`` defaults
 true. Setting it false is an invalid configuration, so a release cannot be
-authorized by skipping weather. A clear airspace chart is recorded the same
-way and is still not an approval to fly.
+authorized by skipping weather. A clear chart, an empty traffic list, and a
+simulated clearance are recorded the same way and are still not an approval
+to fly.
 A simulated provider is allowed only through that authorizer, and the evidence
 keeps the provider's provenance. A denial is not turned into an approval by a
 later state.
@@ -27,7 +28,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Sequence
 
-from .altitude_reference import Px4AltitudeSnapshot
+from .altitude_reference import AltitudeFrame, Px4AltitudeSnapshot
+from .mission_faults import DISPENSER_FAULT, MissionFaultPlan
+from .mission_geofence import (
+    HOLD_INSIDE,
+    INSIDE,
+    RECOVERY_TOUCHDOWN_LAG_M,
+    GeofenceConfig,
+    command_admissible,
+    evaluate_vehicle,
+)
 from .precision_land import (
     CameraTag,
     LandCommand,
@@ -35,6 +45,7 @@ from .precision_land import (
     PrecisionLand,
     VehicleSnapshot,
     offboard_setpoint,
+    tag_to_ned,
 )
 from .seeding_mission import SeedingCommand, SeedingPhase
 from .seeding_supervisor import SeedingSupervisor
@@ -56,6 +67,9 @@ class MissionState(Enum):
     FAILED = "failed"
 
 
+# Distance to the last accepted marker at which a timed-out fix is treated as
+# the vehicle already being on the pad, rather than a lost approach.
+PAD_MARKER_RADIUS_M = 1.0
 _TERMINAL = frozenset({MissionState.LANDED, MissionState.ABORTED, MissionState.FAILED})
 
 # Explicit edges. Anything else is rejected and does not change state.
@@ -127,6 +141,7 @@ class OrchestratorConfig:
     takeoff_altitude_m: float = 2.0
     dispenser_ack: bool = True
     staging: StagingConditions = field(default_factory=StagingConditions)
+    geofence: GeofenceConfig | None = None
 
     def problems(self) -> str:
         if not self.require_weather:
@@ -135,7 +150,12 @@ class OrchestratorConfig:
             return "timeouts must be positive"
         if self.takeoff_altitude_m <= 0.0:
             return "takeoff_altitude_m must be positive"
-        return self.staging.problems()
+        staging = self.staging.problems()
+        if staging:
+            return staging
+        if self.geofence is not None:
+            return self.geofence.problems()
+        return ""
 
 
 @dataclass(frozen=True)
@@ -152,6 +172,8 @@ class VehicleInput:
     altitude: Px4AltitudeSnapshot
     tag: CameraTag | None = None
     dt_s: float = 0.0
+    position_uncertainty_m: float | None = None
+    velocity_uncertainty_mps: float | None = None
 
 
 def _gate_summary(records: list[dict]) -> dict:
@@ -196,12 +218,62 @@ def _nan_velocity() -> tuple[float, float, float]:
     return (nan, nan, nan)
 
 
+def _altitude_reading(fence: GeofenceConfig, vehicle: VehicleInput) -> tuple[float | None, bool, AltitudeFrame]:
+    """Read only the configured frame. Local height is not substituted for the others."""
+    frame = fence.altitude_frame
+    snap = vehicle.altitude
+    if frame is AltitudeFrame.LOCAL:
+        if snap.z_valid and snap.local_z_m is not None and math.isfinite(snap.local_z_m):
+            return -float(snap.local_z_m), True, frame
+        return None, False, frame
+    if frame is AltitudeFrame.BAROMETRIC:
+        if snap.baro_alt_m is not None and math.isfinite(snap.baro_alt_m) and not snap.baro_fault:
+            return float(snap.baro_alt_m), True, frame
+        return None, False, frame
+    if frame is AltitudeFrame.AGL:
+        if snap.dist_bottom_valid and snap.dist_bottom_m is not None and math.isfinite(snap.dist_bottom_m):
+            return float(snap.dist_bottom_m), True, frame
+        return None, False, frame
+    if (
+        snap.ref_alt_m is not None
+        and snap.z_valid
+        and snap.local_z_m is not None
+        and math.isfinite(snap.ref_alt_m)
+        and math.isfinite(snap.local_z_m)
+    ):
+        return float(snap.ref_alt_m) - float(snap.local_z_m), True, frame
+    return None, False, frame
+
+
+def _geofence_config(fence: GeofenceConfig | None) -> dict | None:
+    if fence is None:
+        return None
+    return {
+        "version": fence.version,
+        "source": fence.source,
+        "frame": fence.frame,
+        "altitude_frame": fence.altitude_frame.value,
+        "polygon_ned": [list(point) for point in fence.polygon_ned],
+        "min_altitude_m": fence.min_altitude_m,
+        "max_altitude_m": fence.max_altitude_m,
+        "margin_m": fence.margin_m,
+        "approach_distance_m": fence.approach_distance_m,
+        "uncertainty_sigma": fence.uncertainty_sigma,
+        "prediction_horizon_s": fence.prediction_horizon_s,
+        "recovery_polygon_ned": None if fence.recovery_polygon_ned is None else [list(point) for point in fence.recovery_polygon_ned],
+        "recovery_min_altitude_m": fence.recovery_min_altitude_m,
+        "units": "m",
+        "clamp_setpoints": False,
+    }
+
+
 class MissionOrchestrator:
     def __init__(
         self,
         supervisor: SeedingSupervisor,
         lander: PrecisionLand | None = None,
         config: OrchestratorConfig | None = None,
+        faults: MissionFaultPlan | None = None,
     ) -> None:
         self.supervisor = supervisor
         self.lander = lander if lander is not None else PrecisionLand()
@@ -228,6 +300,15 @@ class MissionOrchestrator:
         self._hold_position: tuple[float, float, float] | None = None
         self._progress_t: float | None = None
         self._descent_tag_ages: list[float] = []
+        self._pad_contact = False
+        self._last_velocity: tuple[float, float, float] | None = None
+        self._last_attitude_valid = False
+        self.marker_rejections: list[dict] = []
+        self.fault_plan = faults if faults is not None else MissionFaultPlan(())
+        self.geofence_decisions: list[dict] = []
+        self.predicted_boundary_events: list[dict] = []
+        self.rejected_setpoints: list[dict] = []
+        self._last_geofence_record_s: float | None = None
 
     @property
     def mission(self):
@@ -267,9 +348,24 @@ class MissionOrchestrator:
         return False
 
     def step(self, vehicle: VehicleInput) -> OrchestratorOutput:
+        self.fault_plan.prepare(self, vehicle)
+        vehicle = self.fault_plan.mutate(vehicle)
+        output = self._step_body(vehicle)
+        output = self._admit(output, vehicle)
+        self.fault_plan.observe(self, output)
+        return output
+
+    def _step_body(self, vehicle: VehicleInput) -> OrchestratorOutput:
         position = _finite_xyz(vehicle.position_ned)
         if position is not None:
             self._last_position = position
+        self._last_velocity = _finite_xyz(vehicle.velocity_ned)
+        attitude = vehicle.attitude_wxyz
+        self._last_attitude_valid = (
+            attitude is not None
+            and len(attitude) == 4
+            and all(math.isfinite(float(value)) for value in attitude)
+        )
         self._note_gap(vehicle.time_s)
         self._last_step_t = vehicle.time_s
 
@@ -303,6 +399,7 @@ class MissionOrchestrator:
             and position is not None
             and self.state is not MissionState.PREFLIGHT
             and not self._offboard_lost
+            and not self._pad_contact
         ):
             self._offboard_lost = True
             self._fault(
@@ -329,18 +426,120 @@ class MissionOrchestrator:
 
         return self._precision(vehicle, position)
 
+    def _admit(self, output: OrchestratorOutput, vehicle: VehicleInput) -> OrchestratorOutput:
+        fence = self.config.geofence
+        if fence is None:
+            return output
+        north = east = down = None
+        position = _finite_xyz(vehicle.position_ned)
+        if position is not None:
+            north, east, down = position
+        altitude_m, altitude_valid, altitude_frame = _altitude_reading(fence, vehicle)
+        decision = evaluate_vehicle(
+            fence,
+            north_m=north,
+            east_m=east,
+            altitude_m=altitude_m,
+            altitude_valid=altitude_valid,
+            altitude_frame=altitude_frame,
+            position_uncertainty_m=vehicle.position_uncertainty_m,
+            velocity_ned=vehicle.velocity_ned,
+            velocity_uncertainty_mps=vehicle.velocity_uncertainty_mps,
+            time_s=vehicle.time_s,
+            mission_state=self.state.value,
+        )
+        self._remember_geofence(decision)
+        if decision.predicted_reason in ("predicted_boundary_violation", "uncertain_predicted_crossing"):
+            if not self.predicted_boundary_events or self.predicted_boundary_events[-1]["predicted_reason"] != decision.predicted_reason:
+                self.predicted_boundary_events.append(decision.as_dict())
+        if not output.heartbeat or output.request_nav_land:
+            return output
+        verdict = command_admissible(
+            fence,
+            decision,
+            use_position=output.use_position,
+            position_ned=output.position_ned,
+            velocity_ned=output.velocity_ned,
+            north_m=north,
+            east_m=east,
+            altitude_m=altitude_m,
+        )
+        if verdict.admissible:
+            return output
+        self.rejected_setpoints.append({
+            "time_s": vehicle.time_s,
+            "reason_code": verdict.reason_code,
+            "boundary": verdict.boundary,
+            "response": verdict.response,
+            "mission_state": self.state.value,
+            "owner": self.owner.value,
+            "position_ned": None if output.position_ned is None else list(output.position_ned),
+            "velocity_ned": None if output.velocity_ned is None else [
+                None if not math.isfinite(v) else v for v in output.velocity_ned
+            ],
+            "use_position": output.use_position,
+            "vehicle_north_m": north,
+            "vehicle_east_m": east,
+            "frame": "local_ned",
+            "simulated": True,
+        })
+        if not any(item["code"] == verdict.reason_code for item in self.faults):
+            self._fault(
+                vehicle.time_s,
+                verdict.reason_code,
+                recovery=verdict.response,
+                result="rejected",
+                position=position,
+            )
+        if verdict.response == HOLD_INSIDE and position is not None:
+            self._hold_position = position
+            self._set_owner(Owner.HOLD, vehicle.time_s, verdict.reason_code)
+            return self._output(vehicle, Owner.HOLD, position, False, False, False, heartbeat=True)
+        if self.state not in _TERMINAL:
+            self._goto(MissionState.FAILED, verdict.reason_code, vehicle.time_s)
+        self._set_owner(Owner.PX4_LAND, vehicle.time_s, verdict.reason_code)
+        return self._output(vehicle, Owner.PX4_LAND, None, False, False, True, heartbeat=False)
+
+    def _remember_geofence(self, decision) -> None:
+        changed = not self.geofence_decisions or self.geofence_decisions[-1]["mission_state"] != decision.mission_state
+        due = self._last_geofence_record_s is None or decision.time_s - self._last_geofence_record_s >= 1.0
+        if decision.status != INSIDE or changed or due:
+            self.geofence_decisions.append(decision.as_dict())
+            self._last_geofence_record_s = decision.time_s
+
+    def _marker_in_recovery(self, vehicle: VehicleInput, position, attitude) -> bool:
+        fence = self.config.geofence
+        if fence is None or vehicle.tag is None:
+            return True
+        snap = VehicleSnapshot(
+            position_ned=position,
+            velocity_ned=_finite_xyz(vehicle.velocity_ned) or (0.0, 0.0, 0.0),
+            attitude_wxyz=tuple(float(v) for v in attitude),
+            landed=vehicle.landed,
+            time_s=vehicle.time_s,
+        )
+        ned, _yaw = tag_to_ned(vehicle.tag, snap, self.lander.params.camera_offset_body_ned)
+        polygon = fence.recovery_polygon_ned or fence.polygon_ned
+        from .mission_geofence import _contains
+
+        allowed = _contains(polygon, ned[0], ned[1])
+        return allowed
+
     def evidence(self) -> dict:
         mission = self.mission.report()
         weather_records = list(self.supervisor.weather_decisions)
         last_weather = weather_records[-1] if weather_records else None
         return {
-            "schema": 1,
+            "schema": 2,
             "kind": "integrated_seeding_sortie",
             "simulated": True,
             "mission_result": self._result_name(),
+            "outcomes": self._outcomes(),
             "mission_state": self.state.value,
             "controller_owner": self.owner.value,
             "airspace_evidence": _gate_summary(self.supervisor.airspace_decisions),
+            "traffic_evidence": _gate_summary(self.supervisor.traffic_decisions),
+            "communications_evidence": _gate_summary(self.supervisor.comms_decisions),
             "weather_evidence": {
                 "implemented": True,
                 "consulted": bool(weather_records),
@@ -376,12 +575,23 @@ class MissionOrchestrator:
             "altitude_evidence": self.supervisor.evidence(),
             "return_progress": list(self.return_progress),
             "fault_events": list(self.faults),
+            "marker_rejections": list(self.marker_rejections),
+            "geofence_configuration": _geofence_config(self.config.geofence),
+            "geofence_decisions": list(self.geofence_decisions),
+            "predicted_boundary_events": list(self.predicted_boundary_events),
+            "rejected_setpoints": list(self.rejected_setpoints),
+            "fault_injection_events": list(self.fault_plan.injections),
+            "fault_response_events": list(self.fault_plan.responses),
+            "recovery_decisions": [
+                item for item in self.rejected_setpoints if item.get("response") in ("hold_inside", "nav_land", "reject_marker")
+            ],
             "dispenser_closed": self._dispenser_closed,
             "release_aborted": self._release_aborted,
             "rejected_external_setpoints": self._rejected_external,
             "precision_landing_evidence": {
                 "state": self.lander.state.value,
                 "failed": self.lander.failed,
+                "failure_reason": self.lander.failure_reason,
                 "active": self.lander.active,
                 "timeout_s": self.lander.params.target_timeout_s,
                 "max_fix_jump_m": self.lander.params.max_fix_jump_m,
@@ -403,6 +613,34 @@ class MissionOrchestrator:
                 "staging_altitude_m": self.config.staging.staging_altitude_m,
                 "dispenser_ack": self.config.dispenser_ack,
             },
+        }
+
+    def _outcomes(self) -> dict:
+        reason = self.mission.reason or ""
+        if self._release_aborted:
+            release = "denied"
+            execution = "aborted_release"
+        elif self.mission.samples:
+            release = "authorized"
+            execution = "completed" if self.state is MissionState.LANDED else "in_progress"
+        else:
+            release = "not_released"
+            execution = "failed" if self.state is MissionState.FAILED else "in_progress"
+        if self.state in (MissionState.LANDED, MissionState.ABORTED):
+            recovery = "landed"
+            recovery_reason = ""
+        elif self.state is MissionState.FAILED:
+            recovery = "failed"
+            recovery_reason = self.faults[-1]["code"] if self.faults else ""
+        else:
+            recovery = "in_progress"
+            recovery_reason = ""
+        return {
+            "release_result": release,
+            "release_reason_code": reason,
+            "mission_execution_result": execution,
+            "recovery_result": recovery,
+            "recovery_reason_code": recovery_reason,
         }
 
     def _result_name(self) -> str:
@@ -432,12 +670,14 @@ class MissionOrchestrator:
         assert position is not None
         # landed=False: the seeding law must not finish itself on the ground.
         # Precision landing owns the touchdown after the staging handoff.
+        velocity = vehicle.velocity_ned or (0.0, 0.0, 0.0)
         return self.supervisor.step(
             position,
             vehicle.time_s,
             vehicle.altitude,
             landed=False,
             dt_s=max(0.0, vehicle.dt_s),
+            velocity_ned=velocity,
         )
 
     def _follow_seeding(self, vehicle: VehicleInput, position, command: SeedingCommand) -> None:
@@ -473,7 +713,9 @@ class MissionOrchestrator:
             self._set_owner(Owner.HOLD, vehicle.time_s, "return timed out")
             self._hold_position = position
             return
-        if self._dispenser_was_open and not self.config.dispenser_ack:
+        if self._dispenser_was_open and not (
+            self.config.dispenser_ack and not self.fault_plan.blocking(DISPENSER_FAULT)
+        ):
             self._dispenser_closed = False
             self._fault(
                 vehicle.time_s,
@@ -504,7 +746,15 @@ class MissionOrchestrator:
         self._handed_off = True
         self._precision_t0 = vehicle.time_s
         self.lander.activate(position)
-        self._goto(MissionState.PRECISION_LANDING, "staging conditions met", vehicle.time_s)
+        velocity = _finite_xyz(vehicle.velocity_ned)
+        self._goto(
+            MissionState.PRECISION_LANDING,
+            "staging conditions met",
+            vehicle.time_s,
+            staging_position_ned=list(position),
+            staging_velocity_ned=None if velocity is None else list(velocity),
+            staging_altitude_m=-position[2],
+        )
         self._set_owner(Owner.PRECISION_LAND, vehicle.time_s, "handoff")
 
     def _seeding_output(self, vehicle, position, command: SeedingCommand) -> OrchestratorOutput:
@@ -568,14 +818,50 @@ class MissionOrchestrator:
             landed=vehicle.landed,
             time_s=vehicle.time_s,
         )
-        if vehicle.tag is not None and not self.lander.failed:
-            self.lander.observe_tag(vehicle.tag, snap)
+        if vehicle.tag is not None and not self.lander.failed and self._marker_in_recovery(vehicle, position, attitude):
+            accepted = self.lander.observe_tag(vehicle.tag, snap)
+            if accepted is None and self.lander.last_observation_reject and len(self.marker_rejections) < 128:
+                self.marker_rejections.append({
+                    "time_s": vehicle.time_s,
+                    "reason_code": self.lander.last_observation_reject,
+                    "mission_state": self.state.value,
+                    "simulated": True,
+                })
+        elif vehicle.tag is not None and not self.lander.failed:
+            self.rejected_setpoints.append({
+                "time_s": vehicle.time_s,
+                "reason_code": "marker_outside_recovery",
+                "mission_state": self.state.value,
+                "owner": self.owner.value,
+                "response": "reject_marker",
+                "simulated": True,
+            })
         command = self.lander.step(snap)
         if command.state is LandState.DESCEND and command.tag_age_s is not None:
             self._descent_tag_ages.append(float(command.tag_age_s))
+        # The traffic flight reached the marker (altitude 0.57 m, then -0.07 m)
+        # and bounced back to 1.4 m while the fix aged out. Once descent has
+        # put the vehicle on that pad, stop OFFBOARD setpoints and let PX4's
+        # land mode finish. A position hold in OFFBOARD kept the vehicle at
+        # the surface without the land detector ever reporting landed.
+        on_pad = self._on_pad(position) and (
+            command.state is LandState.DESCEND or self.lander.failed
+        )
+        if self._pad_contact or on_pad:
+            self._pad_contact = True
+            if vehicle.landed:
+                dest = MissionState.ABORTED if self._release_aborted else MissionState.LANDED
+                reason = "land detector after pad contact"
+                self._goto(dest, reason, vehicle.time_s)
+                self._set_owner(Owner.NONE, vehicle.time_s, "landed")
+                return self._output(vehicle, Owner.NONE, None, False, False, False)
+            self._hold_position = None
+            self._set_owner(Owner.PX4_LAND, vehicle.time_s, "pad contact")
+            return self._output(vehicle, Owner.PX4_LAND, None, False, False, True)
         if self.lander.failed:
-            self._fault(vehicle.time_s, "marker_lost", recovery="position_hold", result="failed", position=position)
-            self._goto(MissionState.FAILED, "marker_lost", vehicle.time_s)
+            code = self.lander.failure_reason or "marker_lost"
+            self._fault(vehicle.time_s, code, recovery="position_hold", result="failed", position=position)
+            self._goto(MissionState.FAILED, code, vehicle.time_s)
             self._hold_position = command.position_ned or position
             self._set_owner(Owner.PRECISION_LAND, vehicle.time_s, "marker lost")
             return self._from_land(vehicle, command)
@@ -587,6 +873,26 @@ class MissionOrchestrator:
             return self._output(vehicle, Owner.NONE, None, False, False, False, heartbeat=False)
         self._set_owner(Owner.PRECISION_LAND, vehicle.time_s, command.state.value)
         return self._from_land(vehicle, command)
+
+    def _on_pad(self, position) -> bool:
+        tag = self.lander._tag.position
+        if tag is None:
+            return False
+        horizontal = math.hypot(position[0] - tag[0], position[1] - tag[1])
+        altitude_m = -position[2]
+        return horizontal <= PAD_MARKER_RADIUS_M and altitude_m <= RECOVERY_TOUCHDOWN_LAG_M
+
+    def _from_land_hold(self, vehicle: VehicleInput, hold: tuple[float, float, float]) -> OrchestratorOutput:
+        return self._output(
+            vehicle,
+            self.owner,
+            hold,
+            False,
+            False,
+            False,
+            heartbeat=True,
+            velocity=_nan_velocity(),
+        )
 
     def _from_land(self, vehicle: VehicleInput, command: LandCommand) -> OrchestratorOutput:
         fields = offboard_setpoint(command)
@@ -699,7 +1005,7 @@ class MissionOrchestrator:
         })
 
     def _note_gap(self, time_s: float) -> None:
-        if self._last_step_t is None or not self._offboard_wanted:
+        if self._last_step_t is None or not self._offboard_wanted or self._pad_contact:
             return
         gap = time_s - self._last_step_t
         if gap > self.config.offboard_gap_s:
@@ -731,6 +1037,11 @@ class MissionOrchestrator:
             "destination": dest.value,
             "reason": reason,
             "context": context,
+            "position_ned": None if self._last_position is None else list(self._last_position),
+            "velocity_ned": None if self._last_velocity is None else list(self._last_velocity),
+            "position_valid": self._last_position is not None,
+            "attitude_valid": self._last_attitude_valid,
+            "owner": self.owner.value,
             "simulated": True,
         })
         self.state = dest

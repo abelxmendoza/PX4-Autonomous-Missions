@@ -1,6 +1,6 @@
 # Airspace authorization
 
-Airspace is a third release gate on the seeding supervisor, beside altitude and weather. The dispenser opens only when all three allow it. A chart that contains no blocking volume is still not an approval to fly, and `operational_approval` stays false.
+Airspace is a release gate on the seeding supervisor, after altitude and weather and before traffic and simulated communications. The dispenser opens only when every required gate allows it. A chart that contains no blocking volume is still not an approval to fly, and `operational_approval` stays false.
 
 The local NED fence in `mission_logic.Fence` remains the vehicle keep-in. This check is separate: it asks whether the release point, expressed as latitude, longitude, and AMSL, sits inside a charted volume.
 

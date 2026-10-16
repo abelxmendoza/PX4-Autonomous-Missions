@@ -7,6 +7,8 @@ import math
 import pytest
 
 from px4_offboard.airspace import simulation_authorizer
+from px4_offboard.simulated_comms import simulation_comms_authorizer
+from px4_offboard.traffic import simulation_traffic_authorizer
 from px4_offboard.altitude_reference import (
     AltitudeBand,
     AltitudeFrame,
@@ -41,6 +43,8 @@ def _supervisor(profile=None, observation=None):
         AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
         weather,
         simulation_authorizer(),
+        simulation_traffic_authorizer(),
+        simulation_comms_authorizer(),
     )
 
 
@@ -119,7 +123,11 @@ def _fly(orch=None, speed=8.0, dt=0.1, ticks=800):
         if output.state in (MissionState.LANDED, MissionState.ABORTED, MissionState.FAILED):
             return orch, outputs
         landed = False
-        if output.use_position and output.position_ned is not None:
+        if output.request_nav_land:
+            position[2] = 0.0
+            landed = True
+            velocity = (0.0, 0.0, 0.0)
+        elif output.use_position and output.position_ned is not None:
             position, velocity = _toward(position, output.position_ned, speed, dt)
             if math.dist(position, output.position_ned) < 0.05:
                 velocity = (0.0, 0.0, 0.0)
@@ -187,7 +195,11 @@ def test_one_owner_and_the_handoff_keeps_a_heartbeat():
     assert refused is False
     assert orch.faults[-1]["code"] == "ownership_conflict"
 
-    heartbeats = [out.heartbeat for out in outputs if out.state not in (MissionState.LANDED, MissionState.FAILED)]
+    heartbeats = [
+        out.heartbeat
+        for out in outputs
+        if out.state not in (MissionState.LANDED, MissionState.FAILED) and not out.request_nav_land
+    ]
     assert heartbeats and all(heartbeats)
     handoff = next(i for i, out in enumerate(outputs) if out.owner is Owner.PRECISION_LAND)
     assert outputs[handoff - 1].heartbeat is True
@@ -290,7 +302,7 @@ def test_precision_landing_waits_for_staging_and_marker_loss_holds():
     assert lost is not None and lost.state is MissionState.FAILED
     assert lost.use_position is True
     assert lost.velocity_ned is not None and all(math.isnan(v) for v in lost.velocity_ned)
-    assert any(item["code"] == "marker_lost" for item in orch.faults)
+    assert any(item["code"] == "marker_lost_during_descent" for item in orch.faults)
     # A new detection does not resume the descent.
     resumed = orch.step(_vehicle(60.0, staged, dt=0.1, tag=_tag_below(staged, 60.0)))
     assert resumed.state is MissionState.FAILED

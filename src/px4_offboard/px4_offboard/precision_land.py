@@ -70,6 +70,12 @@ class PrecisionLandParams:
     # A new fix farther than this from the last accepted one is dropped.
     # The pad does not move; a multi-metre jump is a bad solve, not a new target.
     max_fix_jump_m: float = 2.0
+    # Not in tracktor-beam (None keeps its behaviour). When set, the approach setpoint is a
+    # carrot this many m/s x ``approach_lookahead_s`` ahead instead of the marker itself, so
+    # PX4 does not fly a long approach at cruise speed and tilt the marker out of a
+    # downward camera's view.
+    approach_max_speed_mps: float | None = None
+    approach_lookahead_s: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -210,6 +216,8 @@ class PrecisionLand:
         self._state = LandState.IDLE
         self._active = False
         self._failed = False
+        self.failure_reason = ""
+        self.last_observation_reject = ""
         self._hold: tuple[float, float, float] | None = None
         self._tag = _WorldTag()
         self._approach_z = 0.0
@@ -241,6 +249,8 @@ class PrecisionLand:
         self._approach_z = position_ned[2]
         self._hold = None
         self._failed = False
+        self.failure_reason = ""
+        self.last_observation_reject = ""
         self._active = True
         self._state = LandState.SEARCH
 
@@ -259,7 +269,9 @@ class PrecisionLand:
         if self._tag.position is not None:
             jump = math.hypot(position[0] - self._tag.position[0], position[1] - self._tag.position[1])
             if jump > self.params.max_fix_jump_m:
+                self.last_observation_reject = "marker_outlier_rejected"
                 return None
+        self.last_observation_reject = ""
         self._tag = _WorldTag(position=position, yaw=yaw, time_s=tag.time_s, seen=True)
         return position
 
@@ -286,7 +298,7 @@ class PrecisionLand:
                 return self._emit(self._fail(vehicle), vehicle)
             target = (self._tag.position[0], self._tag.position[1], self._approach_z)
             if not self._reached(vehicle, target):
-                return self._emit(self._position(target), vehicle)
+                return self._emit(self._position(self._approach_carrot(vehicle, target)), vehicle)
             self._ix = 0.0
             self._iy = 0.0
             self._state = LandState.DESCEND
@@ -350,7 +362,26 @@ class PrecisionLand:
             tag_ned=self._tag.position,
         )
 
+    def _approach_carrot(self, vehicle: VehicleSnapshot, target: tuple[float, float, float]) -> tuple[float, float, float]:
+        if self.params.approach_max_speed_mps is None:
+            return target
+        dn = target[0] - vehicle.position_ned[0]
+        de = target[1] - vehicle.position_ned[1]
+        dist = math.hypot(dn, de)
+        reach = self.params.approach_max_speed_mps * self.params.approach_lookahead_s
+        if dist <= reach:
+            return target
+        k = reach / dist
+        return (vehicle.position_ned[0] + dn * k, vehicle.position_ned[1] + de * k, target[2])
+
     def _fail(self, vehicle: VehicleSnapshot) -> LandCommand:
+        previous = self._state
+        if previous is LandState.DESCEND:
+            self.failure_reason = "marker_lost_during_descent"
+        elif previous is LandState.APPROACH and self._tag.seen:
+            self.failure_reason = "marker_stale"
+        else:
+            self.failure_reason = "marker_never_acquired"
         self._state = LandState.IDLE
         self._failed = True
         self._hold = vehicle.position_ned

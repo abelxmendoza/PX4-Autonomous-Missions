@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from px4_offboard.simulated_comms import simulation_comms_authorizer
+from px4_offboard.traffic import simulation_traffic_authorizer
 from px4_offboard.airspace import (
     AirspaceAuthorizer,
     AirspaceKind,
@@ -52,6 +54,8 @@ def _supervisor(airspace=None, observation=None):
         AltitudeBand(AltitudeFrame.LOCAL, 12.0, 18.0),
         WeatherAuthorizer(StaticWeatherProvider(observation or simulation_observation()), simulation_policy()),
         airspace or simulation_authorizer(),
+        simulation_traffic_authorizer(),
+        simulation_comms_authorizer(),
     )
 
 
