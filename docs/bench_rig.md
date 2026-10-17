@@ -40,10 +40,11 @@ web/replay/bench/                -- instrument-panel replay of the golden campai
 | REQ-BENCH-002 | A load-cell dropout fault is observable in the reading | Every injected `load_cell_dropout` window has at least one sample reading exactly zero while the fault is flagged active -- not trusted by declaration alone |
 | REQ-BENCH-003 | Battery voltage stays above a 9.0 V floor outside an injected brownout | No sample below the floor unless `voltage_brownout` is the active fault |
 | REQ-BENCH-004 | The sample timeline has no gaps beyond 1.5x the tick interval | Consecutive sample timestamps checked against the campaign's `dt_s` |
+| REQ-BENCH-005 | A frozen temperature sensor is detected within 1 s, with no false alarms | `detect_stuck_sensor` flags a channel whose reading has not changed at all for 0.5 s (live readings always carry noise). Every injected `frozen_temp_sensor` window must be flagged within 1 s of its start, and nothing may be flagged outside one. The golden run flags it at 11.50 s (freeze injected at 11.0 s); the report's `events` list records it |
 
 `src/px4_offboard/test/test_bench_campaign.py` includes a negative-regression test for
 REQ-BENCH-002/003: hand-built sample lists where a declared fault has no visible effect, or an
-unlabeled brownout slips through, confirming the requirement actually fails rather than passing by
+unlabeled brownout slips through, plus REQ-BENCH-005 cases where a declared freeze never shows up or a healthy reading is flagged, confirming the requirement actually fails rather than passing by
 trusting the fault declaration -- the same "deliberately re-break it and watch the check fail"
 discipline used elsewhere in this repo's fault injection.
 
@@ -81,6 +82,8 @@ PYTHONPATH=src/px4_offboard python3 -m pytest src/px4_offboard/test -k bench
 ```
 
 ## Known limits
+
+- The golden campaign does not inject a battery brownout, so REQ-BENCH-003 is only exercised against normal load sag.
 
 - The campaign runner drives the rig in-process; it does not drive the committed golden evidence
   over the Modbus wire, because real socket/thread timing is not something to pin as deterministic

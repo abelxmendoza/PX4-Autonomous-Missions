@@ -40,7 +40,20 @@
       "description": "The sample timeline has no gaps beyond 1.5x the tick interval",
       "passed": true,
       "detail": "no gaps"
+    },
+    {
+      "id": "REQ-BENCH-005",
+      "description": "A frozen temperature sensor is detected within 1 s, with no false alarms",
+      "passed": true,
+      "detail": "stuck reading flagged at 11.50 s"
     }
   ],
-  "passed": true
+  "passed": true,
+  "events": [
+    {
+      "t": 11.5,
+      "event": "stuck_sensor_flagged",
+      "channel": "temp_c"
+    }
+  ]
 }

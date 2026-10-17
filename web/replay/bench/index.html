@@ -4,10 +4,10 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="theme-color" content="#050a0b"/>
-<title>Bench Rig — Abel Mendoza</title>
-<meta name="description" content="Replay of a scripted test campaign against a virtual motor/thrust test-stand, driven over real Modbus TCP, with pass/fail requirement evidence."/>
+<title>Motor Test Bench — Abel Mendoza</title>
+<meta name="description" content="An automated test of a drone motor on a test bench: it runs the motor through a throttle sequence, breaks sensors on purpose, and grades itself against five checks."/>
 <link rel="icon" href="../favicon.png" type="image/png"/>
-<meta property="og:title" content="Bench Rig — a virtual DAQ test stand over Modbus TCP"/>
+<meta property="og:title" content="Motor Test Bench — an automated test that grades itself"/>
 <meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <style>
   :root{--ink:#050a0b;--panel:rgba(6,16,17,.88);--line:rgba(134,255,222,.16);--text:#eef7f3;--muted:#9db1ad;
@@ -20,54 +20,83 @@
   .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);}
   .brand-mark{width:30px;height:30px;display:grid;place-items:center;background:var(--mint);color:var(--ink);font:900 11px var(--mono);}
   .brand h1{margin:0;font:720 14px var(--display);white-space:nowrap;} .brand .dim{color:var(--muted);font-weight:450;}
-  main{max-width:1180px;margin:0 auto;padding:20px 16px 60px;}
-  .intro{color:var(--muted);font-size:13px;line-height:1.6;max-width:760px;margin:0 0 18px;}
-  .intro b{color:var(--text);}
+  main{max-width:1180px;margin:0 auto;padding:26px 16px 60px;}
+  a{color:var(--mint);}
+  .eyebrow{color:var(--amber);font:800 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;margin:0 0 12px;}
+  h2.title{margin:0 0 12px;font:800 clamp(26px,4.4vw,38px)/1.15 var(--display);letter-spacing:-.02em;max-width:900px;}
+  h2.title span{color:var(--mint);}
+  .lead{color:var(--muted);font:16px/1.65 var(--display);max-width:780px;margin:0 0 22px;}
+  .lead b{color:var(--text);}
+  h3{font:800 18px/1.3 var(--display);margin:34px 0 12px;}
+  .cards{display:grid;gap:14px;grid-template-columns:repeat(3,1fr);}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .card .icon{font-size:22px;}
+  .card > b{display:block;font:750 15px var(--display);margin:8px 0 6px;}
+  .card p{margin:0;color:var(--muted);font:13.5px/1.6 var(--display);}
+  .steps{display:grid;gap:12px;grid-template-columns:repeat(4,1fr);counter-reset:s;}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;counter-increment:s;}
+  .step::before{content:counter(s);display:grid;place-items:center;width:26px;height:26px;border:1px solid var(--mint);
+    color:var(--mint);font:800 12px var(--mono);border-radius:50%;margin-bottom:8px;}
+  .step > b{display:block;font:750 14px var(--display);margin-bottom:4px;}
+  .step p b{color:var(--text);}
+  .step p{margin:0;color:var(--muted);font:13px/1.55 var(--display);}
+  @media (max-width:900px){.cards{grid-template-columns:1fr;} .steps{grid-template-columns:repeat(2,1fr);}}
+  @media (max-width:520px){.steps{grid-template-columns:1fr;}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;}
+  #story{padding:14px 18px;margin:0 0 14px;border-left:4px solid var(--mint);min-height:86px;transition:border-color .2s;}
+  #story.fault{border-left-color:var(--amber);} #story.good{border-left-color:var(--mint);} #story.bad{border-left-color:var(--red);}
+  #story .k{font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  #storyTitle{font:800 20px var(--display);margin:4px 0 4px;}
+  #story.fault #storyTitle{color:var(--amber);} #story.good #storyTitle{color:var(--mint);}
+  #storyText{color:var(--muted);font:14.5px/1.55 var(--display);max-width:860px;}
   .grid{display:grid;gap:14px;grid-template-columns:repeat(4,1fr);}
   @media (max-width:860px){.grid{grid-template-columns:repeat(2,1fr);}}
   .gauge-card{padding:12px;text-align:center;}
   .gauge-card canvas{width:100%;max-width:170px;aspect-ratio:1/0.62;}
-  .gauge-label{font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+  .gauge-label{font:750 13px var(--display);margin-top:4px;}
   .gauge-value{font:800 22px var(--mono);color:var(--mint);}
   .gauge-unit{font:700 11px var(--mono);color:var(--muted);}
+  .gauge-sub{font:12px/1.4 var(--display);color:var(--muted);margin-top:3px;}
   .row2{display:grid;gap:14px;grid-template-columns:2fr 1fr;margin-top:14px;}
   @media (max-width:860px){.row2{grid-template-columns:1fr;}}
   .chart-card{padding:14px;}
-  .chart-card h2{margin:0 0 8px;font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
-  #strip{width:100%;height:220px;display:block;}
-  .legend-row{display:flex;gap:16px;flex-wrap:wrap;font:11px var(--mono);color:var(--muted);margin-top:8px;}
+  .card-title{margin:0 0 8px;font:750 14px var(--display);}
+  .card-title small{display:block;font:12.5px var(--display);color:var(--muted);margin-top:2px;font-weight:400;}
+  #strip{width:100%;height:230px;display:block;}
+  .legend-row{display:flex;gap:16px;flex-wrap:wrap;font:12.5px var(--display);color:var(--muted);margin-top:8px;}
   .legend-row i{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border-radius:2px;}
   .side-card{padding:14px;}
-  .side-card h2{margin:0 0 10px;font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
-  .led-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font:12px var(--mono);}
-  .led-row:last-child{border-bottom:0;}
-  .led{width:10px;height:10px;border-radius:50%;background:#2a3b38;box-shadow:inset 0 0 2px rgba(0,0,0,.6);flex:none;}
-  .led.on-amber{background:var(--amber);box-shadow:0 0 8px var(--amber);}
-  .led.on-mint{background:var(--mint);box-shadow:0 0 6px var(--mint);}
-  .led.on-red{background:var(--red);box-shadow:0 0 6px var(--red);}
-  .req-badge{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font:11px var(--mono);}
-  .req-badge:last-child{border-bottom:0;}
-  .req-badge b{color:var(--text);}
-  .pill{font:800 9px var(--mono);padding:2px 7px;border-radius:999px;letter-spacing:.06em;}
+  .check{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font:13px/1.45 var(--display);}
+  .check:last-child{border-bottom:0;}
+  .check small{display:block;color:var(--muted);font:10.5px var(--mono);margin-top:2px;}
+  .pill{font:800 10px var(--mono);padding:3px 8px;border-radius:999px;letter-spacing:.06em;flex:none;}
   .pill.pass{background:rgba(105,247,205,.14);color:var(--mint);border:1px solid rgba(105,247,205,.4);}
   .pill.fail{background:rgba(255,93,93,.14);color:var(--red);border:1px solid rgba(255,93,93,.4);}
+  .pill.wait{background:transparent;color:var(--muted);border:1px solid var(--line);}
   #controls{display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap;margin-top:14px;}
   #controls button,#controls select{background:transparent;color:var(--text);border:1px solid var(--line);font:700 11px var(--mono);
     padding:7px 11px;cursor:pointer;letter-spacing:.04em;border-radius:6px;}
   #controls button:hover{border-color:var(--mint);color:var(--mint);}
   #scrub{flex:1;min-width:160px;accent-color:var(--mint);}
   #clock{font:700 12px var(--mono);color:var(--muted);min-width:96px;text-align:right;}
-  .note{font:11.5px/1.55 var(--display);color:var(--muted);margin-top:14px;border-left:2px solid var(--amber);padding-left:10px;max-width:760px;}
-  .protoline{font:11px var(--mono);color:var(--muted);margin-top:4px;}
-  .protoline b{color:var(--mint);}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:760px){.split{grid-template-columns:1fr;}}
+  .split ul{margin:8px 0 0;padding-left:18px;color:var(--muted);font:13.5px/1.7 var(--display);}
+  .split b{color:var(--text);}
+  details{margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;}
+  summary{cursor:pointer;font:750 14px var(--display);}
+  details p, details li{color:var(--muted);font:13.5px/1.65 var(--display);}
+  table{border-collapse:collapse;font:12.5px var(--mono);margin:8px 0;}
+  td,th{border-bottom:1px solid var(--line);padding:6px 10px;text-align:left;}
+  th{color:var(--muted);font-weight:700;}
+  code{font:12.5px var(--mono);color:var(--text);background:rgba(105,247,205,.07);padding:1px 5px;}
 </style>
 <link rel="stylesheet" href="../site-nav.css"/>
 </head>
 <body>
 
 <header class="site-header">
-  <a class="brand" href="/"><div class="brand-mark" aria-hidden="true">PX</div><h1>Bench Rig <span class="dim">virtual DAQ replay</span></h1></a>
+  <a class="brand" href="/"><div class="brand-mark" aria-hidden="true">PX</div><h1>Motor Test Bench <span class="dim">automated test replay</span></h1></a>
   <nav class="site-nav" aria-label="Site">
     <a href="/">Home</a>
     <a href="/demo/">Swarm Demo</a>
@@ -82,52 +111,73 @@
 </header>
 
 <main>
-  <p class="intro">Replay of a scripted <b>test campaign</b> against a virtual motor/thrust test stand — not a flight
-    controller. A background thread steps the rig and serves <b>command_pct / rpm / thrust_n / load_cell_n / voltage_v /
-    temp_c</b> over a real <b>Modbus TCP</b> register map (<code>modbus_registers.py</code>, <code>modbus_server.py</code>),
-    the same protocol class of interface a bench DAQ/PLC system would use. This page replays the recorded run and its
-    pass/fail requirement evidence; it does not connect to Modbus live.
-    <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/docs/bench_rig.md" style="color:var(--mint)">Full writeup →</a></p>
+  <div class="eyebrow">Test engineering · simulated motor test bench</div>
+  <h2 class="title">Before a drone flies, its motors are tested on a bench.<br/><span>This test runs itself, breaks things on purpose, and grades the result.</span></h2>
+  <p class="lead">A drone motor is clamped to a <b>test bench</b> with sensors that measure how hard it pushes, the battery voltage and
+    the motor temperature. Instead of a person watching gauges, a <b>test script</b> drives the motor through a sequence,
+    <b>deliberately breaks two sensors</b>, and checks five rules automatically. Press play below; the panel explains each moment.</p>
+
+  <h3>Why this matters</h3>
+  <div class="cards">
+    <div class="card"><div class="icon" aria-hidden="true">🛠️</div><b>Catch problems on the ground</b>
+      <p>A weak motor or a sagging battery found on a bench costs minutes. Found in the air, it costs a drone. Teams test every motor and battery before they fly.</p></div>
+    <div class="card"><div class="icon" aria-hidden="true">📟</div><b>Sensors fail too</b>
+      <p>A broken sensor can look exactly like a broken motor. A trustworthy test has to tell the difference, so this one breaks its own sensors on purpose and checks it notices.</p></div>
+    <div class="card"><div class="icon" aria-hidden="true">✅</div><b>Same test, every time</b>
+      <p>Software runs the sequence and grades the result identically on every run, and keeps the evidence. That is the core of test engineering, and of the tools aerospace and drone companies build for their test stands.</p></div>
+  </div>
+
+  <h3>How the test works</h3>
+  <div class="steps">
+    <div class="step"><b>Run a throttle sequence</b><p>The script asks the motor for 30%, 60%, 90% and 50% power, then switches it off.</p></div>
+    <div class="step"><b>Measure everything</b><p>Thrust, voltage and temperature are read 20 times a second over <b>Modbus</b>, the standard language industrial measuring equipment speaks.</p></div>
+    <div class="step"><b>Break sensors on purpose</b><p>The thrust sensor's signal is cut for 2 seconds, and later the temperature sensor freezes.</p></div>
+    <div class="step"><b>Grade automatically</b><p>Five rules are checked from the recorded data. Each one passes or fails, with no human judgement involved.</p></div>
+  </div>
+
+  <h3>Watch the recorded test</h3>
+  <div id="story" class="panel" aria-live="polite">
+    <div class="k">What's happening now</div>
+    <div id="storyTitle">Loading the recorded test…</div>
+    <div id="storyText"></div>
+  </div>
 
   <div class="grid">
     <div class="panel gauge-card">
-      <canvas id="gCommand" width="170" height="105" aria-label="Command percent gauge"></canvas>
-      <div class="gauge-value" id="vCommand">0</div><div class="gauge-unit">% command</div>
-      <div class="gauge-label">Throttle</div>
+      <canvas id="gCommand" width="170" height="105" aria-label="Throttle gauge"></canvas>
+      <div class="gauge-value" id="vCommand">0</div><div class="gauge-unit">% throttle</div>
+      <div class="gauge-label">Throttle requested</div><div class="gauge-sub">What the test asks for</div>
     </div>
     <div class="panel gauge-card">
       <canvas id="gThrust" width="170" height="105" aria-label="Thrust gauge"></canvas>
-      <div class="gauge-value" id="vThrust">0.0</div><div class="gauge-unit">N load cell</div>
-      <div class="gauge-label">Thrust</div>
+      <div class="gauge-value" id="vThrust">0.0</div><div class="gauge-unit">newtons</div>
+      <div class="gauge-label">Thrust measured</div><div class="gauge-sub">How hard the motor pushes</div>
     </div>
     <div class="panel gauge-card">
       <canvas id="gVolt" width="170" height="105" aria-label="Battery voltage gauge"></canvas>
-      <div class="gauge-value" id="vVolt">0.0</div><div class="gauge-unit">V battery</div>
-      <div class="gauge-label">Voltage</div>
+      <div class="gauge-value" id="vVolt">0.0</div><div class="gauge-unit">volts</div>
+      <div class="gauge-label">Battery voltage</div><div class="gauge-sub">Dips when the motor works hard</div>
     </div>
     <div class="panel gauge-card">
       <canvas id="gTemp" width="170" height="105" aria-label="Motor temperature gauge"></canvas>
-      <div class="gauge-value" id="vTemp">0.0</div><div class="gauge-unit">°C winding</div>
-      <div class="gauge-label">Temperature</div>
+      <div class="gauge-value" id="vTemp">0.0</div><div class="gauge-unit">°C</div>
+      <div class="gauge-label">Motor temperature</div><div class="gauge-sub">Rises slowly under load</div>
     </div>
   </div>
 
   <div class="row2">
     <div class="panel chart-card">
-      <h2>Command vs. measured thrust</h2>
+      <div class="card-title">Requested vs. measured<small>The measured line should follow the request. Where it doesn't, something is wrong, or we broke it on purpose (shaded).</small></div>
       <canvas id="strip"></canvas>
       <div class="legend-row">
-        <span><i style="background:var(--amber)"></i>command %</span>
-        <span><i style="background:var(--mint)"></i>load-cell reading (N)</span>
-        <span><i style="background:var(--pink)"></i>playhead</span>
+        <span><i style="background:var(--amber)"></i>throttle requested (%)</span>
+        <span><i style="background:var(--mint)"></i>thrust measured by the sensor</span>
+        <span><i style="background:rgba(255,181,71,.35)"></i>sensor broken on purpose</span>
+        <span><i style="background:var(--pink)"></i>now</span>
       </div>
     </div>
     <div class="panel side-card">
-      <h2>Fault channel</h2>
-      <div class="led-row"><span>Load-cell dropout</span><span class="led" id="ledDropout"></span></div>
-      <div class="led-row"><span>Frozen temp sensor</span><span class="led" id="ledFrozen"></span></div>
-      <div class="led-row"><span>Voltage brownout</span><span class="led" id="ledBrownout"></span></div>
-      <h2 style="margin-top:16px">Campaign requirements</h2>
+      <div class="card-title">The five automatic checks<small>Graded from the recorded data when the test ends.</small></div>
       <div id="reqList"></div>
     </div>
   </div>
@@ -135,15 +185,45 @@
   <div id="controls" class="panel">
     <button id="play" aria-label="Play or pause">❚❚ Pause</button>
     <button id="restart">↺ Restart</button>
-    <select id="speed" aria-label="Playback speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option><option value="8">8×</option></select>
-    <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub through the campaign"/>
+    <select id="speed" aria-label="Playback speed"><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+    <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub through the test"/>
     <span id="clock">0.0 / 0.0 s</span>
   </div>
 
-  <p class="note">The physics here is a first-order lag + quadratic thrust curve tuned for plausible magnitudes, <b>not
-    fit to a measured physical rig</b>. What is real: the Modbus register map and TCP server (<code>pymodbus</code>),
-    the deterministic campaign runner, and the four scored requirements below, re-derived from the actual recorded
-    samples rather than written by hand. <a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/docs/bench_rig.md" style="color:var(--mint)">Scope and limits →</a></p>
+  <h3>What's real, and what's simulated</h3>
+  <div class="split">
+    <div class="card"><b>Real</b>
+      <ul>
+        <li>The <b>test automation</b>: the scripted sequence, the fault injection and the five checks.</li>
+        <li>The <b>Modbus server</b>, the same protocol real bench equipment uses, tested over a real network connection.</li>
+        <li>Each check is <b>proven able to fail</b>: tests feed it bad data and confirm it catches it.</li>
+      </ul></div>
+    <div class="card"><b>Simulated</b>
+      <ul>
+        <li>The <b>motor, battery and sensors</b> are a software model with realistic behaviour (spin-up lag, voltage sag, heating), not a physical motor.</li>
+        <li>The numbers are believable but <b>not measured</b> from real hardware.</li>
+        <li>On a real bench, the model is replaced by real sensors; the test script and checks stay the same.</li>
+      </ul></div>
+  </div>
+
+  <details>
+    <summary>For engineers: model, registers, and requirements</summary>
+    <p>The rig is <code>VirtualTestRig</code>: first-order RPM lag (τ 0.35 s), thrust ∝ RPM², battery sag with load, a thermal
+      climb toward a load-dependent steady state, and Gaussian sensor noise. A background thread steps it at 20 Hz and serves
+      it from a <code>pymodbus</code> Modbus TCP server as seven holding registers (unsigned 16-bit, fixed-point ×100):</p>
+    <table>
+      <tr><th>Register</th><th>Value</th></tr>
+      <tr><td>0</td><td>throttle command % (write)</td></tr><tr><td>1</td><td>RPM</td></tr>
+      <tr><td>2</td><td>modelled thrust (N)</td></tr><tr><td>3</td><td>load-cell reading (N)</td></tr>
+      <tr><td>4</td><td>battery voltage (V)</td></tr><tr><td>5</td><td>winding temperature (°C)</td></tr>
+      <tr><td>6</td><td>active fault code</td></tr>
+    </table>
+    <p>The recorded campaign is run in-process with a fixed seed so it is reproducible; the Modbus path is covered by its own
+      integration test over real sockets. Requirements REQ-BENCH-001…005 are re-derived from the samples. REQ-BENCH-005 flags a
+      channel whose reading has not changed at all for 0.5 s and requires every injected freeze to be caught within 1 s with no
+      false alarms. This run does not inject a battery brownout, so REQ-BENCH-003 is only checked against normal sag.</p>
+    <p><a href="https://github.com/abelxmendoza/PX4-Autonomous-Missions/blob/main/docs/bench_rig.md">Full write-up, scope and limits →</a></p>
+  </details>
 </main>
 
 <script src="../bench-replay.js"></script>
@@ -157,19 +237,22 @@
   const samples = data.samples;
   const windows = faultWindowsFor(samples);
   const t0 = samples[0].t, tEnd = samples[samples.length - 1].t, dur = tEnd - t0;
+  const FAULT_LABEL = {load_cell_dropout: 'thrust sensor cut', frozen_temp_sensor: 'temp sensor frozen', voltage_brownout: 'battery brownout'};
 
-  // ---- requirement badges (static, from the report) ----
-  $('reqList').innerHTML = data.report.requirements.map((r) => `
-    <div class="req-badge">
-      <span><b>${r.id}</b> ${r.description}</span>
-      <span class="pill ${r.passed ? 'pass' : 'fail'}">${r.passed ? 'PASS' : 'FAIL'}</span>
-    </div>`).join('');
+  // ---- the five checks, in plain English; graded results appear when the test ends ----
+  function drawChecks(done) {
+    $('reqList').innerHTML = data.report.requirements.map((r) => {
+      const pill = !done ? '<span class="pill wait">…</span>'
+        : `<span class="pill ${r.passed ? 'pass' : 'fail'}">${r.passed ? 'PASS' : 'FAIL'}</span>`;
+      return `<div class="check"><span>${BENCH_PLAIN[r.id] || r.description}<small>${r.id}</small></span>${pill}</div>`;
+    }).join('');
+  }
 
   // ---- gauge drawing (arc gauge: track + needle + filled arc) ----
   function drawGauge(canvas, frac, color) {
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height, cx = w / 2, cy = h - 6, r = Math.min(w / 2 - 10, h - 16);
-    const start = Math.PI, end = 0; // left to right, over the top
+    const start = Math.PI, end = 0;
     ctx.clearRect(0, 0, w, h);
     ctx.lineWidth = 10; ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(134,255,222,.16)';
@@ -184,62 +267,72 @@
     ctx.stroke();
   }
 
-  // ---- strip chart: command% and thrust(N) over the full campaign, plus a playhead ----
+  // ---- chart: requested throttle vs measured thrust, labelled fault bands, playhead ----
   const stripCanvas = $('strip');
   function resizeStrip() {
     const rect = stripCanvas.getBoundingClientRect();
     stripCanvas.width = Math.max(300, rect.width) * devicePixelRatio;
-    stripCanvas.height = 220 * devicePixelRatio;
+    stripCanvas.height = 230 * devicePixelRatio;
   }
   function drawStrip(t) {
     const ctx = stripCanvas.getContext('2d');
-    const w = stripCanvas.width, h = stripCanvas.height;
+    const w = stripCanvas.width, h = stripCanvas.height, dpr = devicePixelRatio;
     ctx.clearRect(0, 0, w, h);
-    const pad = 10 * devicePixelRatio;
+    const pad = 10 * dpr, top = 22 * dpr;
     const x = (tt) => pad + (w - 2 * pad) * (tt - t0) / dur;
     const maxThrust = Math.max(1, ...samples.map((s) => s.thrust_n));
-    const yCmd = (v) => h - pad - (h - 2 * pad) * (v / 100);
-    const yThr = (v) => h - pad - (h - 2 * pad) * (v / maxThrust);
-
-    // fault windows as background bands
-    ctx.fillStyle = 'rgba(255,181,71,.10)';
-    for (const win of windows) ctx.fillRect(x(win.start_s), 0, Math.max(1, x(win.end_s) - x(win.start_s)), h);
-
+    const yCmd = (v) => h - pad - (h - pad - top) * (v / 100);
+    const yThr = (v) => h - pad - (h - pad - top) * (v / maxThrust);
+    for (const win of windows) {
+      ctx.fillStyle = 'rgba(255,181,71,.13)';
+      ctx.fillRect(x(win.start_s), 0, Math.max(1, x(win.end_s) - x(win.start_s)), h);
+      ctx.fillStyle = '#ffb547'; ctx.font = `700 ${11 * dpr}px monospace`; ctx.textAlign = 'center';
+      ctx.fillText(FAULT_LABEL[win.name] || win.name, (x(win.start_s) + x(win.end_s)) / 2, 14 * dpr);
+    }
     function line(getY, key, color) {
-      ctx.strokeStyle = color; ctx.lineWidth = 1.6 * devicePixelRatio; ctx.beginPath();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.8 * dpr; ctx.beginPath();
       samples.forEach((s, i) => { const px = x(s.t), py = getY(s[key]); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
       ctx.stroke();
     }
     line(yCmd, 'command_pct', '#ffb547');
     line(yThr, 'load_cell_n', '#69f7cd');
-
-    ctx.strokeStyle = '#ff5da2'; ctx.lineWidth = 2 * devicePixelRatio;
-    ctx.beginPath(); ctx.moveTo(x(t), 0); ctx.lineTo(x(t), h); ctx.stroke();
+    ctx.strokeStyle = '#ff5da2'; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(x(t), top - 4 * dpr); ctx.lineTo(x(t), h); ctx.stroke();
   }
 
   function fmt(v, d) { return (Math.abs(v) < 0.005 ? 0 : v).toFixed(d); }
 
+  let lastStory = '', checksDone = null;
   function update(t) {
     const s = sampleAt(samples, t);
     drawGauge($('gCommand'), s.command_pct / 100, '#ffb547');
-    drawGauge($('gThrust'), s.thrust_n / 30, '#69f7cd');
+    drawGauge($('gThrust'), s.load_cell_n / 30, s.fault_active === 'load_cell_dropout' ? '#ffb547' : '#69f7cd');
     drawGauge($('gVolt'), s.voltage_v / 17, '#69f7cd');
-    drawGauge($('gTemp'), s.temp_c / 100, s.temp_c > 70 ? '#ff5d5d' : '#ffb547');
+    drawGauge($('gTemp'), s.temp_c / 100, s.fault_active === 'frozen_temp_sensor' ? '#ffb547' : '#69f7cd');
     $('vCommand').textContent = fmt(s.command_pct, 0);
-    $('vThrust').textContent = fmt(s.load_cell_n, 1);
+    // A load cell jitters by about ±0.1 N around zero at rest; shown as 0 so the gauge doesn't
+    // read as "negative thrust" (the recorded data and the checks keep the raw values).
+    $('vThrust').textContent = fmt(Math.max(0, s.load_cell_n), 1);
     $('vVolt').textContent = fmt(s.voltage_v, 1);
     $('vTemp').textContent = fmt(s.temp_c, 1);
 
-    $('ledDropout').className = 'led' + (s.fault_active === 'load_cell_dropout' ? ' on-amber' : '');
-    $('ledFrozen').className = 'led' + (s.fault_active === 'frozen_temp_sensor' ? ' on-amber' : '');
-    $('ledBrownout').className = 'led' + (s.fault_active === 'voltage_brownout' ? ' on-red' : '');
+    const story = benchStory(data, t);
+    const key = story.title + story.tone;
+    if (key !== lastStory) {
+      lastStory = key;
+      $('story').className = `panel ${story.tone}`;
+      $('storyTitle').textContent = story.title;
+      $('storyText').textContent = story.text;
+    }
+    const done = t >= tEnd - 1e-6;
+    if (done !== checksDone) { checksDone = done; drawChecks(done); }
 
     drawStrip(t);
     $('scrub').value = Math.round(1000 * (t - t0) / dur);
     $('clock').textContent = `${(t - t0).toFixed(1)} / ${dur.toFixed(1)} s`;
   }
 
-  // ---- playback ----
+  // ---- playback (?t=<seconds>&paused for shareable moments) ----
   const params = new URLSearchParams(location.search);
   const startAt = Number(params.get('t'));
   let t = t0 + (Number.isFinite(startAt) && startAt > 0 ? Math.min(startAt, dur) : 0);
@@ -263,8 +356,7 @@
     requestAnimationFrame(loop);
   })(performance.now());
 })().catch((err) => {
-  document.querySelector('main').innerHTML =
-    `<p style="color:var(--amber)">Could not load the recorded campaign: ${err.message}</p>`;
+  document.getElementById('storyTitle').textContent = 'Could not load the recorded test: ' + err.message;
 });
 </script>
 </body>

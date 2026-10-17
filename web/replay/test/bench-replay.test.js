@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const SITE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { parseBenchCampaign, sampleAt, faultWindowsFor } = require('../bench-replay.js');
 
@@ -69,5 +73,29 @@ describe('faultWindowsFor', () => {
 
   it('returns no windows when nothing ever faults', () => {
     expect(faultWindowsFor([sample(0), sample(1)])).toEqual([]);
+  });
+});
+
+describe('bench narration', () => {
+  const { benchStory, throttleSteps, BENCH_PLAIN } = require('../bench-replay.js');
+  const data = parseBenchCampaign(readFileSync(join(SITE, 'data/bench_campaign.json'), 'utf8'));
+  const end = data.samples[data.samples.length - 1].t;
+
+  it('tells the story from the recording: ready, throttle steps, faults, the catch, and the result', () => {
+    expect(benchStory(data, 0).title).toBe('Ready');
+    expect(throttleSteps(data.samples).map(s => s.to)).toEqual([30, 60, 90, 50, 0]);
+    expect(benchStory(data, 3).title).toBe('Throttle up to 30%');
+    expect(benchStory(data, 8).title).toMatch(/Sensor failure/);
+    expect(benchStory(data, 11.2).title).toMatch(/Temperature sensor frozen/);
+    expect(benchStory(data, 12).title).toBe('Frozen sensor caught at 11.5 s');
+    expect(benchStory(data, 10.5).title).toMatch(/Full power/);
+    expect(benchStory(data, 18).title).toBe('Motor off');
+    const done = benchStory(data, end);
+    expect(done.title).toBe('Test complete');
+    expect(done.text).toMatch(/5 of 5 automatic checks passed/);
+  });
+
+  it('has a plain-English name for every check in the report', () => {
+    for (const r of data.report.requirements) expect(BENCH_PLAIN[r.id], r.id).toBeTruthy();
   });
 });

@@ -81,3 +81,43 @@ def test_command_at_holds_the_last_setpoint_at_or_before_each_time():
     samples, _ = run_campaign(spec)
     assert samples[0].command_pct == 0.0
     assert samples[-1].command_pct == 80.0
+
+
+def _flat_samples(temps, fault=""):
+    return [RigSample(t=round(i * 0.05, 6), command_pct=50.0, rpm=4000.0, thrust_n=5.0, load_cell_n=5.0,
+                      voltage_v=16.0, temp_c=v, fault_active=fault) for i, v in enumerate(temps)]
+
+
+def test_req_bench_005_catches_the_golden_frozen_sensor_within_a_second():
+    samples, results = run_campaign(golden_spec())
+    req = next(r for r in results if r.req_id == "REQ-BENCH-005")
+    assert req.passed, req.detail
+    from px4_offboard.bench.campaign import detect_stuck_sensor
+    detections = detect_stuck_sensor(samples, "temp_c")
+    assert len(detections) == 1
+    frozen = next(f for f in golden_spec().faults if f.name == "frozen_temp_sensor")
+    assert frozen.start_s <= detections[0] <= frozen.start_s + 1.0
+
+
+def test_req_bench_005_fails_when_a_declared_freeze_never_shows_up():
+    """The fault is declared but the reading keeps moving: nothing was actually frozen,
+    so the requirement must fail instead of trusting the declaration."""
+    spec = replace(golden_spec(), faults=[FaultWindow("frozen_temp_sensor", start_s=0.5, duration_s=1.0)])
+    samples = _flat_samples([30.0 + 0.01 * (i % 7) for i in range(60)])
+    req = next(r for r in evaluate_requirements(samples, spec) if r.req_id == "REQ-BENCH-005")
+    assert req.passed is False
+
+
+def test_req_bench_005_fails_on_a_false_alarm_from_a_healthy_sensor():
+    """A reading that repeats exactly with no fault injected is flagged: the check must
+    report it rather than pass because no freeze was planned."""
+    spec = replace(golden_spec(), faults=[])
+    samples = _flat_samples([30.0] * 60)
+    req = next(r for r in evaluate_requirements(samples, spec) if r.req_id == "REQ-BENCH-005")
+    assert req.passed is False
+
+
+def test_the_report_lists_when_the_stuck_sensor_was_flagged():
+    samples, results = run_campaign(golden_spec())
+    report = report_dict(golden_spec(), samples, results)
+    assert report["events"] == [{"t": 11.5, "event": "stuck_sensor_flagged", "channel": "temp_c"}]

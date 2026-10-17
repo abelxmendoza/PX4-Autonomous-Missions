@@ -58,6 +58,27 @@ def run_campaign(spec: CampaignSpec) -> tuple[list[RigSample], list[RequirementR
     return samples, evaluate_requirements(samples, spec)
 
 
+def detect_stuck_sensor(samples: Sequence[RigSample], key: str = "temp_c", min_run_s: float = 0.5) -> list[float]:
+    """Times at which a channel is first flagged as stuck.
+
+    A live sensor reading always carries some noise, so it never repeats exactly. A reading
+    that has not changed at all for ``min_run_s`` is flagged once, at the moment the run
+    reaches that length; the flag re-arms when the reading moves again.
+    """
+    flagged: list[float] = []
+    run_start: float | None = None
+    armed = True
+    for prev, cur in zip(samples, samples[1:]):
+        if getattr(cur, key) == getattr(prev, key):
+            run_start = prev.t if run_start is None else run_start
+            if armed and cur.t - run_start >= min_run_s - 1e-9:
+                flagged.append(cur.t)
+                armed = False
+        else:
+            run_start, armed = None, True
+    return flagged
+
+
 def evaluate_requirements(samples: Sequence[RigSample], spec: CampaignSpec) -> list[RequirementResult]:
     results: list[RequirementResult] = []
 
@@ -98,6 +119,21 @@ def evaluate_requirements(samples: Sequence[RigSample], spec: CampaignSpec) -> l
         detail=f"{len(brownouts)} sample(s) below the floor" if brownouts else "voltage stayed above the floor",
     ))
 
+    frozen_windows = [f for f in spec.faults if f.name == "frozen_temp_sensor"]
+    stuck = detect_stuck_sensor(samples, "temp_c")
+    in_window = lambda t: any(w.start_s <= t < w.start_s + w.duration_s for w in frozen_windows)  # noqa: E731
+    missed_freezes = [w for w in frozen_windows if not any(w.start_s <= t <= w.start_s + 1.0 for t in stuck)]
+    false_alarms = [t for t in stuck if not in_window(t)]
+    results.append(RequirementResult(
+        "REQ-BENCH-005",
+        "A frozen temperature sensor is detected within 1 s, with no false alarms",
+        passed=not missed_freezes and not false_alarms,
+        detail=(f"{len(missed_freezes)} freeze(s) not detected within 1 s" if missed_freezes else
+                f"{len(false_alarms)} false alarm(s) on a healthy reading" if false_alarms else
+                ("stuck reading flagged at " + ", ".join(f"{t:.2f} s" for t in stuck)) if stuck else
+                "no freeze injected and none flagged"),
+    ))
+
     gap_tolerance_s = spec.config.dt_s * 1.5
     gaps = [(a.t, b.t) for a, b in zip(samples, samples[1:]) if b.t - a.t > gap_tolerance_s]
     results.append(RequirementResult(
@@ -107,7 +143,7 @@ def evaluate_requirements(samples: Sequence[RigSample], spec: CampaignSpec) -> l
         detail=f"{len(gaps)} gap(s)" if gaps else "no gaps",
     ))
 
-    return results
+    return sorted(results, key=lambda r: r.req_id)
 
 
 def report_dict(spec: CampaignSpec, samples: Sequence[RigSample], results: Sequence[RequirementResult]) -> dict:
@@ -123,6 +159,9 @@ def report_dict(spec: CampaignSpec, samples: Sequence[RigSample], results: Seque
             for r in results
         ],
         "passed": all(r.passed for r in results),
+        # What the automatic checks noticed, and when (the replay's narration reads these).
+        "events": [{"t": round(t, 3), "event": "stuck_sensor_flagged", "channel": "temp_c"}
+                   for t in detect_stuck_sensor(samples, "temp_c")],
     }
 
 
