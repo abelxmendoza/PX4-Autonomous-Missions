@@ -3,6 +3,13 @@ name: RealmForge cloud simulation smoke test
 # Explicitly opt in to expensive simulator runs. No Railway service required.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/realmforge-world-adapter
+    paths:
+      - '.github/workflows/realmforge-cloud-sim.yml'
+      - 'tools/realmforge_to_sdf.py'
+      - 'tests/fixtures/realmforge_smoke_world.json'
 
 permissions:
   contents: read
