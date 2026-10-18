@@ -24,3 +24,19 @@ RealmForge uses x-right, y-up, z-toward-viewer, with object position at the base
 - Next: fixture tests for transforms/obstacle selection; Gazebo loading smoke test; hook a PX4 SITL launch script; then connect a browser replay overlay to recorded telemetry.
 
 Do not interpret a successful conversion as a validated simulation or safe physical flight environment.
+
+## Run the custom world with PX4 SITL (Linux workstation)
+
+After generating the SDF and installing the existing repository's PX4, Gazebo, ROS 2 and MAVLink dependencies:
+
+```bash
+python3 scripts/run_swarm_demo.py --world-file /tmp/realmforge.sdf --dropout
+```
+
+The runner validates the SDF XML and reads its world name to configure PX4 and the ROS visualization trail. The default world is unchanged when `--world-file` is omitted.
+
+**Caution:** The existing two-drone scenario has fixed spawn coordinates and planned routes. A RealmForge world can place walls across those positions or routes. Successful launch does not mean the mission is collision-free; use a clear scene for the first live test. Gazebo and PX4 runtime compatibility have not yet been exercised with a RealmForge export.
+
+## Phone access while the laptop is off
+
+The hosted browser replay can be viewed on a phone independently of the laptop, as long as its deployment remains online and the evidence is hosted with it. Live PX4 SITL execution requires an always-on machine or cloud runner with PX4, Gazebo and ROS 2 installed. A static Vercel site cannot execute Gazebo/PX4. For remote live sessions, use an authenticated backend, job queue, isolated simulator worker, and read-only telemetry streaming first; do not expose MAVLink or ROS ports publicly.
