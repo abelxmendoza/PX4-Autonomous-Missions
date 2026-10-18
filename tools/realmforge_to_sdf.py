@@ -2,7 +2,7 @@
 """Convert a RealmForge XR world export to a Gazebo SDF static-obstacle world.
 
 Coordinate contract: RealmForge (x, y-up, z) -> Gazebo ENU (x, -z, y).
-RealmForge yaw about +Y -> Gazebo yaw about +Z with reversed sign.
+RealmForge yaw about +Y -> Gazebo yaw about +Z with the same sign.
 This intentionally exports primitive collision boxes, NOT scanned meshes,
 navigation grids, robot flight plans, or verified sensor models.
 """
@@ -60,7 +60,7 @@ def convert(data):
         link = ET.SubElement(model, "link", name="body")
         # Source position is base center; Gazebo boxes are center-origin.
         ET.SubElement(link, "pose").text = (
-            f"{pos[0]} {-pos[2]} {pos[1] + size[1] / 2} 0 0 {-yaw}"
+            f"{pos[0]} {-pos[2]} {pos[1] + size[1] / 2} 0 0 {yaw}"
         )
         for label in ("collision", "visual"):
             elem = ET.SubElement(link, label, name=label)
