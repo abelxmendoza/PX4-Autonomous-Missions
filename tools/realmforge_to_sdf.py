@@ -24,6 +24,24 @@ def convert(data):
     sdf = ET.Element("sdf", version="1.9")
     world = ET.SubElement(sdf, "world", name="realmforge")
     ET.SubElement(world, "gravity").text = "0 0 -9.81"
+    # PX4 Gazebo world conventions; system plugins are provided by server.config.
+    physics = ET.SubElement(world, "physics", name="1ms", type="ignored")
+    ET.SubElement(physics, "max_step_size").text = "0.001"
+    ET.SubElement(physics, "real_time_factor").text = "1.0"
+    coords = ET.SubElement(world, "spherical_coordinates")
+    for tag, value in (
+        ("surface_model", "EARTH_WGS84"),
+        ("latitude_deg", "47.397742"),
+        ("longitude_deg", "8.545594"),
+        ("elevation", "488.0"),
+        ("heading_deg", "0"),
+    ):
+        ET.SubElement(coords, tag).text = value
+    light = ET.SubElement(world, "light", name="sun", type="directional")
+    ET.SubElement(light, "pose").text = "0 0 10 0 0 0"
+    ET.SubElement(light, "diffuse").text = "1 1 1 1"
+    ET.SubElement(light, "specular").text = "0.4 0.4 0.4 1"
+    ET.SubElement(light, "direction").text = "-0.5 0.1 -0.9"
     ground = ET.SubElement(world, "model", name="ground")
     ET.SubElement(ground, "static").text = "true"
     link = ET.SubElement(ground, "link", name="ground_link")
