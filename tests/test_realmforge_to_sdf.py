@@ -48,6 +48,16 @@ class AdapterTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     module.convert(bad)
 
+    def test_px4_world_metadata(self):
+        xml, _ = module.convert(world([]))
+        root = ET.fromstring(xml)
+        w = root.find("./world")
+        self.assertEqual(w.find("./physics/max_step_size").text, "0.001")
+        self.assertEqual(w.find("./spherical_coordinates/surface_model").text, "EARTH_WGS84")
+        self.assertEqual(w.find("./spherical_coordinates/latitude_deg").text, "47.397742")
+        self.assertIsNotNone(w.find("./light[@name='sun']"))
+        self.assertEqual(w.findall("./plugin"), [])
+
     def test_empty_world_has_ground(self):
         xml, count = module.convert(world([]))
         self.assertEqual(count, 0)
