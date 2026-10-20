@@ -9,10 +9,10 @@ RealmForge owns scene authoring and XR presentation; PX4 Missions owns physics i
 - [x] Read RealmForge v1 JSON and export primitive static obstacles to SDF.
 - [x] Add deterministic fixture, unit tests, and GitHub Actions smoke checks.
 - [x] Add `--world-file` to the existing swarm runner.
-- [ ] Validate Gazebo loads the generated SDF on the configured Linux workstation.
+- [x] Load the generated fixture SDF in local headless Gazebo (1,000 iterations, October 20).
 - [ ] Confirm coordinate mapping, collision geometry, and vehicle spawn clearance visually.
 - [ ] Confirm the two-drone recovery scenario completes or document failures in the imported scene.
-- [ ] Make the adapter docs match the tested implementation; merge PR #3 after checks.
+- [x] Integrate the adapter branch and distinguish world-load validation from unvalidated PX4 mission execution.
 
 **Gate:** a repeatable command loads an exported world and produces a recorded PX4 SITL run. A passing XML test alone does not meet this gate.
 
@@ -62,7 +62,7 @@ RealmForge owns scene authoring and XR presentation; PX4 Missions owns physics i
 - No physical flight or hardware safety certification is implied by SITL verification.
 
 ## Recommended execution order
-1. Finish PR #3 and verify a live custom-world SITL run.
+1. Verify a live custom-world PX4 SITL run; adapter integration and headless world loading are complete.
 2. Build a small mission schema and adapter, not a new simulator.
 3. Extend the *existing* replay and verification UI.
 4. Make recorded results mobile-friendly.

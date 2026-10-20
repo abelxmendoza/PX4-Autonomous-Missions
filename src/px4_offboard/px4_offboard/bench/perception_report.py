@@ -80,13 +80,13 @@ def verify_perception_report(report: Any, *, allow_skip: bool = False) -> Percep
     root = _object(report, "report")
     if root.get("report_type") != REPORT_TYPE:
         raise PerceptionReportError(f"report_type must be {REPORT_TYPE!r}")
-    if root.get("schema_version") != SCHEMA_VERSION:
+    if type(root.get("schema_version")) is not int or root.get("schema_version") != SCHEMA_VERSION:
         raise PerceptionReportError(f"unsupported schema_version {root.get('schema_version')!r}")
     recording = _object(root.get("recording"), "recording")
     name, source = recording.get("name"), recording.get("source")
     if not isinstance(name, str) or not name:
         raise PerceptionReportError("recording.name must be a non-empty string")
-    if source not in {"synthetic", "hardware", "unknown"}:
+    if not isinstance(source, str) or source not in {"synthetic", "hardware", "unknown"}:
         raise PerceptionReportError("recording.source must be synthetic, hardware, or unknown")
     events = root.get("events")
     if not isinstance(events, list) or not events:
@@ -97,9 +97,9 @@ def verify_perception_report(report: Any, *, allow_skip: bool = False) -> Percep
     for index, raw_event in enumerate(events):
         event = _object(raw_event, f"events[{index}]")
         status, outcome, timestamp = event.get("status"), event.get("outcome"), event.get("timestamp_s")
-        if status not in STATUSES:
+        if not isinstance(status, str) or status not in STATUSES:
             raise PerceptionReportError(f"events[{index}].status is invalid")
-        if outcome not in OUTCOMES:
+        if not isinstance(outcome, str) or outcome not in OUTCOMES:
             raise PerceptionReportError(f"events[{index}].outcome is invalid")
         if (not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool)
                 or not math.isfinite(timestamp) or timestamp < previous_time):
@@ -108,7 +108,7 @@ def verify_perception_report(report: Any, *, allow_skip: bool = False) -> Percep
         observed_statuses[status] += 1
         observed_outcomes[outcome] += 1
     summary = _object(root.get("summary"), "summary")
-    if summary.get("total") != len(events):
+    if type(summary.get("total")) is not int or summary.get("total") != len(events):
         raise PerceptionReportError("summary.total does not match events")
     if _declared_counts(summary.get("statuses"), STATUSES, "summary.statuses") != observed_statuses:
         raise PerceptionReportError("summary.statuses does not match events")

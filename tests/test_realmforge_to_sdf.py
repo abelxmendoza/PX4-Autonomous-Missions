@@ -40,7 +40,9 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(count, 3)
 
     def test_bad_inputs_rejected(self):
-        for bad in [world([obj(size=(0, 1, 1))]),
+        for bad in [[], world([obj(kind=[])]), world([obj(size=(True, 1, 1))]),
+                    {"format": "realmforge-world", "version": True, "objects": []},
+                    world([obj(size=(0, 1, 1))]),
                     world([obj(position=(float("nan"), 0, 0))]),
                     {"format": "other", "version": 1, "objects": []},
                     world("not an array")]:

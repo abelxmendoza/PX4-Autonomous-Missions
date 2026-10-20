@@ -56,3 +56,18 @@ def test_cli_exit_codes_distinguish_pass_skip_and_malformed(tmp_path):
     assert subprocess.run([sys.executable, str(tool), str(path), "--allow-skip"], capture_output=True).returncode == 0
     path.write_text("{broken", encoding="utf-8")
     assert subprocess.run([sys.executable, str(tool), str(path)], capture_output=True).returncode == 2
+
+
+@pytest.mark.parametrize('field', ['status', 'outcome'])
+def test_unhashable_event_values_are_validation_errors(field):
+    payload = report()
+    payload['events'][0][field] = []
+    with pytest.raises(PerceptionReportError):
+        verify_perception_report(payload)
+
+
+def test_boolean_schema_version_is_not_an_integer_version():
+    payload = report()
+    payload['schema_version'] = True
+    with pytest.raises(PerceptionReportError):
+        verify_perception_report(payload)

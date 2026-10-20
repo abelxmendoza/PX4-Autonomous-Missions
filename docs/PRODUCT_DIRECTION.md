@@ -1,4 +1,4 @@
-# Autonomous Fleet Lab — Product direction (draft)
+# Autonomous Fleet Lab — Product direction and next acceptance gate
 
 ## Engineer problem
 Existing tools already fly, simulate and display multiple aircraft. This project should not duplicate PX4, Gazebo or QGroundControl. The product hypothesis is that engineers need a repeatable, evidence-first workflow to **compare autonomous fleet behavior across mission configurations and failure conditions**, with clear traceability from requirements to recorded telemetry.
@@ -23,9 +23,9 @@ This is a hypothesis to validate with users, not a claim that the market lacks a
 - Expose configuration through a local CLI first; UI selection follows after the adapter works.
 
 ## Current vs planned
-**Current:** fixed two-vehicle cooperative point-visit mission, PX4 SITL recordings, recovery verifier, browser replay, other single-vehicle experiments.
+**Current:** a recorded two-vehicle PX4 cooperative point-visit mission; an N-vehicle coordinator exercised at 1/2/3/5/10 vehicles in a kinematic harness; recovery verification; guided browser replays; offline ULog and recorded-perception verification; a synthetic-depth prototype; and an experimental RealmForge world adapter. The larger fleet harness is not a larger PX4 SITL demonstration.
 
-**Planned:** configurable fleet counts; general cooperative coverage missions; altitude/terrain datasets; synthetic airspace/traffic; parameterized weather; comparative reporting. None should be represented as production-ready today.
+**Next:** connect the existing fleet layout/coordinator to a parameterized PX4 runner and reproducible run manifests. Synthetic weather, airspace and traffic inputs already exist for seeding; a unified fleet experiment configuration and comparison workflow does not. General coverage missions, terrain datasets, hardware perception and remote execution remain later work.
 
 ## Non-goals
 - Building a replacement autopilot or GCS.
@@ -42,3 +42,23 @@ This is a hypothesis to validate with users, not a claim that the market lacks a
 
 ## User discovery
 Interview 5 engineers or researchers who run PX4/Gazebo tests. Ask about repeated manual setup, failure reproduction, multi-run comparison, and auditability. Compare with existing QGroundControl and PX4 simulation workflows before claiming differentiation.
+
+## Delivery order after consolidation
+
+1. **Fleet experiment contract and preflight validation.** Reuse `swarm_fleet_layout.make_fleet`;
+   accept counts 1–4 initially, a scenario ID, seed, fault schedule and output directory. Reject
+   overlapping starts, invalid IDs/ports and unsupported combinations before launching a process.
+   Test both accepted and rejected configurations. Do not add another coordinator.
+2. **Parameterized local PX4 runner.** Derive namespaces, ports, vehicle IDs and cleanup ownership
+   from that contract. Keep the current two-vehicle command and golden evidence unchanged.
+   Completion must count the configured vehicles, not a hard-coded pair.
+3. **Evidence and comparison.** Write config, seed, code revision, dirty state, PX4/Gazebo versions,
+   artifact hashes and termination reason to a manifest. Compare coverage, completion time,
+   recovery and sampled separation, with missing evidence explicitly incomplete.
+4. **Acceptance campaign.** Run at least two fleet sizes in real PX4 SITL, including one nominal and
+   one fault case. Preserve an intentionally failing verification and reproduce it offline.
+5. **UI only after that gate passes.** Add experiment selection/results around the working CLI.
+   Hosted completed results precede remote simulation; hardware work stays separately labelled.
+
+The immediate next implementation task is item 1. Consolidation does not mark this fleet gate passed.
+See [the consolidation record](consolidation_20261020.md) for integrated work and validation.

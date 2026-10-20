@@ -1,6 +1,8 @@
 # Cooperative two-UAV gate / landing-point mission
 
-The current coordinator flies four **point visits**, not the older four-lane survey. Legacy filenames (`run_swarm_demo.py`, `swarm_survey.launch.py`) and phase names (`SURVEY`) remain for compatibility. No payload delivery or imagery/area coverage is implemented.
+This document describes the established **two-vehicle PX4 launch**. The underlying coordinator also supports generated N-vehicle layouts, tested separately with a kinematic model at 1/2/3/5/10 vehicles; see [BUG-021](../bugs/BUG-021.md). Parameterizing the live PX4 runner is the [next product milestone](PRODUCT_DIRECTION.md).
+
+This launch flies four **point visits**, not the older four-lane survey. Legacy filenames (`run_swarm_demo.py`, `swarm_survey.launch.py`) and phase names (`SURVEY`) remain for compatibility. No payload delivery or imagery/area coverage is implemented.
 
 ## Run
 

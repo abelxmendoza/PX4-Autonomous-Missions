@@ -19,9 +19,9 @@ RealmForge uses x-right, y-up, z-toward-viewer, with object position at the base
 ## Current scope
 
 - Exports static box collision and visual geometry for objects marked solid, default-blocking walls/buildings/pallets/racks, and raised platforms.
-- Does not export decorative objects, mesh scans, material textures, robot routes, traffic zones, sensor models, georeferencing, or safety claims.
+- Does not export decorative objects, mesh scans, material textures, robot routes, traffic zones, sensor models, measured georeferencing, or safety claims. It includes fixed PX4-compatible spherical coordinates for simulation.
 - No continuous collision validation or flight testing has been performed.
-- Fixture tests and SDF XML smoke checks are in CI. Next: live Gazebo/PX4 testing, followed by a browser replay overlay.
+- Fixture tests are in the main test suite and adapter CI. The fixture passed a local headless Gazebo load; next is a PX4 mission with explicit spawn and route clearance checks.
 
 Do not interpret a successful conversion as a validated simulation or safe physical flight environment.
 
@@ -35,7 +35,7 @@ python3 scripts/run_swarm_demo.py --world-file /tmp/realmforge.sdf --dropout
 
 The runner validates the SDF XML and reads its world name to configure PX4 and the ROS visualization trail. The default world is unchanged when `--world-file` is omitted.
 
-**Caution:** The existing two-drone scenario has fixed spawn coordinates and planned routes. A RealmForge world can place walls across those positions or routes. Successful launch does not mean the mission is collision-free; use a clear scene for the first live test. Gazebo and PX4 runtime compatibility have not yet been exercised with a RealmForge export.
+**Caution:** The existing two-drone scenario has fixed spawn coordinates and planned routes. A RealmForge world can place walls across those positions or routes. Successful launch does not mean the mission is collision-free; use a clear scene for the first live test. The October 20 consolidation loaded the fixture in Gazebo for 1,000 iterations. A PX4 mission in the imported scene remains unvalidated.
 
 ## Phone access while the laptop is off
 

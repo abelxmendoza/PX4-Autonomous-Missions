@@ -6,10 +6,13 @@ This tool does NOT certify flight safety. Missing fields yield SKIP, not PASS.
 import argparse
 import json
 import math
+import struct
 from pathlib import Path
 
 
 def inspect_ulog(path, max_gap_s=2.0):
+    if not math.isfinite(max_gap_s) or max_gap_s <= 0:
+        raise ValueError("max_gap_s must be finite and positive")
     from pyulog import ULog
 
     log = ULog(str(path), message_name_filter_list=["vehicle_local_position"])
@@ -27,6 +30,10 @@ def inspect_ulog(path, max_gap_s=2.0):
                        "reason": "Missing fields: " + ", ".join(missing)})
     else:
         samples = len(data["timestamp"])
+        if any(len(data[f]) != samples for f in fields):
+            raise ValueError("Local-position fields have inconsistent sample counts")
+        if any(not math.isfinite(float(t)) or float(t) < 0 for t in data["timestamp"]):
+            raise ValueError("Local-position timestamps must be finite and non-negative")
         if not samples:
             checks.append({"id": "LOCAL_POSITION_VALID", "result": "SKIP",
                            "reason": "No samples"})
@@ -66,7 +73,7 @@ def main():
         parser.error("Provide an existing .ulg file")
     try:
         report = inspect_ulog(args.ulog, args.max_gap_s)
-    except (ImportError, ValueError, TypeError, OSError) as exc:
+    except (ImportError, ValueError, TypeError, OSError, EOFError, struct.error) as exc:
         parser.exit(2, f"Could not inspect ULog: {exc}\nInstall pyulog and check the input file.\n")
     rendered = json.dumps(report, indent=2)
     if args.output:

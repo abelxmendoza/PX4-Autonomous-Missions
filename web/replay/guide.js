@@ -62,7 +62,8 @@ function seedingGuideBeats(trace) {
   const touch = Number.isFinite(err) && marker != null
     ? ` Touchdown is ${err.toFixed(3)} m from marker ${marker}, using PX4's position. The marker survey did not guide the landing.`
     : '';
-  const beats = [];
+  const beats = [{at: 0, title: 'Taking off',
+    text: 'PX4 handles takeoff. The simulated dispenser stays closed until the mission reaches its release point and every gate allows it.'}];
   for (const s of trace.states) {
     const at = Math.max(0, s.t - t0);
     if (s.to === 'preflight' || s.to === 'takeoff') continue;

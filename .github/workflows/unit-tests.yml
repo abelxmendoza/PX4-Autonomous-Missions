@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH=src/px4_offboard python -m pytest src/px4_offboard/test -q --junitxml=test-results/python.xml | tee python-results.txt
+          PYTHONPATH=src/px4_offboard python -m pytest src/px4_offboard/test tests -q --junitxml=test-results/python.xml | tee python-results.txt
       - name: Test summary
         if: always()
         run: tail -n 3 python-results.txt >> "$GITHUB_STEP_SUMMARY"

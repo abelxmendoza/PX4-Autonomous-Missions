@@ -2,6 +2,8 @@
 
 A software-in-the-loop autonomous UAV platform built with ROS 2, PX4, Gazebo, MAVSDK, and MAVLink for developing, fault-testing, replaying, and verifying autonomous flight behavior.
 
+**Project direction:** Autonomous Fleet Lab — reproducible mission experiments with requirement-linked evidence. [Current capabilities and next acceptance gate](docs/PRODUCT_DIRECTION.md) · [October 20 consolidation](docs/consolidation_20261020.md).
+
 **Built by Abel Mendoza.** PX4 stabilizes and controls the simulated aircraft. Abel implemented the ROS 2 mission logic, navigation and safety integration, sensor bridges, cooperative coordinator, telemetry pipeline, replay, and requirement-based verification around it. The purpose is to make autonomous behavior observable and testable when something fails.
 
 ```mermaid
@@ -27,12 +29,12 @@ flowchart LR
 | Fresh recovery flight: **641 samples**, **2 reassignments**, **8.095491 m** minimum horizontal separation against a **2.5 m** requirement | [Report](evidence/swarm/golden_report.json) · [raw log](evidence/swarm/golden_recovery.jsonl.gz) |
 | **26 catalog requirements**, mapped to 19 single-vehicle verifier checks (incl. stereo/IMU fusion, velocity PID, loss-of-control) and cooperative acceptance behavior | [Requirements](docs/REQUIREMENTS.md) · [verification matrix](docs/verification_matrix.md) |
 | **9 curated cases**: 7 SITL recordings (two are live stereo flights pinned as expected failures) and 2 kinematic before/after traces; all expected outcomes reproduced | [Evidence manifest](evidence/manifest.json) |
-| **450 Python tests** with ROS (402 run in the ROS-free CI configuration); **27 browser tests**; C++ CTest with 41 checks against shared golden vectors | [Commands, results and scope](docs/engineering_results.md) |
+| **937 Python tests passed with ROS in the October 16 run**; newer consolidation results are recorded separately; C++ CTest checks shared golden vectors | [Dated results and scope](docs/consolidation_20261020.md) |
 | **2 documented defects**: premature task completion and dropped terminal replay evidence | [Coordinator case study](docs/case_studies/swarm-endpoint-acceptance.md) · [replay boundary case](docs/case_studies/replay-terminal-sample.md) |
 
 **Why verification matters:** two recovery tests reported COMPLETE while the drone had only passed within about 0.8–0.9 m of task points. Position-based verification rejected them. The coordinator now requires a closer endpoint visit; the original tests pass unchanged, and the preserved faulty recording must still fail.
 
-**Scope and limits:** fixed two-vehicle, single-host SITL; no hardware or HIL validation (a hardware-vehicle class and test architecture exist, but no physical flight controller has been connected). GPS-loss work is **PX4 estimator integration using simulated external odometry under GPS-aiding loss**: Gazebo pose plus modeled noise/drift, not visual SLAM or camera localization. ArUco detection does not steer the two-vehicle mission. A separate precision-land mode can take over once the vehicle is airborne, and an integrated seeding sortie hands that same controller the only trajectory stream after a staged return. One headless precision-land flight landed 0.098 m horizontally from search-field marker 4. One headless integrated sortie then released, returned, and landed 0.098 m from the same marker. Both reports are single runs, not part of the pinned evidence manifest, and no physical aircraft has been flown. A PASS applies only to documented checks; skipped checks, incomplete single-vehicle logs and unexercised faults are not proof of full mission success. Sampled separation does not prove continuous collision freedom or landing-pad accuracy.
+**Scope and limits:** the established cooperative PX4 demonstration uses two vehicles on one host; the N-vehicle coordinator has separate kinematic coverage at 1/2/3/5/10 vehicles; no hardware or HIL validation (a hardware-vehicle class and test architecture exist, but no physical flight controller has been connected). GPS-loss work is **PX4 estimator integration using simulated external odometry under GPS-aiding loss**: Gazebo pose plus modeled noise/drift, not visual SLAM or camera localization. ArUco detection does not steer the two-vehicle mission. A separate precision-land mode can take over once the vehicle is airborne, and an integrated seeding sortie hands that same controller the only trajectory stream after a staged return. One headless precision-land flight landed 0.098 m horizontally from search-field marker 4. One headless integrated sortie then released, returned, and landed 0.098 m from the same marker. Both reports are single runs, not part of the pinned evidence manifest, and no physical aircraft has been flown. A PASS applies only to documented checks; skipped checks, incomplete single-vehicle logs and unexercised faults are not proof of full mission success. Sampled separation does not prove continuous collision freedom or landing-pad accuracy.
 
 ## Validation platform
 
@@ -48,6 +50,8 @@ Beyond the autonomy stack, the repository is a firmware-validation harness. Each
 | **Bench rig** | Virtual motor/thrust test stand served over real Modbus TCP; scripted fault-injection campaign scored against 4 requirements | [bench_rig.md](docs/bench_rig.md) |
 | **Regression comparison** | `python tools/compare_runs.py baseline.csv candidate.csv` with explicit run-to-run variance handling | [TEST_PLAN.md](docs/TEST_PLAN.md) |
 | **Declarative test specs** | Strict YAML mission specs, mock execution, telemetry and requirement-linked reports; no live adapter yet | [test_specs.md](docs/test_specs.md) |
+| **Offline evidence tools** | ULog validity/timing checks and recorded depth-policy report verification; synthetic depth is a standalone prototype | [ULog](docs/FLIGHT_LOG_MVP.md) · [Perception](docs/perception_replay.md) |
+| **World import** | Experimental RealmForge JSON → static Gazebo obstacles; mission geometry still needs acceptance testing | [World adapter](docs/realmforge_integration.md) |
 | **Test plan** | Levels, pass/fail criteria, what was executed and what needs hardware | [TEST_PLAN.md](docs/TEST_PLAN.md) |
 
 ```bash

@@ -75,3 +75,12 @@ def test_cli_rejects_nonpositive_gap(tmp_path):
                           capture_output=True, text=True)
     assert proc.returncode == 2
     assert "finite and positive" in proc.stderr
+
+
+@pytest.mark.parametrize('fields', [
+    {'timestamp': [0, 1], 'x': [0], 'y': [0, 0], 'z': [0, 0]},
+    {'timestamp': [float('nan')], 'x': [0], 'y': [0], 'z': [0]},
+])
+def test_malformed_sample_arrays_are_input_errors(monkeypatch, fields):
+    with pytest.raises(ValueError):
+        inspect(monkeypatch, fields=fields)

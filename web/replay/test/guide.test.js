@@ -42,7 +42,7 @@ describe('seeding guides', () => {
     const trace = load('nominal');
     const beats = G.seedingGuideBeats(trace);
     expect(beats.map(b => b.title)).toEqual([
-      'Climbing to the release point', 'Holding for the release decision', 'The valve is open',
+      'Taking off', 'Climbing to the release point', 'Holding for the release decision', 'The valve is open',
       'Release finished', 'Handing off to the marker', 'Landed',
     ]);
     expect(beats.find(b => b.title === 'The valve is open').text).toContain(trace.release.amount_kg.toFixed(3));

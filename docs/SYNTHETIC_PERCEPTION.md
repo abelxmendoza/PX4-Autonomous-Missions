@@ -12,7 +12,7 @@ python3 tools/synthetic_depth_perception.py --threshold-m 0.8
 The script creates a deterministic 120x160 depth image in **meters**, with a central 1.2 m rectangular region against a 5.0 m background. It reports whether pixels fall within the threshold, their bounding rectangle, and the minimum depth. No physical sensor data, calibrated intrinsics, ROS 2 messages, tracking, or actual obstacle avoidance are included.
 
 ## Next hardware-independent milestones
-1. Add tests for missing depth, NaNs, no obstacle, and multiple regions.
+1. Done in consolidation: tests for missing depth, NaNs, no obstacle, and multiple regions. `detected: false` with zero valid pixels is unknown depth, not evidence of clear space.
 2. Define a depth-frame interface and camera intrinsics contract.
 3. Add an optional ROS 2 adapter with explicit timestamps and frame IDs.
 4. When hardware is available, integrate RealSense SDK and validate depth scale, timestamps, camera calibration, and measured latency.

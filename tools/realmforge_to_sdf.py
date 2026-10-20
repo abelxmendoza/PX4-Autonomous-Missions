@@ -16,7 +16,8 @@ BLOCKING = {"wall", "building", "pallet", "rack"}
 
 
 def convert(data):
-    if data.get("format") != "realmforge-world" or data.get("version") != 1:
+    if (not isinstance(data, dict) or data.get("format") != "realmforge-world"
+            or type(data.get("version")) is not int or data.get("version") != 1):
         raise ValueError("Expected realmforge-world version 1")
     objects = data.get("objects")
     if not isinstance(objects, list) or len(objects) > 2000:
@@ -55,14 +56,16 @@ def convert(data):
         if not isinstance(obj, dict):
             raise ValueError(f"Object {index} is not an object")
         kind = obj.get("kind")
+        if not isinstance(kind, str):
+            raise ValueError(f"Invalid kind for object {index}")
         size = obj.get("size")
         pos = obj.get("position")
         yaw = obj.get("rotationY")
         if (not isinstance(size, list) or len(size) != 3 or
             not isinstance(pos, list) or len(pos) != 3 or
-            not all(isinstance(v, (int, float)) and math.isfinite(v) for v in size + pos) or
+            not all(type(v) in (int, float) and math.isfinite(v) for v in size + pos) or
             any(v <= 0 for v in size) or
-            not isinstance(yaw, (int, float)) or not math.isfinite(yaw)):
+            type(yaw) not in (int, float) or not math.isfinite(yaw)):
             raise ValueError(f"Invalid transform for object {index}")
         solid = obj.get("solid")
         if solid is not None and not isinstance(solid, bool):
