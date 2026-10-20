@@ -1,0 +1,33 @@
+{
+  "source": "14_05_04.ulg",
+  "checks": [
+    {
+      "id": "LOCAL_POSITION_FINITE",
+      "result": "PASS",
+      "sample_count": 8317,
+      "invalid_samples": 0,
+      "first_invalid_timestamp_us": null
+    },
+    {
+      "id": "LOCAL_POSITION_SAMPLE_GAP",
+      "result": "PASS",
+      "max_allowed_gap_s": 2.0,
+      "max_observed_gap_s": 0.011,
+      "violation_count": 0,
+      "first_violation_timestamp_us": null,
+      "reason": null
+    }
+  ],
+  "summary": {
+    "pass": 2,
+    "fail": 0,
+    "skip": 0
+  },
+  "limitations": [
+    "Single ULog and vehicle_local_position instance 0 only",
+    "Sampling checks are not position-accuracy or safety certification",
+    "Log gaps can reflect logging behavior, not necessarily control-link loss"
+  ],
+  "source_sha256": "486103a148390f618d4a0aea194c65f7f52312b2918e9d2f5cfa5f21227d2981",
+  "source_availability": "Raw ULog is workstation-local, not committed."
+}

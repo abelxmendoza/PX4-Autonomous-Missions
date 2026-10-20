@@ -48,3 +48,18 @@ and coordinator, before any simulator starts. Its acceptance tests must reject o
 spawns, invalid IDs/ports and unsupported scenarios. Then parameterize the local PX4 runner,
 record reproducible manifests and execute at least two fleet sizes. The two-vehicle golden
 recording and verifier must remain unchanged. See the ordered gate in PRODUCT_DIRECTION.md.
+
+## Local validation results
+
+| Check | Result |
+| --- | --- |
+| Fast suite | 892 passed, 4 ROS-dependent module skips |
+| Integration suite | 41 passed |
+| Full ROS-enabled suite | 971 passed, no skips |
+| Replay tests | 94 passed |
+| CMake/CTest | Build passed; 1 CTest passed |
+| Recorded evidence, fault campaigns, requirement gate | Passed configured gates; known-open failures remain visible |
+| World adapter | 5 tests passed; expanded malformed-input subtests also passed separately |
+
+The local suites overlap and are not additive. The retained test totals identify the reviewed
+code revision. Browser and ULog check outputs and the headless Gazebo log are retained alongside them.

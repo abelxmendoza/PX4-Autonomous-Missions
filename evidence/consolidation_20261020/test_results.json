@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-20",
+  "code_revision": "13efc293bc50c4dc21ddaccb835de260c05265a8",
+  "scope": "Local JUnit and Vitest results. Suites overlap; do not sum them. Gazebo smoke is not PX4 flight validation.",
+  "results": [
+    {
+      "suite": "fast",
+      "tests": 896,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 892,
+      "junit_testcases_including_subtests": 900,
+      "subtests_passed": 4
+    },
+    {
+      "suite": "integration",
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 41
+    },
+    {
+      "suite": "ros",
+      "tests": 971,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 971,
+      "junit_testcases_including_subtests": 975,
+      "subtests_passed": 4
+    },
+    {
+      "suite": "cpp",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 1
+    },
+    {
+      "suite": "replay",
+      "tests": 94,
+      "passed": 94,
+      "failures": 0
+    }
+  ]
+}

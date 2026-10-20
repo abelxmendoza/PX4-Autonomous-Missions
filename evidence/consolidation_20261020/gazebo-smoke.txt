@@ -1,0 +1,57 @@
+[Msg] Gazebo Sim Server v8.15.0
+[Msg] Loading SDF world file[/tmp/consolidation-realmforge.sdf].
+[Msg] Serving entity system service on [/entity/system/add]
+[Msg] Loaded level [default]
+[Msg] No systems loaded from SDF, loading defaults
+[Dbg] [ServerConfig.cc:1034] Loaded (3) plugins from file [/home/azrael/.gz/sim/8/server.config]
+[Dbg] [Physics.cc:1004] Loaded [gz::physics::dartsim::Plugin] from library [/usr/lib/x86_64-linux-gnu/gz-physics-7/engine-plugins/libgz-physics-dartsim-plugin.so]
+[Dbg] [SystemManager.cc:80] Loaded system [gz::sim::systems::Physics] for entity [1]
+[Msg] Create service on [/world/realmforge/create_multiple] (async)
+[Msg] Create service on [/world/realmforge/create_multiple/blocking] (blocking)
+[Msg] Remove service on [/world/realmforge/remove] (async)
+[Msg] Remove service on [/world/realmforge/remove/blocking] (blocking)
+[Msg] Pose service on [/world/realmforge/set_pose] (async)
+[Msg] Pose service on [/world/realmforge/set_pose/blocking] (blocking)
+[Msg] Pose service on [/world/realmforge/set_pose_vector] (async)
+[Msg] Pose service on [/world/realmforge/set_pose_vector/blocking] (blocking)
+[Msg] Light configuration service on [/world/realmforge/light_config] (async)
+[Msg] Light configuration service on [/world/realmforge/light_config/blocking] (blocking)
+[Msg] Physics service on [/world/realmforge/set_physics] (async)
+[Msg] Physics service on [/world/realmforge/set_physics/blocking] (blocking)
+[Msg] SphericalCoordinates service on [/world/realmforge/set_spherical_coordinates] (async)
+[Msg] SphericalCoordinates service on [/world/realmforge/set_spherical_coordinates/blocking] (blocking)
+[Msg] Enable collision service on [/world/realmforge/enable_collision] (async)
+[Msg] Enable collision service on [/world/realmforge/enable_collision/blocking] (blocking)
+[Msg] Disable collision service on [/world/realmforge/disable_collision] (async)
+[Msg] Disable collision service on [/world/realmforge/disable_collision/blocking] (blocking)
+[Msg] Material service on [/world/realmforge/visual_config] (async)
+[Msg] Material service on [/world/realmforge/visual_config/blocking] (blocking)
+[Msg] Material service on [/world/realmforge/wheel_slip] (async)
+[Msg] Material service on [/world/realmforge/wheel_slip/blocking] (blocking)
+[Dbg] [SystemManager.cc:80] Loaded system [gz::sim::systems::UserCommands] for entity [1]
+[Dbg] [SystemManager.cc:80] Loaded system [gz::sim::systems::SceneBroadcaster] for entity [1]
+[Msg] Serving world controls on [/world/realmforge/control], [/world/realmforge/control/state] and [/world/realmforge/playback/control]
+[Msg] Serving GUI information on [/world/realmforge/gui/info]
+[Msg] World [realmforge] initialized with [1ms] physics profile.
+[Msg] Serving world SDF generation service on [/world/realmforge/generate_world_sdf]
+[Msg] Serving world names on [/gazebo/worlds]
+[Msg] Resource path add service on [/gazebo/resource_paths/add].
+[Msg] Resource path get service on [/gazebo/resource_paths/get].
+[Msg] Resource path resolve service on [/gazebo/resource_paths/resolve].
+[Msg] Resource paths published on [/gazebo/resource_paths].
+[Msg] Server control service on [/server_control].
+[Msg] Found no publishers on /stats, adding root stats topic
+[Msg] Found no publishers on /clock, adding root clock topic
+[Dbg] [SimulationRunner.cc:627] Creating PostUpdate worker threads: 2
+[Dbg] [SimulationRunner.cc:638] Creating postupdate worker thread (0)
+[Msg] Serving scene information on [/world/realmforge/scene/info]
+[Msg] Serving graph information on [/world/realmforge/scene/graph]
+[Msg] Serving full state on [/world/realmforge/state]
+[Msg] Serving full state (async) on [/world/realmforge/state_async]
+[Msg] Publishing scene information on [/world/realmforge/scene/info]
+[Msg] Publishing entity deletions on [/world/realmforge/scene/deletion]
+[Msg] Publishing state changes on [/world/realmforge/state]
+[Msg] Publishing pose messages on [/world/realmforge/pose/info]
+[Msg] Publishing dynamic pose messages on [/world/realmforge/dynamic_pose/info]
+[Dbg] [gz.cc:434] Shutting down gz-sim-server
+[Dbg] [SimulationRunner.cc:654] Exiting postupdate worker thread (0)

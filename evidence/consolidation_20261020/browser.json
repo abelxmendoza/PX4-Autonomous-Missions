@@ -1,0 +1,25 @@
+[
+  {
+    "route": "/",
+    "title": "Autonomous Fleet Lab — Mission Simulation & Verification",
+    "errors": []
+  },
+  {
+    "route": "/search-demo/?paused",
+    "initial": "A planned sweep",
+    "end": "The sweep is over",
+    "errors": []
+  },
+  {
+    "route": "/seeding-demo/?paused",
+    "initial": "Taking off",
+    "end": "Landed",
+    "errors": []
+  },
+  {
+    "route": "/slam/",
+    "initial": "Three paths, one flight",
+    "end": "The map is finished",
+    "errors": []
+  }
+]
