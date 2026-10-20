@@ -87,6 +87,7 @@
   .live .v{font:800 15px var(--mono);}
 </style>
 <link rel="stylesheet" href="../site-nav.css"/>
+<link rel="stylesheet" href="../guide.css"/>
 </head>
 <body>
 
@@ -129,6 +130,7 @@
     <canvas id="view" width="900" height="1000" aria-label="Top-down replay: the obstacle course, the SLAM map and costmap building up, and three paths"></canvas>
     <div class="controls">
       <button id="play" type="button">Play</button>
+      <button id="guide" type="button">Guide</button>
       <span class="clock" id="clock">0.0 s</span>
       <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Replay time"/>
     </div>
@@ -200,6 +202,7 @@
 </footer>
 
 <script src="../slam-replay.js"></script>
+<script src="../guide.js"></script>
 <script>
 (async function () {
   const canvas = document.getElementById('view'), ctx = canvas.getContext('2d');
@@ -275,7 +278,8 @@
 
   const showCost = document.getElementById('showCost'), showPlans = document.getElementById('showPlans');
   const aligned = document.getElementById('aligned'), scrub = document.getElementById('scrub');
-  let t = t0, playing = false, last = 0;
+  const playBtn = document.getElementById('play');
+  let t = t0, playing = false, last = 0, rate = 1;
 
   function render() {
     const k = sampleIndexAt(samples, t), done = t >= t1;
@@ -317,26 +321,32 @@
     document.getElementById('liveSlam').textContent = err.slam.toFixed(2) + ' m' + (al ? '' : ' (raw frame)');
     document.getElementById('clock').textContent = (t - t0).toFixed(1) + ' s';
     scrub.value = Math.round((t - t0) / (t1 - t0) * 1000);
+    if (guide) guide.update(t - t0);
   }
   function tick(now) {
-    if (!playing) return;
-    if (last) t = Math.min(t1 + 0.001, t + (now - last) / 1000 * 4);  // 4x speed
+    if (playing) {
+      if (last) t = Math.min(t1 + 0.001, t + (now - last) / 1000 * rate);
+      if (t >= t1) { playing = false; playBtn.textContent = 'Replay'; }
+    }
     last = now;
     render();
-    if (t >= t1) { playing = false; document.getElementById('play').textContent = 'Replay'; return; }
     requestAnimationFrame(tick);
   }
-  document.getElementById('play').addEventListener('click', e => {
+  playBtn.addEventListener('click', () => {
     if (t >= t1) t = t0;
     playing = !playing; last = 0;
-    e.target.textContent = playing ? 'Pause' : 'Play';
-    if (playing) requestAnimationFrame(tick);
+    playBtn.textContent = playing ? 'Pause' : 'Play';
   });
-  scrub.addEventListener('input', () => { playing = false; document.getElementById('play').textContent = 'Play'; t = t0 + scrub.value / 1000 * (t1 - t0) + (scrub.value === '1000' ? 0.001 : 0); render(); });
+  scrub.addEventListener('input', () => { playing = false; playBtn.textContent = 'Play'; t = t0 + scrub.value / 1000 * (t1 - t0) + (scrub.value === '1000' ? 0.001 : 0); render(); });
   for (const el of [showCost, showPlans, aligned]) el.addEventListener('change', render);
-  t = t1 + 0.001;  // open on the finished map; Play replays the flight
-  render();
-  document.getElementById('play').textContent = 'Replay';
+  const guide = mountGuide(document.querySelector('.viz'), {
+    onReplay() { t = t0; playing = true; last = 0; rate = 1; playBtn.textContent = 'Pause'; },
+    onHide() { rate = 4; },
+  });
+  guide.setBeats(slamGuideBeats(trace));
+  document.getElementById('guide').onclick = () => guide.show(true);
+  guide.show(true);
+  requestAnimationFrame(tick);
 })();
 </script>
 </body>

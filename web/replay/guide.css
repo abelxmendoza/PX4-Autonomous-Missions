@@ -1,0 +1,26 @@
+/* Guided caption. Floats above a full-screen replay, or sits on the drawing
+   when the page is a document (the SLAM figure). */
+.guide-panel{z-index:20;width:min(560px, calc(100% - 28px));margin:0 auto;
+  background:linear-gradient(145deg,rgba(17,39,39,.97),rgba(6,16,17,.98));
+  border:1px solid rgba(105,247,205,.35);border-left:3px solid var(--mint,#69f7cd);
+  padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.55);pointer-events:auto;}
+.guide-panel[hidden]{display:none;}
+.guide-panel.guide-float{position:fixed;left:0;right:0;bottom:calc(112px + env(safe-area-inset-bottom));}
+.viz{position:relative;}
+.viz > .guide-panel{position:absolute;left:16px;right:16px;bottom:208px;width:auto;}
+.guide-eyebrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.guide-progress{color:var(--amber,#ffb547);font:800 9px var(--mono,monospace);letter-spacing:.18em;text-transform:uppercase;}
+.guide-exit{background:none;border:none;color:var(--muted,#9db1ad);font:700 10px var(--mono,monospace);
+  cursor:pointer;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;}
+.guide-exit:hover{color:var(--text,#eef7f3);}
+.guide-title{margin:0 0 6px;font:800 17px var(--display,sans-serif);color:var(--text,#eef7f3);letter-spacing:-.01em;}
+.guide-text{margin:0;font:13px/1.6 var(--display,sans-serif);color:var(--muted,#9db1ad);}
+.guide-resume{z-index:20;background:var(--mint,#69f7cd);color:var(--ink,#050a0b);border:none;
+  font:800 11px var(--mono,monospace);letter-spacing:.06em;text-transform:uppercase;padding:8px 12px;cursor:pointer;}
+.guide-resume[hidden]{display:none;}
+.guide-resume.guide-float{position:fixed;left:50%;bottom:calc(118px + env(safe-area-inset-bottom));transform:translateX(-50%);}
+.viz > .guide-resume{position:absolute;left:16px;bottom:212px;}
+@media(max-width:760px){
+  .guide-panel.guide-float{width:calc(100vw - 16px);bottom:calc(168px + env(safe-area-inset-bottom));padding:12px 14px;}
+  .guide-title{font-size:15px;}
+}

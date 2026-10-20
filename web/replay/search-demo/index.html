@@ -50,6 +50,7 @@
   @media(max-width:760px){#hud{top:auto;bottom:122px;right:8px;left:8px;width:auto;max-height:34vh;} .legend{display:none;}}
 </style>
 <link rel="stylesheet" href="../site-nav.css"/>
+<link rel="stylesheet" href="../guide.css"/>
 </head>
 <body>
 <div id="scene" aria-label="3D replay of the search flight"></div>
@@ -95,6 +96,7 @@
 
 <div id="controls" class="panel">
   <button id="play" aria-label="Play or pause">❚❚ Pause</button>
+  <button id="guide" type="button">Guide</button>
   <button id="restart">↺ Restart</button>
   <select id="speed" aria-label="Playback speed"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option></select>
   <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub through the flight"/>
@@ -109,6 +111,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="../search-replay.js"></script>
+<script src="../guide.js"></script>
 <script>
 (async function () {
   const $ = id => document.getElementById(id);
@@ -268,6 +271,7 @@
       .map(c => `<div>${(c.t - t0).toFixed(1)} s  <b>found #${c.id}</b></div>`)).reverse().slice(0, 9).join('');
     $('scrub').value = Math.round(1000 * (t - t0) / dur);
     $('clock').textContent = `${(t - t0).toFixed(1)} / ${dur.toFixed(1)} s`;
+    if (guide) guide.update(t - t0);
 
     if (follow) {
       const behind = toV(p.n - 14, p.e - 9, p.d - 10);
@@ -289,6 +293,14 @@
     if (!follow) { camera.position.copy(toV(-25, -40, -55)); controls.target.copy(toV(30, 0, 0)); } };
   controls.addEventListener('start', () => { if (follow) $('cam').click(); });
   $('truth').onchange = update;
+
+  const guide = mountGuide(document.body, {onReplay() {
+    t = t0; playing = true; $('speed').value = '1'; $('play').textContent = '❚❚ Pause';
+  }});
+  guide.setBeats(searchGuideBeats(trace));
+  $('guide').onclick = () => guide.show(true);
+  const openedAt = new URLSearchParams(location.search);
+  guide.show(!(openedAt.has('t') || openedAt.has('paused')));
 
   (function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
