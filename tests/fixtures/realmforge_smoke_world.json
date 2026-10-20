@@ -1,0 +1,64 @@
+{
+  "format": "realmforge-world",
+  "version": 1,
+  "name": "PX4 adapter smoke scene",
+  "savedAt": "2026-10-18T00:00:00.000Z",
+  "objects": [
+    {
+      "id": "wall_a",
+      "kind": "wall",
+      "position": [
+        6,
+        0,
+        0
+      ],
+      "size": [
+        0.5,
+        3,
+        8
+      ],
+      "rotationY": 0,
+      "solid": true
+    },
+    {
+      "id": "wall_b",
+      "kind": "wall",
+      "position": [
+        0,
+        0,
+        -8
+      ],
+      "size": [
+        8,
+        3,
+        0.5
+      ],
+      "rotationY": 1.5707963267948966,
+      "solid": true
+    },
+    {
+      "id": "crate",
+      "kind": "crate",
+      "position": [
+        1,
+        0,
+        1
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "rotationY": 0,
+      "solid": true
+    }
+  ],
+  "robotStart": [
+    -5,
+    0
+  ],
+  "goal": [
+    5,
+    5
+  ]
+}

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 
 
 def main():
@@ -20,9 +21,21 @@ def main():
     parser.add_argument("--px4-dir", default="~/PX4-Autopilot")
     parser.add_argument("--dropout", action="store_true", help="abort vehicle 2 just after takeoff")
     parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--world-file", type=Path, help="Custom Gazebo SDF world; defaults to obstacle_world.sdf")
     parser.add_argument("--timeout", type=float, default=390.0)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
+    world_file = (args.world_file or root / "worlds/obstacle_world.sdf").expanduser().resolve()
+    if not world_file.is_file():
+        parser.error(f"world file does not exist: {world_file}")
+    try:
+        sdf_root = ET.parse(world_file).getroot()
+        sdf_world = sdf_root.find("world")
+        if sdf_root.tag != "sdf" or sdf_world is None or not sdf_world.get("name"):
+            raise ValueError("expected SDF with a named world")
+        world_name = sdf_world.get("name")
+    except (ET.ParseError, ValueError) as exc:
+        parser.error(f"invalid world file: {exc}")
     px4 = Path(args.px4_dir).expanduser().resolve()
     build = px4 / "build/px4_sitl_default"
     if not (build / "bin/px4").is_file():
@@ -36,7 +49,7 @@ def main():
     env = os.environ.copy()
     env.update(ROS_DOMAIN_ID="88", ROS_LOCALHOST_ONLY="0", ROS_LOG_DIR=str(run / "ros_logs"),
                GZ_PARTITION=f"swarm_{run.name}", GZ_IP="127.0.0.1", HEADLESS="1", PX4_GZ_STANDALONE="1",
-               PX4_GZ_WORLD="obstacle_world", PX4_SYS_AUTOSTART="4001", PX4_SIM_MODEL="gz_x500",
+               PX4_GZ_WORLD=world_name, PX4_SYS_AUTOSTART="4001", PX4_SIM_MODEL="gz_x500",
                PX4_UXRCE_DDS_PORT="8889", PX4_PARAM_COM_RCL_EXCEPT="4",
                GZ_SIM_RESOURCE_PATH=str(px4 / "Tools/simulation/gz/models"),
                GZ_SIM_SYSTEM_PLUGIN_PATH=str(build / "src/modules/simulation/gz_plugins"),
@@ -65,7 +78,7 @@ def main():
     print(f"Artifacts: {run}", flush=True)
     report = {"passed": False, "errors": ["run did not complete"]}
     try:
-        gz = ["gz", "sim", "-v", "2", "-r", str(root / "worlds/obstacle_world.sdf")]
+        gz = ["gz", "sim", "-v", "2", "-r", str(world_file)]
         if not args.gui:
             gz.insert(2, "-s")
         start("gazebo", gz)
@@ -92,7 +105,7 @@ def main():
                   f"abort_after_ready_s:={0.2 if args.dropout and instance == 2 else 0.0}"])
             start(f"trail_{instance}", [sys.executable, "-m", "px4_offboard.flight_trail",
                   "--ros-args", "-r", f"__ns:=/{vehicle}", "-p", "input_mode:=swarm",
-                  "-p", "world_name:=obstacle_world", "-p",
+                  "-p", f"world_name:={world_name}", "-p",
                   "trail_color:=" + ("[0.1, 0.95, 1.0, 1.0]" if instance == 1 else "[1.0, 0.3, 0.7, 1.0]"),
                   "-p", "route_color:=" + ("[0.2, 1.0, 0.45, 0.9]" if instance == 1 else "[1.0, 0.65, 0.15, 0.9]")])
         start("coordinator", [sys.executable, "-m", "px4_offboard.swarm_coordinator",

@@ -1,0 +1,74 @@
+name: RealmForge cloud simulation smoke test
+
+# Explicitly opt in to expensive simulator runs. No Railway service required.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/realmforge-world-adapter
+    paths:
+      - '.github/workflows/realmforge-cloud-sim.yml'
+      - 'tools/realmforge_to_sdf.py'
+      - 'tests/fixtures/realmforge_smoke_world.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: realmforge-cloud-sitl-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gazebo-smoke:
+    name: Headless Gazebo Harmonic SDF load
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export RealmForge fixture
+        run: |
+          python3 tools/realmforge_to_sdf.py tests/fixtures/realmforge_smoke_world.json /tmp/realmforge.sdf
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          world = ET.parse('/tmp/realmforge.sdf').getroot().find('world')
+          assert world is not None and world.get('name') == 'realmforge'
+          assert world.find('spherical_coordinates') is not None
+          print('World XML and PX4 georeference validated')
+          PY
+      - name: Install Gazebo Harmonic
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg lsb-release
+          sudo curl -fsSL https://packages.osrfoundation.org/gazebo.gpg -o /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] https://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list
+          sudo apt-get update
+          sudo apt-get install -y gz-harmonic
+      - name: Run headless Gazebo world load
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GZ_PARTITION="realmforge_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          export GZ_IP=127.0.0.1
+          # Run briefly, then inspect for startup failures; timeout 124 is expected.
+          set +e
+          timeout --signal=INT --kill-after=10s 35s gz sim -s -r -v 3 /tmp/realmforge.sdf > gazebo.log 2>&1
+          status=$?
+          set -e
+          cat gazebo.log
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            echo "Gazebo exited unexpectedly with status $status"
+            exit "$status"
+          fi
+          if grep -Ei '(^|\\]) ?(error|fatal):|Unable to load|Failed to load|Error Code [0-9]+' gazebo.log; then
+            echo "Gazebo reported a load error"
+            exit 1
+          fi
+          echo "Headless Gazebo startup completed without detected load errors"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: realmforge-gazebo-smoke-logs
+          path: |
+            /tmp/realmforge.sdf
+            gazebo.log
+          retention-days: 7

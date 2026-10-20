@@ -1,0 +1,36 @@
+name: RealmForge world adapter
+on:
+  push:
+    paths:
+      - 'tools/realmforge_to_sdf.py'
+      - 'tests/test_realmforge_to_sdf.py'
+      - 'tests/fixtures/realmforge_smoke_world.json'
+      - '.github/workflows/realmforge-adapter.yml'
+  pull_request:
+    paths:
+      - 'tools/realmforge_to_sdf.py'
+      - 'tests/test_realmforge_to_sdf.py'
+      - 'tests/fixtures/realmforge_smoke_world.json'
+      - '.github/workflows/realmforge-adapter.yml'
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p 'test_realmforge_to_sdf.py' -v
+      - name: Convert exported world
+        run: python tools/realmforge_to_sdf.py tests/fixtures/realmforge_smoke_world.json /tmp/realmforge.sdf
+      - name: Validate SDF XML and obstacle count
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('/tmp/realmforge.sdf').getroot()
+          models = root.findall('./world/model')
+          assert len(models) == 4, [m.attrib for m in models]
+          assert all(m.find('static').text == 'true' for m in models)
+          print('SDF smoke test passed')
+          PY
