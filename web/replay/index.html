@@ -4,14 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="theme-color" content="#050a0b"/>
-<title>Abel Mendoza — PX4 Autonomy & Verification</title>
+<title>Autonomous Fleet Lab — Mission Simulation & Verification</title>
 <meta name="description" content="PX4 / ROS 2 Autonomy & Verification Platform — fault testing, recorded SITL evidence and requirement-based checks, built by Abel Mendoza."/>
 <link rel="icon" href="favicon.png" type="image/png"/>
 <link rel="apple-touch-icon" href="apple-touch-icon.png"/>
 
 <meta property="og:type" content="website"/>
-<meta property="og:title" content="Abel Mendoza — PX4 Autonomy & Verification"/>
-<meta property="og:description" content="Fault testing, recorded SITL evidence and requirement-based verification."/>
+<meta property="og:title" content="Autonomous Fleet Lab — Mission Simulation & Verification"/>
+<meta property="og:description" content="Engineering tools for reproducible autonomous mission simulation, fault testing, and evidence-backed verification."/>
 <meta property="og:image" content="https://replay-sepia-tau.vercel.app/og-image.png"/>
 <meta property="og:url" content="https://replay-sepia-tau.vercel.app/"/>
 <meta name="twitter:card" content="summary_large_image"/>
@@ -111,7 +111,7 @@
 <header class="site-header">
   <div class="brand">
     <div class="brand-mark" aria-hidden="true">PX</div>
-    <h1>PX4 <span class="dim">Autonomy & Verification</span></h1>
+    <h1>Autonomous Fleet <span class="dim">Lab</span></h1>
   </div>
   <nav class="site-nav" aria-label="Site">
     <a href="/" aria-current="page">Home</a>
@@ -128,11 +128,11 @@
 
 <main>
   <div class="hero">
-    <div class="eyebrow">Autonomy Lab / 001 · Portfolio Project</div>
-    <p class="who"><b>Abel Mendoza</b> — building autonomy software for drones and robotics, aiming at defense, autonomous-flight, and robotics engineering roles.</p>
+    <div class="eyebrow">Open engineering project · Product in development</div>
+    <p class="who"><b>Abel Mendoza</b> — building developer tools for autonomous flight, robotics, and evidence-based systems verification.</p>
 
-    <h2 class="title">Autonomous flight.<br/><span>Inspectable evidence.</span></h2>
-    <p class="pitch">A software-in-the-loop UAV platform built with ROS 2, PX4, Gazebo, MAVSDK and MAVLink for developing, fault-testing, replaying and verifying autonomous behavior. Abel implemented the mission logic, sensor integration, fault handling, telemetry and verification around PX4’s flight controller. Start with a 64-second recovery flight: a commanded landing, confirmed task reassignment, and an independently checked result.</p>
+    <h2 class="title">Build autonomous missions.<br/><span>Prove how they behave.</span></h2>
+    <p class="pitch">Autonomous Fleet Lab is evolving from a PX4/ROS 2 engineering project into a mission simulation and verification tool for robotics engineers. The goal: configure a fleet, test environmental and failure scenarios, replay behavior, and produce requirement-linked evidence. Today you can inspect recorded SITL missions and verification results; configurable fleet sizes, terrain/altitude scenarios, and synthetic traffic are on the roadmap—not yet available in this web app.</p>
 
     <div class="badges">
       <a href="https://px4.io/" target="_blank" rel="noopener noreferrer">PX4</a><a href="https://www.ros.org/" target="_blank" rel="noopener noreferrer">ROS 2</a><a href="https://gazebosim.org/" target="_blank" rel="noopener noreferrer">Gazebo Harmonic</a><a href="https://www.python.org/" target="_blank" rel="noopener noreferrer">Python</a><a href="https://opencv.org/" target="_blank" rel="noopener noreferrer">OpenCV</a><a href="https://threejs.org/" target="_blank" rel="noopener noreferrer">Three.js</a>
@@ -146,8 +146,17 @@
     </div>
     <p class="mobile-note">Built desktop-first — the replay works on phones as a fallback, but it's made for a bigger screen.</p>
 
+    <section class="new" aria-label="Product direction">
+      <p class="label">What we are building</p>
+      <div class="cards">
+        <div class="card"><span class="h">Configure missions</span><span class="b">Planned: choose fleet size, mission type, vehicle capabilities, and reproducible test conditions before simulation.</span><span class="go">Roadmap · not yet interactive</span></div>
+        <div class="card"><span class="h">Stress-test autonomy</span><span class="b">Planned: synthetic traffic, airspace constraints, terrain-relative altitude, weather and fault injection.</span><span class="go">Roadmap · simulation only</span></div>
+        <div class="card"><span class="h">Verify the evidence</span><span class="b">Existing: recorded PX4 SITL telemetry, requirement-linked checks, failure analysis and replayable demonstrations.</span><span class="go">Working evidence below ↓</span></div>
+      </div>
+    </section>
+
     <section class="new" aria-label="Recent work">
-      <p class="label">New</p>
+      <p class="label">Existing engineering evidence</p>
       <div class="cards">
         <a class="card" href="/seeding/">
           <span class="h">Cloud seeding</span>
@@ -172,6 +181,7 @@
       </div>
     </section>
 
+    <p style="font:12px/1.65 var(--mono);color:var(--muted);margin:0 0 18px">Scope: software-in-the-loop research and developer tooling. Not a certified flight controller, real-time detect-and-avoid system, or authorization for real-world operations. PX4 supplies the flight stack; this project develops mission coordination, observation and verification around it.</p>
     <div class="proof">
       <div><span class="k">Requirement registry</span><span class="v">35 requirements · 3 open</span></div>
       <div><span class="k">Cloud seeding</span><span class="v">9.8 cm · one completed flight</span></div>
