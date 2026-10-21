@@ -8,6 +8,7 @@ Local (no network, no credits):
   drop-test NAME [--probe X,Y ...]          headless Gazebo collision check
   accept NAME [--ref-dims X,Y,Z]            acceptance criteria report (PASS/FAIL)
   build-world SCENARIO.yaml OUT.sdf         seeded, reproducible placement
+  render WORLD.sdf OUT.png [--pose ...]     headless camera snapshot (visual check)
 
 ProjectSim (optional; PROJECTSIM_TOKEN in the environment):
   ps-plan PLAN.yaml                         cost + budget, no network
@@ -86,6 +87,11 @@ def cmd_accept(a):
     report = acceptance.evaluate(a.models, a.name, ref, probes, run_gz=not a.no_gz)
     print(json.dumps(report, indent=2))
     return 0 if report["verdict"] == "PASS" else 1
+
+
+def cmd_render(a):
+    from sim_assets import render_view
+    print(render_view.snapshot(a.world, a.models, a.out, pose=a.pose, engine=a.engine))
 
 
 def cmd_build_world(a):
@@ -233,6 +239,14 @@ def main(argv=None):
     w.add_argument("out", type=Path)
     w.add_argument("--models", type=Path, default=MODELS)
     w.set_defaults(func=cmd_build_world)
+
+    r = sub.add_parser("render")
+    r.add_argument("world", type=Path)
+    r.add_argument("out", type=Path)
+    r.add_argument("--pose", default="-3 -6 6 0 0.45 1.15", help="camera 'x y z roll pitch yaw'")
+    r.add_argument("--engine", default="ogre", choices=["ogre", "ogre2"])
+    r.add_argument("--models", type=Path, default=MODELS)
+    r.set_defaults(func=cmd_render)
 
     s = sub.add_parser("ps-plan"); s.add_argument("plan", type=Path); s.set_defaults(func=cmd_ps_plan)
     s = sub.add_parser("ps-auth"); s.set_defaults(func=cmd_ps_auth)

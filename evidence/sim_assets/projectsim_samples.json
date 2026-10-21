@@ -545,7 +545,7 @@
         {
           "criterion": "dynamic_model_stable",
           "result": "PASS",
-          "value": 0.0089,
+          "value": 0.0088,
           "required": "model drift <= 0.02 m after settling"
         },
         {
@@ -908,8 +908,8 @@
                 0.0,
                 0.0
               ],
-              "rest_z": 0.9551,
-              "surface_z": 0.9051
+              "rest_z": 0.9552,
+              "surface_z": 0.9052
             }
           ],
           "required": "every probe at rest"
@@ -917,14 +917,14 @@
         {
           "criterion": "dynamic_model_stable",
           "result": "PASS",
-          "value": 0.0105,
+          "value": 0.0104,
           "required": "model drift <= 0.02 m after settling"
         },
         {
           "criterion": "contact_within_bounds",
           "result": "PASS",
           "value": [
-            0.9051
+            0.9052
           ],
           "required": "0 <= surface <= top (0.906 m)"
         }

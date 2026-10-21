@@ -48,3 +48,4 @@ build/
 # Raw ProjectSim downloads (large, licence unreviewed); manifests + ledger stay tracked
 sim_assets/raw/
 sim_assets/samples/
+models_generated/

@@ -27,6 +27,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--work", type=Path, default=ROOT / "sim_assets" / "samples")
     ap.add_argument("--out", type=Path, default=ROOT / "evidence" / "sim_assets" / "projectsim_samples.json")
+    ap.add_argument("--install", type=Path, metavar="DIR",
+                    help="also install each sample's static model as DIR/ps_<asset> (e.g. models_generated)")
     args = ap.parse_args()
     models = args.work / "_models"
     results = []
@@ -52,6 +54,9 @@ def main():
                   + "".join(f"  {c['criterion']}={c['result']}" for c in entry.get("criteria", [])
                             if c["result"] != "PASS") + (f"  {entry.get('error', '')}"))
             results.append(entry)
+        if args.install:
+            usd_import.convert(usd, args.install, f"ps_{asset}", mode="static", overwrite=True,
+                               provenance={**prov, "description": f"{asset}, projectsim by Kaedim (CC-BY-4.0)"})
     gz = subprocess.run(["gz", "sim", "--versions"], capture_output=True, text=True).stdout.strip()
     report = {"experiment": "E0 projectsim sample USD -> Gazebo compatibility",
               "credits_spent": 0, "gz_sim": gz, "python": platform.python_version(),

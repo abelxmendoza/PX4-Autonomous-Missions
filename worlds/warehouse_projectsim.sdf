@@ -1,0 +1,118 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="warehouse_projectsim">
+    <gravity>0 0 -9.81</gravity>
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <latitude_deg>47.397742</latitude_deg>
+      <longitude_deg>8.545594</longitude_deg>
+      <elevation>488.0</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
+    <light name="sun" type="directional">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>1 1 1 1</diffuse>
+      <specular>0.4 0.4 0.4 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+    <model name="ground">
+      <static>true</static>
+      <link name="ground_link">
+        <pose>0 0 -0.05 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>100 100 0.1</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>100 100 0.1</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+    <include>
+      <uri>model://ps_cage_0001</uri>
+      <name>ps_cage_0001_0</name>
+      <pose>-9.1411 21.5931 0 0 0 0.0743</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0001</uri>
+      <name>ps_cage_0001_1</name>
+      <pose>8.64 6.7976 0 0 0 -1.7387</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0002</uri>
+      <name>ps_cage_0002_0</name>
+      <pose>2.4247 23.5927 0 0 0 1.7805</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0002</uri>
+      <name>ps_cage_0002_1</name>
+      <pose>1.1475 30.0299 0 0 0 1.6846</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0003</uri>
+      <name>ps_cage_0003_0</name>
+      <pose>6.0246 24.7013 0 0 0 -1.634</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0003</uri>
+      <name>ps_cage_0003_1</name>
+      <pose>2.7409 7.0973 0 0 0 1.9903</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0004</uri>
+      <name>ps_cage_0004_0</name>
+      <pose>-1.2083 33.1462 0 0 0 1.1635</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0004</uri>
+      <name>ps_cage_0004_1</name>
+      <pose>4.3053 10.7783 0 0 0 -1.5613</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0005</uri>
+      <name>ps_cage_0005_0</name>
+      <pose>0.3261 5.8238 0 0 0 -1.0028</pose>
+    </include>
+    <include>
+      <uri>model://ps_cage_0005</uri>
+      <name>ps_cage_0005_1</name>
+      <pose>1.3788 13.8085 0 0 0 -0.2674</pose>
+    </include>
+    <include>
+      <uri>model://ps_desk_0001</uri>
+      <name>ps_desk_0001_0</name>
+      <pose>9.0354 29.0471 0 0 0 0.4865</pose>
+    </include>
+    <include>
+      <uri>model://ps_desk_0002</uri>
+      <name>ps_desk_0002_0</name>
+      <pose>-11.4063 29.3019 0 0 0 -0.8574</pose>
+    </include>
+    <include>
+      <uri>model://ps_desk_0003</uri>
+      <name>ps_desk_0003_0</name>
+      <pose>-1.8668 17.7546 0 0 0 0.5386</pose>
+    </include>
+    <include>
+      <uri>model://ps_desk_0004</uri>
+      <name>ps_desk_0004_0</name>
+      <pose>10.0021 12.5698 0 0 0 -0.5029</pose>
+    </include>
+    <include>
+      <uri>model://ps_desk_0005</uri>
+      <name>ps_desk_0005_0</name>
+      <pose>10.2296 20.73 0 0 0 0.113</pose>
+    </include>
+  </world>
+</sdf>

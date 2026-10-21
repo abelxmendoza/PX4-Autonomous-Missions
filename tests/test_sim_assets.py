@@ -559,7 +559,7 @@ def test_usd_textures_survive_into_glb(tmp_path, usd_import):
     Image.new("RGB", (8, 8), (255, 0, 0)).save(png)
     src = usd_door_stage(tmp_path / "door.usda", texture=png)
     usd_import.convert(src, tmp_path / "models", "door_tex")
-    glb = trimesh.load(tmp_path / "models/door_tex/meshes/frame.glb", force="scene")
+    glb = trimesh.load(tmp_path / "models/door_tex/meshes/frame.gltf", force="scene")
     (geom,) = glb.geometry.values()
     material = geom.visual.material
     assert material.baseColorTexture is not None

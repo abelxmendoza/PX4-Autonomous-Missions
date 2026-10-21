@@ -1,6 +1,7 @@
 # ProjectSim experiments and acceptance criteria
 
-Status 2026-10-21: **0 credits spent.** E0 is done and free. E1 to E3 are
+Status 2026-10-21: **10 credits committed** (E1 submitted, generating). E0 is done
+and free. E2 and E3 are
 planned in [`sim_assets/plans/initial_batch.yaml`](../sim_assets/plans/initial_batch.yaml)
 and need approval: 18 of the 120 gift credits, with 40 held in reserve. The
 credits expire 2026-11-18.
@@ -57,10 +58,28 @@ on gz-sim 8.15.0:
      carries a detailed collision mesh (26k triangles, `approximation=sdf` for
      Isaac). We use that mesh directly for static obstacles, and convex hulls for
      dynamic links.
-* **Not yet verified:**
-  * that joints actually *move* under load in Gazebo (only parsing and stability
-    were checked);
-  * how visual meshes look in a rendered camera or lidar view.
+* **Visuals verified by rendering.** `tools/sim_asset.py render` takes a headless
+  ogre camera snapshot. The cages and desks render upright, at scale and textured
+  ([wide](../evidence/sim_assets/warehouse_projectsim_render.png),
+  [close](../evidence/sim_assets/warehouse_projectsim_closeup.png)).
+* **Visual files are a .gltf per link with shared textures.** Embedding the
+  texture atlas in a GLB per link duplicated it for every part: 387 MB for 10
+  models, now 79 MB.
+* **Not yet verified:** that joints actually *move* under load in Gazebo (only
+  parsing and stability were checked).
+
+## In use now: `worlds/warehouse_projectsim.sdf`
+
+15 instances of the CC-BY samples (2 of each cage, 1 of each desk), placed by
+[`sim_assets/scenarios/warehouse_projectsim.yaml`](../sim_assets/scenarios/warehouse_projectsim.yaml)
+(seed 2026, 1.5 m clearance, spawn kept clear). Placement is recorded in
+`worlds/warehouse_projectsim.placement.json`. The world loads in headless gz-sim
+with all 15 models and no errors.
+
+```bash
+python3 scripts/eval_projectsim_samples.py --install models_generated   # free; models are gitignored
+GZ_SIM_RESOURCE_PATH=$PWD/models_generated:$GZ_SIM_RESOURCE_PATH gz sim worlds/warehouse_projectsim.sdf
+```
 
 ## Acceptance criteria (automated: `tools/sim_asset.py accept NAME`)
 

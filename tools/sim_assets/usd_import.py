@@ -6,7 +6,7 @@ writes a multi-link SDF model directly:
 
   USD                                   SDF
   prim with PhysicsRigidBodyAPI     ->  <link> at the prim's stage pose
-  Mesh, purpose default/render      ->  link visual (one GLB per link, PBR textures)
+  Mesh, purpose default/render      ->  link visual (.gltf per link, textures shared)
   Mesh with PhysicsCollisionAPI     ->  link collision (one STL per link)
   PhysicsMassAPI mass/CoM/principal ->  <inertial> (pose rotation = principal axes)
   Revolute/Prismatic/FixedJoint     ->  <joint>, pose and axis expressed in __model__
@@ -27,6 +27,7 @@ ships for the same asset (the hinge axis must match).
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import math
 import shutil
@@ -274,6 +275,30 @@ def read_stage(usd_path, max_texture_px=2048):
             "up_axis": up, "meters_per_unit": UsdGeom.GetStageMetersPerUnit(stage)}
 
 
+def export_visual(meshes, out_dir, link):
+    """Write one link's visuals as .gltf with buffers in separate files.
+
+    Texture buffers are named by content hash, so links sharing a material
+    atlas (every part of a ProjectSim asset) share one copy on disk instead
+    of each GLB embedding its own (a 3 MB caster fork, before this)."""
+    from trimesh.exchange import gltf
+    files = gltf.export_gltf(trimesh.Scene(meshes))
+    doc = json.loads(files.pop("model.gltf"))
+    image_buffers = {doc["bufferViews"][img["bufferView"]]["buffer"]
+                     for img in doc.get("images", []) if "bufferView" in img}
+    for i, buf in enumerate(doc.get("buffers", [])):
+        data = files[buf["uri"]]
+        if i in image_buffers:
+            buf["uri"] = f"tex_{hashlib.sha256(data).hexdigest()[:16]}.bin"
+        else:
+            buf["uri"] = f"{link}_{i}.bin"
+        target = Path(out_dir) / buf["uri"]
+        if not target.exists():
+            target.write_bytes(data)
+    (Path(out_dir) / f"{link}.gltf").write_text(json.dumps(doc), encoding="utf-8")
+    return f"{link}.gltf"
+
+
 def model_sdf(name, data, static):
     sdf = ET.Element("sdf", version="1.9")
     model = ET.SubElement(sdf, "model", name=name)
@@ -345,8 +370,7 @@ def convert(usd_path, out_root, name, mode="static", collision=None, provenance=
     links = []
     for b in data["bodies"]:
         if b["visual"]:
-            b["visual_file"] = f"{b['name']}.glb"
-            trimesh.Scene(b["visual"]).export(meshes / b["visual_file"])
+            b["visual_file"] = export_visual(b["visual"], meshes, b["name"])
             all_visual += [trimesh.Trimesh(trimesh.transform_points(v.vertices, b["world"]), v.faces,
                                            process=False) for v in b["visual"]]
         source = b["collision"] or b["visual"]

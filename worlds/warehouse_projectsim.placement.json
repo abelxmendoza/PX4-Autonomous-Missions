@@ -1,0 +1,215 @@
+{
+  "format": "sim-scenario-record",
+  "version": 1,
+  "scenario": {
+    "format": "sim-scenario",
+    "version": 1,
+    "name": "warehouse_projectsim",
+    "seed": 2026,
+    "area": {
+      "x": [
+        -12,
+        12
+      ],
+      "y": [
+        3,
+        40
+      ]
+    },
+    "min_clearance_m": 1.5,
+    "keepout": [
+      {
+        "x": 0,
+        "y": 0,
+        "radius_m": 3.0
+      }
+    ],
+    "ground_size_m": 100,
+    "placements": [
+      {
+        "model": "ps_cage_0001",
+        "count": 2,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_cage_0002",
+        "count": 2,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_cage_0003",
+        "count": 2,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_cage_0004",
+        "count": 2,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_cage_0005",
+        "count": 2,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_desk_0001",
+        "count": 1,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_desk_0002",
+        "count": 1,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_desk_0003",
+        "count": 1,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_desk_0004",
+        "count": 1,
+        "yaw": "random"
+      },
+      {
+        "model": "ps_desk_0005",
+        "count": 1,
+        "yaw": "random"
+      }
+    ]
+  },
+  "manifest_sha256": {
+    "ps_cage_0001": "2398955f13f1f1e7d787ee25b78806b48c6038cf94d75ab4191606401b4d6184",
+    "ps_cage_0002": "b7c90f43202bedc409ec08b52a0ef6dc66142a3fcccedc41e077aaf676771696",
+    "ps_cage_0003": "5fdbb00a97a96e72c502eded130c7a0fb8fbb6f209085335242f9af3080a3f64",
+    "ps_cage_0004": "fa3861da702acf5f24b002fce14f2786e3d2e9f873c5a4e36688be1b7bb4b09f",
+    "ps_cage_0005": "d25381fdf39c3cfcb62ebe5eb0510187fb2cf784da1663d96a5f160a732ae5be",
+    "ps_desk_0001": "2730248f5f4542b3873ce399a3951a6d0fdeb5ca378b7c0f372eb880d1d7aff5",
+    "ps_desk_0002": "6af6efb219fe5923ed139fac0cca3196cd8e2aa20f1f04a9a11814e48a46e1e1",
+    "ps_desk_0003": "8ebaccb4cae4e242c4af203b3f10a54823357d3f196da7abcf797e7275812287",
+    "ps_desk_0004": "a926c5004eb0c3a8398a967832c7174fe2bb3cc4135240ac94efbabc4e694d5d",
+    "ps_desk_0005": "f3f4e1d96d4b2d13fd4d7af22bcebc49b435b48fdcf6f0d82be8aa1fe2b37eeb"
+  },
+  "instances": [
+    {
+      "name": "ps_cage_0001_0",
+      "model": "ps_cage_0001",
+      "x": -9.1411,
+      "y": 21.5931,
+      "yaw": 0.0743,
+      "radius_m": 0.5381449758829441
+    },
+    {
+      "name": "ps_cage_0001_1",
+      "model": "ps_cage_0001",
+      "x": 8.64,
+      "y": 6.7976,
+      "yaw": -1.7387,
+      "radius_m": 0.5381449758829441
+    },
+    {
+      "name": "ps_cage_0002_0",
+      "model": "ps_cage_0002",
+      "x": 2.4247,
+      "y": 23.5927,
+      "yaw": 1.7805,
+      "radius_m": 0.7810249859064882
+    },
+    {
+      "name": "ps_cage_0002_1",
+      "model": "ps_cage_0002",
+      "x": 1.1475,
+      "y": 30.0299,
+      "yaw": 1.6846,
+      "radius_m": 0.7810249859064882
+    },
+    {
+      "name": "ps_cage_0003_0",
+      "model": "ps_cage_0003",
+      "x": 6.0246,
+      "y": 24.7013,
+      "yaw": -1.634,
+      "radius_m": 0.5505678979591663
+    },
+    {
+      "name": "ps_cage_0003_1",
+      "model": "ps_cage_0003",
+      "x": 2.7409,
+      "y": 7.0973,
+      "yaw": 1.9903,
+      "radius_m": 0.5505678979591663
+    },
+    {
+      "name": "ps_cage_0004_0",
+      "model": "ps_cage_0004",
+      "x": -1.2083,
+      "y": 33.1462,
+      "yaw": 1.1635,
+      "radius_m": 0.46097722609716024
+    },
+    {
+      "name": "ps_cage_0004_1",
+      "model": "ps_cage_0004",
+      "x": 4.3053,
+      "y": 10.7783,
+      "yaw": -1.5613,
+      "radius_m": 0.46097722609716024
+    },
+    {
+      "name": "ps_cage_0005_0",
+      "model": "ps_cage_0005",
+      "x": 0.3261,
+      "y": 5.8238,
+      "yaw": -1.0028,
+      "radius_m": 0.5902626282451341
+    },
+    {
+      "name": "ps_cage_0005_1",
+      "model": "ps_cage_0005",
+      "x": 1.3788,
+      "y": 13.8085,
+      "yaw": -0.2674,
+      "radius_m": 0.5902626282451341
+    },
+    {
+      "name": "ps_desk_0001_0",
+      "model": "ps_desk_0001",
+      "x": 9.0354,
+      "y": 29.0471,
+      "yaw": 0.4865,
+      "radius_m": 0.8173891314737408
+    },
+    {
+      "name": "ps_desk_0002_0",
+      "model": "ps_desk_0002",
+      "x": -11.4063,
+      "y": 29.3019,
+      "yaw": -0.8574,
+      "radius_m": 0.570635613398126
+    },
+    {
+      "name": "ps_desk_0003_0",
+      "model": "ps_desk_0003",
+      "x": -1.8668,
+      "y": 17.7546,
+      "yaw": 0.5386,
+      "radius_m": 0.811976144859993
+    },
+    {
+      "name": "ps_desk_0004_0",
+      "model": "ps_desk_0004",
+      "x": 10.0021,
+      "y": 12.5698,
+      "yaw": -0.5029,
+      "radius_m": 0.6751463251984736
+    },
+    {
+      "name": "ps_desk_0005_0",
+      "model": "ps_desk_0005",
+      "x": 10.2296,
+      "y": 20.73,
+      "yaw": 0.113,
+      "radius_m": 0.6805151589260834
+    }
+  ]
+}
