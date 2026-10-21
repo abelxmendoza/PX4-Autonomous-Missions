@@ -1,5 +1,4 @@
 """Preflight contract regression tests; no ROS/PX4 installation needed."""
-import copy
 import pytest
 from px4_offboard.fleet_experiment import validate_config
 
@@ -30,7 +29,7 @@ def test_repeatable():
 
 
 @pytest.mark.parametrize("field,value", [
-    ("scenario", "unknown"), ("seed", -1), ("seed", True),
+    ("scenario", "unknown"), ("scenario", []), ("scenario", {}), ("seed", -1), ("seed", True),
     ("output_dir", ""), ("fault_schedule", [{"kind": "dropout"}]),
     ("unexpected", 123),
 ])
