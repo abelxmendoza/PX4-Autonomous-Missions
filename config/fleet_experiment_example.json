@@ -1,0 +1,7 @@
+{
+  "scenario": "cooperative_point_visits",
+  "seed": 42,
+  "fleet_size": 2,
+  "fault_schedule": [],
+  "output_dir": "artifacts/fleet/example"
+}
