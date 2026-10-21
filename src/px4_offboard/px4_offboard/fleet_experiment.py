@@ -62,7 +62,7 @@ def validate_config(raw: object) -> ExperimentConfig:
     if extra:
         raise ValueError(f"unknown configuration keys: {sorted(extra)}")
     scenario = raw.get("scenario")
-    if scenario not in SUPPORTED_SCENARIOS:
+    if not isinstance(scenario, str) or scenario not in SUPPORTED_SCENARIOS:
         raise ValueError(f"unsupported scenario: {scenario!r}")
     count = _integer(raw.get("fleet_size"), "fleet_size", 1, 4)
     seed = _integer(raw.get("seed"), "seed", 0, 2**32 - 1)
