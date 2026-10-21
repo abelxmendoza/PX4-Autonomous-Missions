@@ -42,7 +42,7 @@ def test_reject_invalid_contract(field, value):
 
 
 @pytest.mark.parametrize("field,value", [
-    ("vehicle_id", "wrong"), ("instance", 1), ("system_id", 3),
+    ("vehicle_id", "wrong"), ("instance", 1), ("system_id", 2),
     ("mavlink_port", 18571), ("spawn_north_m", float("nan")),
 ])
 def test_reject_invalid_vehicle(field, value):
