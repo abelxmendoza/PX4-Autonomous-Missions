@@ -3,6 +3,10 @@
 numpy>=1.23
 opencv-python-headless>=4.5
 PyYAML>=6.0
+trimesh>=4.4,<5   # tools/sim_assets mesh pipeline
+httpx>=0.27       # tools/sim_assets/projectsim (optional backend; mocked in tests)
+usd-core>=24.11  # tools/sim_assets/usd_import (USD tests skip without it)
+Pillow>=9         # USD texture repacking
 pytest>=7.0
 pymavlink>=2.4.0
 pyserial>=3.5

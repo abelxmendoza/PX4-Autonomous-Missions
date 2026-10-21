@@ -1,0 +1,131 @@
+# ProjectSim plan: NOTHING HERE HAS BEEN SUBMITTED. Every item needs approval:
+#   python3 tools/sim_asset.py ps-plan sim_assets/plans/initial_batch.yaml
+#   python3 tools/sim_asset.py ps-submit sim_assets/plans/initial_batch.yaml <id>              # dry run
+#   python3 tools/sim_asset.py ps-submit sim_assets/plans/initial_batch.yaml <id> --confirm-spend
+#
+# Selection rule: spend credits only on geometry that box primitives cannot
+# stand in for (thin parts, gaps, overhangs, low profiles), and never on
+# something the free CC-BY-4.0 projectsim datasets on Hugging Face already
+# provide (roll cages, boxes, desks, wardrobes; see docs/sim_asset_pipeline.md).
+# Acceptance criteria per experiment: docs/sim_asset_experiments.md
+format: projectsim-plan
+version: 1
+budget:
+  credits: 120            # gift credits shown on the dashboard 2026-10-21
+  expires: 2026-11-18
+  reserve_credits: 40     # measured re-captures, re-rolls of failures, Phase B variants
+license_note: >-
+  Generated with ProjectSim (Kaedim). Terms (projectsim.ai/terms) limit use to
+  robotics simulation and robot perception/planning/control training or
+  evaluation, forbid training 3D/image/video generators on outputs, and
+  require passing that restriction on to anyone the outputs are given to.
+  Whether gift-credit outputs carry the "after payment" IP assignment is UNCONFIRMED.
+defaults:
+  standard:
+    params:
+      mesh: {quality: low}            # collision budget is 20k triangles
+      texture: {resolution: 2048}
+      physics:
+        simulator: agnostic           # GLB + physics sidecar; there is no SDF target
+        body: rigid
+        collision: auto
+        articulated: false            # standard defaults to articulated (Isaac-only)
+        collision_granularity: null   # null + articulated:false = reconstruction
+  measured:
+    params:
+      mesh: {quality: low}
+      texture: {resolution: 2048}
+      physics: {simulator: agnostic, body: rigid, collision: auto}
+  procedural:
+    params:
+      physics:
+        simulator: isaac_sim_physx    # output is USD for every engine; converted by usd_import
+        body: rigid
+        collision: convex_decomposition   # keeps shelf gaps; their default may be coarser
+        collision_granularity: link
+items:
+  # ---- E1: procedural warehouse obstacle family (10 credits) -------------
+  - id: e1_shelving_bays
+    experiment: E1
+    endpoint: procedural
+    name: warehouse shelving bay
+    count: 10                         # API minimum for procedural sets
+    seed:
+      text: >-
+        One freestanding steel warehouse shelving bay: two upright end frames
+        with diagonal cross bracing, connected by horizontal load beams that
+        carry flat steel shelf decks. The space between shelf levels is open
+        on the front and back. All parts are fixed; no moving parts. Vary the
+        bay height between 1.5 and 2.5 m, the width between 0.9 and 1.8 m, the
+        depth between 0.4 and 0.9 m, the number of shelf levels between 3 and
+        5, and the frame colour.
+    params:
+      physics: {articulated: false}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: >-
+      Omega1 + PX4: family of see-through obstacles with controlled variation
+      (height, width, level count) for seeded navigation worlds. Gaps between
+      levels defeat single-plane lidar and convex collision proxies.
+
+  # ---- E2: standard industrial obstacle via GLB (4 credits) ---------------
+  - id: e2_pallet_jack
+    experiment: E2
+    endpoint: standard
+    name: manual pallet jack
+    inputs:
+      text: >-
+        A manual hydraulic pallet jack (hand pallet truck) standing on the
+        floor with its forks lowered: two long flat steel forks, a hydraulic
+        pump body, steering wheels and a tall tow handle in the upright
+        position. Isolated object, entire object visible, plain background.
+    import: {kind: mesh, up_axis: y, target_axis: x, target_size_m: 1.55, collision: mesh}
+    rationale: >-
+      Omega1: low-profile obstacle. The forks are about 8 cm tall, below the
+      HC-SR04 beam and a mid-height scan, so only depth perception can catch
+      them; the tall handle is a thin vertical. Core case for the RealSense vs
+      Depth Anything V2 benchmark.
+
+  # ---- E3: measured physical object, ChArUco capture (4 credits) ----------
+  - id: e3_measured_obstacle
+    experiment: E3
+    endpoint: measured
+    name: omega1 course obstacle
+    inputs:
+      images: [{upload_id: TODO-after-capture}]
+      capture: [{upload_id: TODO-after-capture}]
+    import: {kind: mesh, up_axis: y, source_unit_m: 1.0, collision: mesh}
+    rationale: >-
+      Sim-vs-real: the same physical object appears in Omega1's real test
+      course and its Gazebo world, so hardware and simulation runs use the
+      same obstacle. It must fit the capture constraints: whole object in frame
+      at about 0.5 m beside a Letter-size board, so roughly 40 cm or smaller.
+
+  # ---- Phase B candidates (standard, 4 credits each; NOT approved) --------
+  - id: utility_pole
+    endpoint: standard
+    name: utility pole
+    inputs:
+      text: >-
+        A single wooden utility pole with one horizontal crossarm near the top,
+        three ceramic insulators and short stubs of power cable. Isolated object,
+        entire pole visible, plain background.
+    import: {kind: mesh, up_axis: y, target_axis: z, target_size_m: 9.0, collision: mesh}
+    rationale: PX4 thin vertical + thin horizontal obstacle.
+  - id: office_chair
+    endpoint: standard
+    name: office chair
+    inputs:
+      text: >-
+        A black office chair with a five-star wheeled base, a central gas
+        cylinder, a seat and a mesh backrest. Isolated object, plain background.
+    import: {kind: mesh, up_axis: y, target_axis: z, target_size_m: 1.0, collision: mesh}
+    rationale: Omega1 overhang over a sparse base (depth-only detectable).
+  - id: deciduous_tree
+    endpoint: standard
+    name: deciduous tree
+    inputs:
+      text: >-
+        A single medium deciduous tree with a clear trunk and an irregular open
+        leafy crown. Isolated object, plain background.
+    import: {kind: mesh, up_axis: y, target_axis: z, target_size_m: 6.0, collision: mesh}
+    rationale: PX4 irregular obstacle and GPS-denied landmark.

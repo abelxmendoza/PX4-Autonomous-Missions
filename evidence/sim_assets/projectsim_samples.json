@@ -1,0 +1,1845 @@
+{
+  "experiment": "E0 projectsim sample USD -> Gazebo compatibility",
+  "credits_spent": 0,
+  "gz_sim": "8.15.0",
+  "python": "3.10.12",
+  "passed": 20,
+  "total": 20,
+  "results": [
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0001",
+      "mode": "static",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.8,
+        0.72,
+        1.7
+      ],
+      "reference_mass_kg": 94.203,
+      "reference_joints": 8,
+      "converted_joints": 8,
+      "converted_mass_kg": 94.203,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "cage_0001_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.8,
+            0.72,
+            1.7
+          ],
+          "required": "[0.8, 0.72, 1.7] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 17140,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "8 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.25,
+              "surface_z": 0.2
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.2
+          ],
+          "required": "0 <= surface <= top (1.7 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0001",
+      "mode": "articulated",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.8,
+        0.72,
+        1.7
+      ],
+      "reference_mass_kg": 94.203,
+      "reference_joints": 8,
+      "converted_joints": 8,
+      "converted_mass_kg": 94.203,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "cage_0001_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.8,
+            0.72,
+            1.7
+          ],
+          "required": "[0.8, 0.72, 1.7] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 2772,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "8 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            77.62655639648438,
+            0.551049530506134,
+            0.551049530506134,
+            0.5510494709014893,
+            0.5510494709014893,
+            3.5929484367370605,
+            3.5929484367370605,
+            3.5929481983184814,
+            3.5929481983184814
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 1.7495,
+              "surface_z": 1.6995
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0099,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            1.6995
+          ],
+          "required": "0 <= surface <= top (1.7 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0002",
+      "mode": "static",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        1.2,
+        1.0,
+        0.9
+      ],
+      "reference_mass_kg": 132.815,
+      "reference_joints": 1,
+      "converted_joints": 1,
+      "converted_mass_kg": 132.815,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "cage_0002_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.2,
+            1.0,
+            0.9
+          ],
+          "required": "[1.2, 1.0, 0.9] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 27060,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "1 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.2299,
+              "surface_z": 0.1799
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.1799
+          ],
+          "required": "0 <= surface <= top (0.9 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0002",
+      "mode": "articulated",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        1.2,
+        1.0,
+        0.9
+      ],
+      "reference_mass_kg": 132.815,
+      "reference_joints": 1,
+      "converted_joints": 1,
+      "converted_mass_kg": 132.815,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "cage_0002_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.2,
+            1.0,
+            0.9
+          ],
+          "required": "[1.2, 1.0, 0.9] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 380,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "1 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            104.76136779785156,
+            28.053403854370117
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.95,
+              "surface_z": 0.9
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.9
+          ],
+          "required": "0 <= surface <= top (0.9 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0003",
+      "mode": "static",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.85,
+        0.7,
+        1.5
+      ],
+      "reference_mass_kg": 110.462,
+      "reference_joints": 9,
+      "converted_joints": 9,
+      "converted_mass_kg": 110.462,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "cage_0003_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.85,
+            0.7,
+            1.5
+          ],
+          "required": "[0.85, 0.7, 1.5] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 35324,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "9 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.25,
+              "surface_z": 0.2
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.2
+          ],
+          "required": "0 <= surface <= top (1.5 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0003",
+      "mode": "articulated",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.85,
+        0.7,
+        1.5
+      ],
+      "reference_mass_kg": 110.462,
+      "reference_joints": 9,
+      "converted_joints": 9,
+      "converted_mass_kg": 110.462,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "cage_0003_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.85,
+            0.7,
+            1.5
+          ],
+          "required": "[0.85, 0.7, 1.5] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 2784,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "9 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            78.93120574951172,
+            0.5510504841804504,
+            0.5510505437850952,
+            0.5510504841804504,
+            0.5510505437850952,
+            3.5929501056671143,
+            3.592949867248535,
+            3.5929503440856934,
+            3.5929501056671143,
+            14.955286026000977
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 1.5496,
+              "surface_z": 1.4996
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0089,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            1.4996
+          ],
+          "required": "0 <= surface <= top (1.5 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0004",
+      "mode": "static",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.7,
+        0.6,
+        0.75
+      ],
+      "reference_mass_kg": 39.469,
+      "reference_joints": 8,
+      "converted_joints": 8,
+      "converted_mass_kg": 39.469,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "cage_0004_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.7,
+            0.6,
+            0.75
+          ],
+          "required": "[0.7, 0.6, 0.75] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": -0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 15932,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "8 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.2,
+              "surface_z": 0.15
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.15
+          ],
+          "required": "0 <= surface <= top (0.75 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0004",
+      "mode": "articulated",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.7,
+        0.6,
+        0.75
+      ],
+      "reference_mass_kg": 39.469,
+      "reference_joints": 8,
+      "converted_joints": 8,
+      "converted_mass_kg": 39.469,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "cage_0004_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.7,
+            0.6,
+            0.75
+          ],
+          "required": "[0.7, 0.6, 0.75] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": -0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 3736,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "8 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            30.80112075805664,
+            0.324386864900589,
+            0.324386864900589,
+            0.32438695430755615,
+            0.32438695430755615,
+            1.8426544666290283,
+            1.8426544666290283,
+            1.8426545858383179,
+            1.8426547050476074
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7996,
+              "surface_z": 0.7496
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0065,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7496
+          ],
+          "required": "0 <= surface <= top (0.75 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0005",
+      "mode": "static",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.7478,
+        0.9135,
+        0.9058
+      ],
+      "reference_mass_kg": 86.183,
+      "reference_joints": 8,
+      "converted_joints": 8,
+      "converted_mass_kg": 86.183,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "cage_0005_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.7478,
+            0.9135,
+            0.9058
+          ],
+          "required": "[0.7478, 0.9135, 0.9058] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 16500,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "8 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.2484,
+              "surface_z": 0.1984
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.1984
+          ],
+          "required": "0 <= surface <= top (0.906 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-logistics-cages",
+      "asset": "cage_0005",
+      "mode": "articulated",
+      "revision": "0b0dc223228ca51b92dad7ca8aa2db16c5d15b66",
+      "reference_dims_m": [
+        0.7478,
+        0.9135,
+        0.9058
+      ],
+      "reference_mass_kg": 86.183,
+      "reference_joints": 8,
+      "converted_joints": 8,
+      "converted_mass_kg": 86.183,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "cage_0005_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            0.7478,
+            0.9135,
+            0.9058
+          ],
+          "required": "[0.7478, 0.9135, 0.9058] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 3308,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "8 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            59.604148864746094,
+            0.6471214294433594,
+            0.6471214294433594,
+            0.647121012210846,
+            0.647121012210846,
+            5.997633457183838,
+            5.997633457183838,
+            5.997633934020996,
+            5.997633934020996
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.9551,
+              "surface_z": 0.9051
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0105,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.9051
+          ],
+          "required": "0 <= surface <= top (0.906 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0001",
+      "mode": "static",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.5,
+        0.65,
+        0.75
+      ],
+      "reference_mass_kg": 73.506,
+      "reference_joints": 6,
+      "converted_joints": 6,
+      "converted_mass_kg": 73.506,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "desk_0001_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.5,
+            0.65,
+            0.75
+          ],
+          "required": "[1.5, 0.65, 0.75] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 14092,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "6 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.8,
+              "surface_z": 0.75
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.75
+          ],
+          "required": "0 <= surface <= top (0.75 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0001",
+      "mode": "articulated",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.5,
+        0.65,
+        0.75
+      ],
+      "reference_mass_kg": 73.506,
+      "reference_joints": 6,
+      "converted_joints": 6,
+      "converted_mass_kg": 73.506,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "desk_0001_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.5,
+            0.65,
+            0.75
+          ],
+          "required": "[1.5, 0.65, 0.75] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 3268,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "6 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            51.61320877075195,
+            2.976729154586792,
+            2.976729393005371,
+            3.648860216140747,
+            3.648860454559326,
+            4.320992946624756,
+            4.320992946624756
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.8,
+              "surface_z": 0.75
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.75
+          ],
+          "required": "0 <= surface <= top (0.75 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0002",
+      "mode": "static",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.0,
+        0.55,
+        0.7
+      ],
+      "reference_mass_kg": 31.0,
+      "reference_joints": 3,
+      "converted_joints": 3,
+      "converted_mass_kg": 31.0,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "desk_0002_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.0,
+            0.55,
+            0.7
+          ],
+          "required": "[1.0, 0.55, 0.7] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 6922,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "3 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.75,
+              "surface_z": 0.7
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7
+          ],
+          "required": "0 <= surface <= top (0.7 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0002",
+      "mode": "articulated",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.0,
+        0.55,
+        0.7
+      ],
+      "reference_mass_kg": 31.0,
+      "reference_joints": 3,
+      "converted_joints": 3,
+      "converted_mass_kg": 31.0,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "desk_0002_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.0,
+            0.55,
+            0.7
+          ],
+          "required": "[1.0, 0.55, 0.7] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 1632,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "3 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            23.88450050354004,
+            2.371927499771118,
+            2.3719255924224854,
+            2.3719260692596436
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.75,
+              "surface_z": 0.7
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7
+          ],
+          "required": "0 <= surface <= top (0.7 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0003",
+      "mode": "static",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.4893,
+        0.6475,
+        0.7074
+      ],
+      "reference_mass_kg": 26.347,
+      "reference_joints": 3,
+      "converted_joints": 3,
+      "converted_mass_kg": 26.347,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "desk_0003_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.4893,
+            0.6475,
+            0.7074
+          ],
+          "required": "[1.4893, 0.6475, 0.7074] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 7700,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "3 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7574,
+              "surface_z": 0.7074
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7074
+          ],
+          "required": "0 <= surface <= top (0.707 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0003",
+      "mode": "articulated",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.4893,
+        0.6475,
+        0.7074
+      ],
+      "reference_mass_kg": 26.347,
+      "reference_joints": 3,
+      "converted_joints": 3,
+      "converted_mass_kg": 26.347,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "desk_0003_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.4893,
+            0.6475,
+            0.7074
+          ],
+          "required": "[1.4893, 0.6475, 0.7074] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 1794,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "3 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            17.360891342163086,
+            2.9954328536987305,
+            2.9954328536987305,
+            2.995433807373047
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7574,
+              "surface_z": 0.7074
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7074
+          ],
+          "required": "0 <= surface <= top (0.707 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0004",
+      "mode": "static",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.2049,
+        0.6096,
+        0.7405
+      ],
+      "reference_mass_kg": 14.005,
+      "reference_joints": 3,
+      "converted_joints": 3,
+      "converted_mass_kg": 14.005,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "desk_0004_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.2049,
+            0.6096,
+            0.7405
+          ],
+          "required": "[1.2049, 0.6096, 0.7405] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 7052,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "3 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7905,
+              "surface_z": 0.7405
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7405
+          ],
+          "required": "0 <= surface <= top (0.741 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0004",
+      "mode": "articulated",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.2049,
+        0.6096,
+        0.7405
+      ],
+      "reference_mass_kg": 14.005,
+      "reference_joints": 3,
+      "converted_joints": 3,
+      "converted_mass_kg": 14.005,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "desk_0004_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.2049,
+            0.6096,
+            0.7405
+          ],
+          "required": "[1.2049, 0.6096, 0.7405] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 1756,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "3 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            3.509669065475464,
+            3.4983811378479004,
+            3.4983808994293213,
+            3.4983818531036377
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7905,
+              "surface_z": 0.7405
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7405
+          ],
+          "required": "0 <= surface <= top (0.741 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0005",
+      "mode": "static",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.1728,
+        0.6906,
+        0.7327
+      ],
+      "reference_mass_kg": 70.543,
+      "reference_joints": 6,
+      "converted_joints": 6,
+      "converted_mass_kg": 70.543,
+      "warnings": [
+        "static mode: joints are written but frozen at the authored pose"
+      ],
+      "model": "desk_0005_static",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.1728,
+            0.6906,
+            0.7327
+          ],
+          "required": "[1.1728, 0.6906, 0.7327] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 14668,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "6 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7827,
+              "surface_z": 0.7327
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7327
+          ],
+          "required": "0 <= surface <= top (0.733 m)"
+        }
+      ]
+    },
+    {
+      "dataset": "articulated-desks",
+      "asset": "desk_0005",
+      "mode": "articulated",
+      "revision": "6f0cd4c73515c03b790a1d1bff888d1640fb8da6",
+      "reference_dims_m": [
+        1.1728,
+        0.6906,
+        0.7327
+      ],
+      "reference_mass_kg": 70.543,
+      "reference_joints": 6,
+      "converted_joints": 6,
+      "converted_mass_kg": 70.543,
+      "warnings": [
+        "convex_hull collision fills openings (wire mesh, gate gaps); sensors see the visual mesh, contact does not"
+      ],
+      "model": "desk_0005_articulated",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "criterion": "scale_matches_reference",
+          "result": "PASS",
+          "value": [
+            1.1728,
+            0.6906,
+            0.7327
+          ],
+          "required": "[1.1728, 0.6906, 0.7327] within max(1 cm, 2 %)"
+        },
+        {
+          "criterion": "rests_on_ground",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "|z_min| <= 0.02 m"
+        },
+        {
+          "criterion": "collision_budget",
+          "result": "PASS",
+          "value": 3192,
+          "required": "<= 50000 triangles"
+        },
+        {
+          "criterion": "joints_well_formed",
+          "result": "PASS",
+          "value": "6 joints, bad: []",
+          "required": "unit axis; finite lower < upper unless unlimited"
+        },
+        {
+          "criterion": "has_mass",
+          "result": "PASS",
+          "value": [
+            51.26311492919922,
+            2.6119892597198486,
+            2.6119892597198486,
+            3.213283061981201,
+            3.213282823562622,
+            3.81457781791687,
+            3.81457781791687
+          ],
+          "required": "mass > 0 per link"
+        },
+        {
+          "criterion": "loads_in_gazebo",
+          "result": "PASS",
+          "value": {
+            "loaded": true,
+            "errors": []
+          },
+          "required": "loads, no [Err] lines"
+        },
+        {
+          "criterion": "probes_settle",
+          "result": "PASS",
+          "value": [
+            {
+              "xy": [
+                0.0,
+                0.0
+              ],
+              "rest_z": 0.7827,
+              "surface_z": 0.7327
+            }
+          ],
+          "required": "every probe at rest"
+        },
+        {
+          "criterion": "dynamic_model_stable",
+          "result": "PASS",
+          "value": 0.0,
+          "required": "model drift <= 0.02 m after settling"
+        },
+        {
+          "criterion": "contact_within_bounds",
+          "result": "PASS",
+          "value": [
+            0.7327
+          ],
+          "required": "0 <= surface <= top (0.733 m)"
+        }
+      ]
+    }
+  ]
+}

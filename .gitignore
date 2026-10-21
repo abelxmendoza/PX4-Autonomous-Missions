@@ -44,3 +44,7 @@ node_modules/
 # Generated reports, JUnit and fault evidence (CI uploads them as artifacts)
 artifacts/
 build/
+
+# Raw ProjectSim downloads (large, licence unreviewed); manifests + ledger stay tracked
+sim_assets/raw/
+sim_assets/samples/
