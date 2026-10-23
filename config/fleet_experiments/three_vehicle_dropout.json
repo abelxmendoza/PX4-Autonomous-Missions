@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "fleet_size": 3,
+  "scenario": "gate_visit_dropout",
+  "seed": 0,
+  "output_dir": "demo_artifacts/fleet/three_vehicle_dropout",
+  "faults": [
+    {"vehicle": "px4_2", "kind": "abort_and_land", "after_ready_s": 0.2}
+  ]
+}
