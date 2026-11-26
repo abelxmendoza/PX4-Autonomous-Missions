@@ -1,2 +1,4 @@
 {"credits": 10, "endpoint": "procedural", "event": "intent", "item": "e1_shelving_bays", "key": "plan-6a664ff488d974d057c3cdd5eb8e0b5b7388a66c", "utc": "2026-10-21T17:31:22+00:00"}
 {"credits": 10, "effective_params": null, "event": "submitted", "item": "e1_shelving_bays", "job_id": "job_01M5FR91R566CY40BTDMT6Y7MJ", "key": "plan-6a664ff488d974d057c3cdd5eb8e0b5b7388a66c", "set_id": "vset_01M5FR91R566CY40BTDMT6Y7MH", "utc": "2026-10-21T17:31:23+00:00"}
+{"credits": 1, "event": "refunded", "item": "e1_shelving_bays", "key": "plan-6a664ff488d974d057c3cdd5eb8e0b5b7388a66c", "reason": "1 member(s) failed/canceled", "utc": "2026-10-21T19:55:22+00:00"}
+{"event": "downloaded", "failed": 1, "item": "e1_shelving_bays", "members": 9, "set_id": "vset_01M5FR91R566CY40BTDMT6Y7MH", "utc": "2026-10-21T19:55:22+00:00"}

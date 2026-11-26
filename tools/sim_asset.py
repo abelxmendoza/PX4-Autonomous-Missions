@@ -9,6 +9,7 @@ Local (no network, no credits):
   accept NAME [--ref-dims X,Y,Z]            acceptance criteria report (PASS/FAIL)
   build-world SCENARIO.yaml OUT.sdf         seeded, reproducible placement
   render WORLD.sdf OUT.png [--pose ...]     headless camera snapshot (visual check)
+  inventory [--md OUT.md]                   all models + plan + spend (offline)
 
 ProjectSim (optional; PROJECTSIM_TOKEN in the environment):
   ps-plan PLAN.yaml                         cost + budget, no network
@@ -92,6 +93,18 @@ def cmd_accept(a):
 def cmd_render(a):
     from sim_assets import render_view
     print(render_view.snapshot(a.world, a.models, a.out, pose=a.pose, engine=a.engine))
+
+
+def cmd_inventory(a):
+    from sim_assets import inventory, projectsim as ps
+    acc = ROOT / "evidence" / "sim_assets" / "projectsim_samples.json"
+    inv = inventory.build([MODELS, ROOT / "models_generated"], ps.load_plan(a.plan),
+                          ps.Ledger(LEDGER).entries(),
+                          json.loads(acc.read_text()) if acc.is_file() else None)
+    md = inventory.to_markdown(inv)
+    if a.md:
+        a.md.write_text(md, encoding="utf-8")
+    print(md)
 
 
 def cmd_build_world(a):
@@ -247,6 +260,11 @@ def main(argv=None):
     r.add_argument("--engine", default="ogre", choices=["ogre", "ogre2"])
     r.add_argument("--models", type=Path, default=MODELS)
     r.set_defaults(func=cmd_render)
+
+    i = sub.add_parser("inventory")
+    i.add_argument("--plan", type=Path, default=ASSETS / "plans" / "initial_batch.yaml")
+    i.add_argument("--md", type=Path)
+    i.set_defaults(func=cmd_inventory)
 
     s = sub.add_parser("ps-plan"); s.add_argument("plan", type=Path); s.set_defaults(func=cmd_ps_plan)
     s = sub.add_parser("ps-auth"); s.set_defaults(func=cmd_ps_auth)

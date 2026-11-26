@@ -13,13 +13,13 @@ version: 1
 budget:
   credits: 120            # gift credits shown on the dashboard 2026-10-21
   expires: 2026-11-18
-  reserve_credits: 40     # measured re-captures, re-rolls of failures, Phase B variants
+  reserve_credits: 20     # held for final targeted experiments; never spendable via ps-submit
 license_note: >-
-  Generated with ProjectSim (Kaedim). Terms (projectsim.ai/terms) limit use to
-  robotics simulation and robot perception/planning/control training or
-  evaluation, forbid training 3D/image/video generators on outputs, and
-  require passing that restriction on to anyone the outputs are given to.
-  Whether gift-credit outputs carry the "after payment" IP assignment is UNCONFIRMED.
+  Generated with ProjectSim (Kaedim). projectsim.ai/terms: section 2.2 permits robotics
+  simulation and robot perception/planning/control training or evaluation and forbids
+  training 3D/image/video generators on outputs (pass that on to recipients);
+  section 3.1 allows commercial use of paid outputs; section 4.2 gives Kaedim a broad
+  licence to outputs. Gift-credit status of outputs is UNCONFIRMED.
 defaults:
   standard:
     params:
@@ -70,6 +70,7 @@ items:
   # ---- E2: standard industrial obstacle via GLB (4 credits) ---------------
   - id: e2_pallet_jack
     experiment: E2
+    batch: B1
     endpoint: standard
     name: manual pallet jack
     inputs:
@@ -100,7 +101,121 @@ items:
       same obstacle. It must fit the capture constraints: whole object in frame
       at about 0.5 m beside a Letter-size board, so roughly 40 cm or smaller.
 
-  # ---- Phase B candidates (standard, 4 credits each; NOT approved) --------
+  # ---- B1 warehouse logistics (24 = 10 + 10 + e2_pallet_jack 4) ---------
+  - id: b1_pallets
+    batch: B1
+    endpoint: procedural
+    name: shipping pallet
+    count: 10
+    seed:
+      text: >-
+        One wooden shipping pallet: top deck boards nailed across stringers or
+        blocks, bottom deck boards, and open fork entries between the supports.
+        All parts are fixed; no moving parts. Vary the length between 1.0 and
+        1.2 m, the width between 0.8 and 1.2 m, the height between 0.12 and
+        0.16 m, stringer versus block construction, board spacing and wood colour.
+    params:
+      physics: {articulated: false}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: >-
+      Omega1: 12-16 cm obstacles at the edge of what the HC-SR04 and a low scan
+      see; open fork entries test gap handling. Floor clutter for every warehouse
+      benchmark.
+  - id: b1_platform_carts
+    batch: B1
+    endpoint: procedural
+    name: platform cart
+    count: 10
+    seed:
+      text: >-
+        One four-wheeled industrial platform cart: a flat steel deck, a fixed
+        push handle frame at one end, two fixed casters and two swivel casters
+        under the deck. Each swivel caster rotates about a vertical axis and
+        every wheel rolls about its axle. Vary the deck length between 0.8 and
+        1.4 m, the width between 0.5 and 0.8 m and the handle height between
+        0.8 and 1.0 m.
+    params:
+      physics: {articulated: true, collision_granularity: link}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: >-
+      Movable obstacles for the later dynamic-environment benchmark (articulated
+      import is supported); static now for navigation.
+
+  # ---- B2 articulated industrial (20) -------------------------------------
+  - id: b2_safety_gates
+    batch: B2
+    endpoint: procedural
+    name: industrial swing gate
+    count: 10
+    seed:
+      text: >-
+        One freestanding industrial swing gate: two fixed vertical steel posts
+        on flat base plates and one rectangular wire-mesh gate panel hinged on
+        the left post. The panel swings about a vertical axis from closed to
+        about 90 degrees open and starts closed. Vary the clear opening between
+        0.6 and 1.5 m, the height between 1.0 and 2.0 m and the mesh spacing.
+    params:
+      physics: {articulated: true, collision_granularity: link}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: >-
+      Narrow-passage benchmark: the opening width is the controlled variable
+      (0.6-1.5 m spans Omega1 pass/fail); hinge joints are validated, not assumed.
+  - id: b2_storage_cabinets
+    batch: B2
+    endpoint: procedural
+    name: steel storage cabinet
+    count: 10
+    seed:
+      text: >-
+        One freestanding steel industrial storage cabinet with a fixed body,
+        either two front doors hinged on the outer edges or a stack of drawers
+        that slide straight forward. Doors and drawers start closed and their
+        handles move with them. Vary the height between 0.9 and 2.0 m, the
+        width between 0.5 and 1.2 m, door versus drawer layout and colour.
+    params:
+      physics: {articulated: true, collision_granularity: part}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: >-
+      Lab and warehouse walls of clutter; articulated doors and drawers for joint
+      validation and later manipulation or RealmForge inspection.
+
+  # ---- B3 outdoor UAV structures (20) ------------------------------------
+  - id: b3_rooftop_hvac
+    batch: B3
+    endpoint: procedural
+    name: rooftop hvac unit
+    count: 10
+    seed:
+      text: >-
+        One rooftop HVAC unit: a rectangular sheet-metal cabinet on a raised
+        steel base frame, one to three round fan housings with grilles on the
+        top, louvered side panels and short pipe stubs. All parts are fixed.
+        Vary the length between 1.5 and 4 m, the width between 1 and 2 m, the
+        height between 1 and 2.2 m and the number of fans.
+    params:
+      physics: {articulated: false}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: >-
+      PX4 rooftop inspection / landing-zone obstacles with overhangs and grilles,
+      sized for x500 clearance tests.
+  - id: b3_utility_enclosures
+    batch: B3
+    endpoint: procedural
+    name: outdoor utility enclosure
+    count: 10
+    seed:
+      text: >-
+        One outdoor electrical utility enclosure on a concrete plinth: a steel
+        cabinet with a sloped rain roof, ventilation louvers and one or two
+        front doors that are fixed shut. All parts are fixed; no moving parts.
+        Vary the height between 0.8 and 2.0 m, the width between 0.6 and
+        2.0 m and the colour.
+    params:
+      physics: {articulated: false}
+    import: {kind: usd, mode: static, collision: usd}
+    rationale: PX4 inspection targets and low obstacles around landing zones.
+
+  # ---- Later candidates (NOT proposed yet) -------------------------------
   - id: utility_pole
     endpoint: standard
     name: utility pole

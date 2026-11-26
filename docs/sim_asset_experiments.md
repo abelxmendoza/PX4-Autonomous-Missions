@@ -153,17 +153,23 @@ Seeded worlds from accepted assets. The planned metrics per run:
 PX4 (x500 with lidar) can run this first. **Omega1 cannot until its URDF and Gazebo
 twin exist.** That is the blocking dependency, and it is not a ProjectSim problem.
 
-## Licensing (projectsim.ai/terms, read 2026-10-21)
+## Licensing (projectsim.ai/terms, re-read 2026-10-21)
 
-* **Use:** limited to robotics simulation and to training or evaluating robot
-  perception, planning and control. That fits all of the above.
-* **Training restriction:** outputs may not train, fine-tune or distil models whose
-  main purpose is generating images, video or 3D assets. Anyone we give outputs to
-  must receive the same restriction.
-* **Kaedim's rights:** Kaedim keeps a broad licence to outputs.
-* **Open question:** the IP assignment is "after payment", and it is unconfirmed
-  whether gift-credit outputs qualify. Ask Kaedim before publishing generated
-  assets. Raw downloads are gitignored.
+* §2.2 **permits** robotics simulation and training/evaluating robot
+  perception, planning and control. §3.1 separately allows commercial use,
+  modification and distribution of **paid** Outputs. An earlier version of this
+  doc said use was *limited* to robotics; that overstated §2.2.
+* **Training restriction (§2.2):** Outputs, and datasets derived from them, may
+  not train, fine-tune, distil or improve models whose primary purpose is
+  generating images, video or 3D assets. The restriction must be passed on to
+  anyone who receives the outputs.
+* **Kaedim's rights (§4.2):** a broad licence to Outputs and generated data,
+  including training models and selling or licensing assets and datasets.
+  Original Inputs are excluded (§4.3), but **3D models generated from your
+  images are not**.
+* **Open question:** the terms never mention gift or promotional credits, and
+  §3.1 speaks of *paid* Outputs. Ask Kaedim before publishing generated assets.
+  Raw downloads are gitignored.
 * **The free HF samples are CC-BY-4.0:** usable now, with the attribution
   "projectsim by Kaedim" and the dataset URL. Both are recorded in every
   converted manifest.

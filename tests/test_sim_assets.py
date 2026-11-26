@@ -608,3 +608,24 @@ def test_token_file_must_be_private(tmp_path, monkeypatch):
     f.chmod(0o600)
     assert ps.read_token_file() == TOKEN
     ps.Client()  # constructs without error
+
+
+def test_inventory_reports_models_plan_and_spend(tmp_path, glb):
+    from sim_assets import inventory
+    _write(tmp_path, glb)
+    plan = {"items": [
+        {"id": "a", "endpoint": "standard", "batch": "B1"},
+        {"id": "b", "endpoint": "standard"},
+    ]}
+    ledger = [
+        {"event": "submitted", "item": "a", "credits": 4, "set_id": "vset_1"},
+        {"event": "downloaded", "item": "a", "set_id": "vset_1"},
+    ]
+    inv = inventory.build([tmp_path / "models"], plan, ledger, None)
+    assert [m["name"] for m in inv["models"]] == ["step_block"]
+    assert inv["models"][0]["validation"] == "not run"
+    gen = {g["id"]: g for g in inv["generation"]}
+    assert gen["a"]["status"] == "downloaded" and gen["a"]["remote_id"] == "vset_1"
+    assert gen["b"]["status"] == "not submitted" and gen["b"]["batch"] == "candidate"
+    md = inventory.to_markdown(inv)
+    assert "| step_block |" in md and "| a | standard |" in md
