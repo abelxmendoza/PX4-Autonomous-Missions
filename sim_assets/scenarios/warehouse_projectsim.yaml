@@ -1,0 +1,25 @@
+# Warehouse obstacle field built from projectsim by Kaedim assets
+# (CC-BY-4.0 samples: huggingface.co/datasets/projectsim/articulated-logistics-cages
+#  and .../articulated-desks). Install the models first (free, no token):
+#   python3 scripts/eval_projectsim_samples.py --install models_generated
+# then: python3 tools/sim_asset.py build-world sim_assets/scenarios/warehouse_projectsim.yaml \
+#         worlds/warehouse_projectsim.sdf --models models_generated
+format: sim-scenario
+version: 1
+name: warehouse_projectsim
+seed: 2026
+area: {x: [-12, 12], y: [3, 40]}
+min_clearance_m: 1.5          # leaves corridors a rover or a low-flying x500 can use
+keepout: [{x: 0, y: 0, radius_m: 3.0}]   # vehicle spawn
+ground_size_m: 100
+placements:
+  - {model: ps_cage_0001, count: 2, yaw: random}
+  - {model: ps_cage_0002, count: 2, yaw: random}
+  - {model: ps_cage_0003, count: 2, yaw: random}
+  - {model: ps_cage_0004, count: 2, yaw: random}
+  - {model: ps_cage_0005, count: 2, yaw: random}
+  - {model: ps_desk_0001, count: 1, yaw: random}
+  - {model: ps_desk_0002, count: 1, yaw: random}
+  - {model: ps_desk_0003, count: 1, yaw: random}
+  - {model: ps_desk_0004, count: 1, yaw: random}
+  - {model: ps_desk_0005, count: 1, yaw: random}

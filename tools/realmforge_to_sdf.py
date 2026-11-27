@@ -15,15 +15,10 @@ from pathlib import Path
 BLOCKING = {"wall", "building", "pallet", "rack"}
 
 
-def convert(data):
-    if (not isinstance(data, dict) or data.get("format") != "realmforge-world"
-            or type(data.get("version")) is not int or data.get("version") != 1):
-        raise ValueError("Expected realmforge-world version 1")
-    objects = data.get("objects")
-    if not isinstance(objects, list) or len(objects) > 2000:
-        raise ValueError("Expected objects array of at most 2000 entries")
+def px4_world(name, ground_size_m=80):
+    """Empty PX4-compatible world: physics, Zurich origin, sun, ground box."""
     sdf = ET.Element("sdf", version="1.9")
-    world = ET.SubElement(sdf, "world", name="realmforge")
+    world = ET.SubElement(sdf, "world", name=name)
     ET.SubElement(world, "gravity").text = "0 0 -9.81"
     # PX4 Gazebo world conventions; system plugins are provided by server.config.
     physics = ET.SubElement(world, "physics", name="1ms", type="ignored")
@@ -50,7 +45,18 @@ def convert(data):
     for label in ("collision", "visual"):
         elem = ET.SubElement(link, label, name=label)
         box = ET.SubElement(ET.SubElement(elem, "geometry"), "box")
-        ET.SubElement(box, "size").text = "80 80 0.1"
+        ET.SubElement(box, "size").text = f"{ground_size_m} {ground_size_m} 0.1"
+    return sdf, world
+
+
+def convert(data):
+    if (not isinstance(data, dict) or data.get("format") != "realmforge-world"
+            or type(data.get("version")) is not int or data.get("version") != 1):
+        raise ValueError("Expected realmforge-world version 1")
+    objects = data.get("objects")
+    if not isinstance(objects, list) or len(objects) > 2000:
+        raise ValueError("Expected objects array of at most 2000 entries")
+    sdf, world = px4_world("realmforge")
     count = 0
     for index, obj in enumerate(objects):
         if not isinstance(obj, dict):
