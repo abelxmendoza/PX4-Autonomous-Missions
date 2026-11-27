@@ -60,5 +60,11 @@ Interview 5 engineers or researchers who run PX4/Gazebo tests. Ask about repeate
 5. **UI only after that gate passes.** Add experiment selection/results around the working CLI.
    Hosted completed results precede remote simulation; hardware work stays separately labelled.
 
-The immediate next implementation task is item 1. Consolidation does not mark this fleet gate passed.
+The initial side-effect-free contract for item 1 is available in
+[`fleet_experiments.md`](fleet_experiments.md). It validates and prints a plan;
+it does not launch a larger PX4 fleet. The next integration task is item 2,
+including the ROS adapters and independent verifier specification. Consolidation
+and preflight validation do not mark the fleet execution gate passed.
+See [the research and contribution plan](swarm_research_and_contribution_plan.md)
+for upstream references, known gaps and the focused demonstration target.
 See [the consolidation record](consolidation_20261020.md) for integrated work and validation.
